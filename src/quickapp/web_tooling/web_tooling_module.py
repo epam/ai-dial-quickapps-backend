@@ -5,7 +5,6 @@ from injector import AssistedBuilder, Binder, Module, multiprovider
 
 from quickapp.common import StagedBaseTool
 from quickapp.common.exceptions import InitializationException, ToolInitializationException
-from quickapp.common.preview import preview_module
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.web_fetch import WebFetchConfig
 from quickapp.shared.external_fetch.external_url_fetch_policy_resolver import (
@@ -24,13 +23,11 @@ _EGRESS_DISABLED_MESSAGE = (
 )
 
 
-@preview_module
 class WebToolingModule(Module):
     """Built-in web tools. Currently the single ``internal_web_fetch`` tool.
 
-    Preview-gated at the module level; ``features.web_fetch`` is itself a
-    ``PreviewField``. Kept separate from the DIAL-files family because it writes
-    no file (a plain ``StagedBaseTool``, not a ``_DialFileTool``).
+    Kept separate from the DIAL-files family because it writes no file (a plain
+    ``StagedBaseTool``, not a ``_DialFileTool``).
 
     The tool cannot function without external egress, so it is gated on the egress
     policy at initialization: if ``features.web_fetch.enabled`` is set while external

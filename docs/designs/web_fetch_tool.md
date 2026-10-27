@@ -1,5 +1,6 @@
 # Design: Built-in Web Fetch Tool
 - **Status:** Implemented
+- **Graduated:** out of preview, stable since [PR#693](https://github.com/epam/ai-dial-quickapps-backend/pull/693)
 - **User-facing:** [CONFIGURATION - Web fetch](../../CONFIGURATION.md#web-fetch-configuration)
 - **Dependencies:**
   - [external_url_attachments.md](external_url_attachments.md) — `ExternalUrlFetcher`, `classify_url`, and the two-tier egress policy the tool reuses unchanged.

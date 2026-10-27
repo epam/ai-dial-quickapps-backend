@@ -118,10 +118,3 @@ class TestAgentHooksModuleCompletionRunners:
         module = AgentHooksModule()
 
         assert module._provide_completion_hook_runners(runner) == [runner]
-
-
-class TestAgentHooksModuleIsPreview:
-    def test_module_is_marked_as_preview(self):
-        from quickapp.common.preview import is_preview_module
-
-        assert is_preview_module(AgentHooksModule())

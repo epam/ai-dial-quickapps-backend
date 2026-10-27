@@ -251,7 +251,7 @@ The project contains predefined configs of application and predefined tools
 | tool_sets    | Yes      | List[Object] | The list of tool sets. Toolset contains tools with their configurations that groped by some type. [Tool sets configuration](#tool-sets-configuration) | -                | -             |
 | features     | No       | Object       | Per-app feature overrides (file loading, external URL egress, stage display, dial files, etc.). [Features configuration](#features-configuration)      | -                | `{}`          |
 | skills       | No       | List[Object] | Optional list of DIAL prompt / DIAL skill resources. [Skills configuration](#skills-configuration)                                                    | -                | `null`        |
-| hooks        | No       | List[Object] | `[Preview]` Config-driven tool-call hooks fired at orchestrator seams (`on_request_start`, `on_completion`). [Hooks configuration](#hooks-configuration)                                                      | -                | `null`        |
+| hooks        | No       | List[Object] | Config-driven tool-call hooks fired at orchestrator seams (`on_request_start`, `on_completion`). [Hooks configuration](#hooks-configuration)                                                      | -                | `null`        |
 | tool_defaults | No      | Object       | Defaults applied to every tool call (e.g. timeout). [Tool defaults configuration](#tool-defaults-configuration)                                       | -                | `{}`          |
 | conversation_starters | No | Object    | Conversation starter chips. [Conversation starters](#conversation-starters-configuration). Deprecated top-level `starters` still accepted. | -                | `null`        |
 
@@ -263,7 +263,7 @@ The project contains predefined configs of application and predefined tools
 | system_prompt  | Yes      | Object  | The configuration for the system prompt. See [System prompt configuration](#system-prompt-configuration) | -                | -             |
 | max_iterations | No       | Integer | The max count of orchestrator(agent) operations. -1 value for infinite                                   | Integer          | 15            |
 | attachment_strategy | No  | Object  | How the orchestrator receives request-scoped attachments. See [Attachment strategy](#attachment-strategy-configuration) | - | `null` |
-| tool_discovery | No       | Object  | `[Preview]` Dynamic tool discovery configuration. See [Tool discovery configuration](#tool-discovery-configuration) | -   | `null`        |
+| tool_discovery | No       | Object  | Dynamic tool discovery configuration. See [Tool discovery configuration](#tool-discovery-configuration) | -   | `null`        |
 
 #### Attachment strategy configuration
 
@@ -360,7 +360,7 @@ Custom system prompt:
 
 #### Tool discovery configuration
 
-`[Preview]` Requires `ENABLE_PREVIEW_FEATURES=true`. When enabled, toolsets withheld from the initial LLM payload
+When enabled, toolsets withheld from the initial LLM payload
 (see the per-toolset `deferred` field in [Tool sets configuration](#tool-sets-configuration)) are surfaced on demand
 via the `internal_tool_search` meta-tool (referred to as "tool search" below), which routes the query to the matching
 tool schemas through an isolated LLM call.
@@ -412,9 +412,6 @@ Contexts are a discriminated union on `type`. Each entry is one of the shapes be
 
 #### Folder context (`type: folder`)
 
-Requires `ENABLE_PREVIEW_FEATURES=true`. When preview is off, folder entries are stripped from
-`contexts` at request validation.
-
 On every request the folder is expanded (files and subfolders, up to `max_depth`) into the
 `internal_attachments_available_context` response so newly uploaded files become discoverable
 without editing the manifest. Folder expansion does **not** require `features.dial_files`.
@@ -449,7 +446,7 @@ File context:
 }
 ```
 
-Folder context (preview):
+Folder context:
 
 ```json
 {
@@ -466,24 +463,23 @@ Folder context (preview):
 
 Per-app feature overrides under the manifest's `features` object. All fields are optional; unset
 fields fall back to the deployment-wide defaults configured via environment variables (where
-applicable). Preview-gated fields require `ENABLE_PREVIEW_FEATURES=true`; otherwise they are
-nullified at request validation.
+applicable).
 
 Omitting `features` (or setting `{}`) still constructs the default `Features` object — time
 awareness stays **on**, and nested objects like `file_loading` / `stage_display` use their defaults.
 Setting `"features": null` turns off those defaults (no timestamp feature, no per-app dial-files /
 external-fetch overrides; stage display falls back to `info` unless `DEFAULT_STAGE_DISPLAY_LEVEL` is set).
 
-| Field                    | Required | Type           | Preview | Description                                                                                                                                                                  | Default Value                          |
-|--------------------------|----------|----------------|---------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------|
-| `timestamp`              | No       | Object or null | No      | Time awareness - the agent knows the current time and tool results carry production timestamps. `null` disables it. See [Timestamp configuration](#timestamp-configuration). | `{"injection_strategy": "tool_call"}` |
-| `file_loading`           | No       | Object         | No      | Per-app file download size limit. See [File loading configuration](#file-loading-configuration).                                                                           | `{}`                                   |
-| `external_url_fetch`     | No       | Object         | No      | Per-app override for fetching external (non-DIAL) URLs. See [External URL fetch configuration](#external-url-fetch-configuration).                                           | `{}`                                   |
-| `tool_access_filter`     | No       | Object or null | No      | Per-user tool access filtering: hide DIAL deployment, application and `dial-mcp` toolset tools the calling user cannot access. See [Tool access filter configuration](#tool-access-filter-configuration). | `null`                                 |
-| `stage_display`          | No       | Object         | No      | Which tool-execution stages appear in the DIAL UI. See [Stage display configuration](#stage-display-configuration).                                                          | `{"level": "info"}`                    |
-| `dial_files`             | No       | Object or null | No      | Built-in DIAL workspace file tools. `null` (default) disables them. See [DIAL files configuration](#dial-files-configuration).                                               | `null`                                 |
-| `web_fetch`              | No       | Object or null | **Yes** | Built-in `internal_web_fetch` tool. See [Web fetch configuration](#web-fetch-configuration).                                                                                 | `null`                                 |
-| `representation_tooling` | No       | Object or null | **Yes** | Tools that control how the agent surfaces output (e.g. add attachment to the answer). See [Representation tooling](#representation-tooling-configuration).                   | `null`                                 |
+| Field                    | Required | Type           | Description                                                                                                                                                                  | Default Value                          |
+|--------------------------|----------|----------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------|
+| `timestamp`              | No       | Object or null | Time awareness - the agent knows the current time and tool results carry production timestamps. `null` disables it. See [Timestamp configuration](#timestamp-configuration). | `{"injection_strategy": "tool_call"}` |
+| `file_loading`           | No       | Object         | Per-app file download size limit. See [File loading configuration](#file-loading-configuration).                                                                           | `{}`                                   |
+| `external_url_fetch`     | No       | Object         | Per-app override for fetching external (non-DIAL) URLs. See [External URL fetch configuration](#external-url-fetch-configuration).                                           | `{}`                                   |
+| `tool_access_filter`     | No       | Object or null | Per-user tool access filtering: hide DIAL deployment, application and `dial-mcp` toolset tools the calling user cannot access. See [Tool access filter configuration](#tool-access-filter-configuration). | `null`                                 |
+| `stage_display`          | No       | Object         | Which tool-execution stages appear in the DIAL UI. See [Stage display configuration](#stage-display-configuration).                                                          | `{"level": "info"}`                    |
+| `dial_files`             | No       | Object or null | Built-in DIAL workspace file tools. `null` (default) disables them. See [DIAL files configuration](#dial-files-configuration).                                               | `null`                                 |
+| `web_fetch`              | No       | Object or null | Built-in `internal_web_fetch` tool. See [Web fetch configuration](#web-fetch-configuration).                                                                                 | `null`                                 |
+| `representation_tooling` | No       | Object or null | Tools that control how the agent surfaces output (e.g. add attachment to the answer). See [Representation tooling](#representation-tooling-configuration).                   | `null`                                 |
 
 #### Timestamp configuration
 
@@ -599,10 +595,10 @@ SSRF envelope, deployment dispatch table, error messages and agent retry behavio
 Controls which tool-execution stages are surfaced in the DIAL UI. The deployment-wide env
 `DEFAULT_STAGE_DISPLAY_LEVEL`, when set, **wins over** every app's `features.stage_display.level`.
 
-| Field                  | Required | Type    | Preview | Description                                                                                                                                                                                                 | Available Values                 | Default Value |
-|------------------------|----------|---------|---------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------|---------------|
-| `level`                | No       | String  | No      | Visibility threshold                                                                                                                                                                                        | `none`, `error`, `info`, `debug` | `info`        |
-| `propagate_sub_stages` | No       | Boolean | No      | When a deployment tool calls another QuickApp, re-emit the sub-app's stages as nested children of the `Calling X` stage. Set `false` to disable. | `true`, `false`                  | `true` |
+| Field                  | Required | Type    | Description                                                                                                                                                                                                 | Available Values                 | Default Value |
+|------------------------|----------|---------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------|---------------|
+| `level`                | No       | String  | Visibility threshold                                                                                                                                                                                        | `none`, `error`, `info`, `debug` | `info`        |
+| `propagate_sub_stages` | No       | Boolean | When a deployment tool calls another QuickApp, re-emit the sub-app's stages as nested children of the `Calling X` stage. Set `false` to disable. | `true`, `false`                  | `true` |
 
 | Value   | Behavior                                                              |
 |---------|-----------------------------------------------------------------------|
@@ -627,12 +623,12 @@ Controls which tool-execution stages are surfaced in the DIAL UI. The deployment
 Opt in to the built-in workspace file tools (`internal_file_*`). Omit `dial_files` or set it to
 `null` to leave file tools off. Setting `"dial_files": {}` enables **all** tools with defaults.
 
-| Field                      | Required | Type                         | Preview | Description                                                                                                                                 | Default Value |
-|----------------------------|----------|------------------------------|---------|---------------------------------------------------------------------------------------------------------------------------------------------|---------------|
-| `enabled_tools`            | No       | `"all"` or Array[String]     | No      | Which tools to expose. Short names: `list`, `read_lines`, `search`, `find`, `write`, `edit`, `delete`, `copy`, `move`.                    | `"all"`       |
-| `agent_home_dir`           | No       | String                       | No      | Relative sub-directory under appdata used as the root for relative paths. Must end with `/`; no `files/…`, leading `/`, or `..`. Empty = appdata root. | `""`          |
-| `max_files_scanned`        | No       | Integer (`≥ 1`)              | No      | Folder-mode `search` cap: max files downloaded/scanned per call before truncation.                                                          | `50`          |
-| `tool_call_result_offload` | No       | Object or null               | **Yes** | Offload oversized tool responses to a DIAL file. See below. Requires `read_lines` and `search` in `enabled_tools`.                          | defaults (see below) |
+| Field                      | Required | Type                         | Description                                                                                                                                 | Default Value |
+|----------------------------|----------|------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------|---------------|
+| `enabled_tools`            | No       | `"all"` or Array[String]     | Which tools to expose. Short names: `list`, `read_lines`, `search`, `find`, `write`, `edit`, `delete`, `copy`, `move`.     | `"all"`       |
+| `agent_home_dir`           | No       | String                       | Relative sub-directory under appdata used as the root for relative paths. Must end with `/`; no `files/…`, leading `/`, or `..`. Empty = appdata root. | `""`          |
+| `max_files_scanned`        | No       | Integer (`≥ 1`)              | Folder-mode `search` cap: max files downloaded/scanned per call before truncation.                                                          | `50`          |
+| `tool_call_result_offload` | No       | Object or null               | `[Preview]` Offload oversized tool responses to a DIAL file. See below. Requires `read_lines` and `search` in `enabled_tools`.                          | defaults (see below) |
 
 ##### Tool-call result offload
 
@@ -662,7 +658,7 @@ Env defaults: `TOOL_CALL_RESULT_OFFLOAD__*`.
 
 #### Web fetch configuration
 
-Requires `ENABLE_PREVIEW_FEATURES=true`. When enabled, exposes `internal_web_fetch`: fetch an
+When enabled, exposes `internal_web_fetch`: fetch an
 external `http(s)` resource inline (truncated to `max_inline_size`) or persist it under the
 agent home via `save_path`. Egress uses the same two-tier policy as
 [External URL fetch](#external-url-fetch-configuration).
@@ -689,7 +685,7 @@ initialization fails with a hard `ToolInitializationException` — fix the egres
 
 #### Representation tooling configuration
 
-Requires `ENABLE_PREVIEW_FEATURES=true`. Omit or set `null` to disable the whole section.
+Omit or set `null` to disable the whole section.
 Set to `{}` to enable with defaults.
 
 | Field            | Required | Type    | Description                                                              | Default Value |
@@ -753,10 +749,10 @@ See [Access-Aware Tool Availability design doc](docs/designs/access_aware_tool_a
 Optional top-level `skills` array. Merged with predefined skills at request time. See
 [docs/skills.md](./skills.md) for behaviour, precedence, and skill invocation.
 
-| Type          | Preview | Fields | Description |
-|---------------|---------|--------|-------------|
-| `dial-prompt` | No      | `url`  | DIAL prompt as a skill (`prompts/<bucket>/<path>`). |
-| `dial-skill`  | **Yes** | `url`  | DIAL skill resource folder with `SKILL.md` (`skills/<bucket>/<path>`). Requires `ENABLE_PREVIEW_FEATURES=true` and DIAL Core ≥ 0.48.0. |
+| Type          | Fields | Description |
+|---------------|--------|-------------|
+| `dial-prompt` | `url`  | DIAL prompt as a skill (`prompts/<bucket>/<path>`). |
+| `dial-skill`  | `url`  | DIAL skill resource folder with `SKILL.md` (`skills/<bucket>/<path>`). Requires DIAL Core ≥ 0.48.0. |
 
 ```json
 {
@@ -769,7 +765,7 @@ Optional top-level `skills` array. Merged with predefined skills at request time
 
 ### Hooks configuration
 
-Requires `ENABLE_PREVIEW_FEATURES=true`. The top-level `hooks` array runs a configured tool at named
+The top-level `hooks` array runs a configured tool at named
 orchestrator seams. For how hooks behave end to end (injection, failure handling, tools hidden from the
 model) see [docs/hooks.md](docs/hooks.md); the design is in
 [docs/designs/hook_context_and_lifecycle_events.md](docs/designs/hook_context_and_lifecycle_events.md).
@@ -987,7 +983,7 @@ schema advertises `dial:defaultLocale` so the Chat configurator can offer locale
 
 ### Tool sets configuration
 
-Most toolset types also accept a `deferred` field (Boolean, default `true`): `[Preview]` when true or unset, and
+Most toolset types also accept a `deferred` field (Boolean, default `true`): when true or unset, and
 [Tool discovery configuration](#tool-discovery-configuration) is enabled, the toolset's tool schemas are withheld
 from the initial LLM payload and discovered on demand via the `internal_tool_search` meta-tool. Set to `false` to
 keep a specific toolset always eager. Currently honored by REST API, MCP, and Internal toolsets; DIAL deployment and
@@ -1041,7 +1037,7 @@ DIAL app toolsets accept the field but do not yet act on it.
 | type                   | Yes      | String             | The type of the tool set.                                                | `mcp`         |
 | mcp_server_info        | Yes      | MCPServerInfo      | MCP server info. See [MCPServerInfo structure](#mcpserverinfo-structure) | -             |
 | allowed_tools          | No       | Array of String    | Allowed MCP tool names from the server                                   | `null`        |
-| hidden_from_model      | No       | Array of String    | `[Preview]` MCP tool names hooks can call but the model never sees: they are absent from the tools payload and the `tool_search` catalog and are not executed if the model requests them. Entries must be listed in `allowed_tools` when it is set; set both, otherwise tools added to the server later stay model-visible. See [Hooks](docs/hooks.md#tools-hidden-from-the-model). | `null`        |
+| hidden_from_model      | No       | Array of String    | MCP tool names hooks can call but the model never sees: they are absent from the tools payload and the `tool_search` catalog and are not executed if the model requests them. Entries must be listed in `allowed_tools` when it is set; set both, otherwise tools added to the server later stay model-visible. See [Hooks](docs/hooks.md#tools-hidden-from-the-model). | `null`        |
 | resources              | No       | MCPResourcesConfig | MCP resource exposure config. See [MCP resources configuration](#mcp-resources-configuration). | `null` (disabled) |
 | attachment             | No       | AttachmentConfig   | See also: [AttachmentConfig](#attachment-configuration)                  | -             |
 | fallback_configuration | No       | ToolFallbackConfig | See also: [Tool fallback configuration](#tool-fallback-configuration)    | -             |
@@ -1065,7 +1061,7 @@ DIAL app toolsets accept the field but do not yet act on it.
 | dial_id                | Yes      | String                 | The Dial ID associated with this MCP toolset.                         | -             |
 | transport              | Yes      | String `HTTP` or `SSE` | MCP protocol                                                          | `HTTP`        |
 | allowed_tools          | No       | Array of String        | Allowed MCP tool names from the server                                | `null`        |
-| hidden_from_model      | No       | Array of String    | `[Preview]` MCP tool names hooks can call but the model never sees: they are absent from the tools payload and the `tool_search` catalog and are not executed if the model requests them. Entries must be listed in `allowed_tools` when it is set; set both, otherwise tools added to the server later stay model-visible. See [Hooks](docs/hooks.md#tools-hidden-from-the-model). | `null`        |
+| hidden_from_model      | No       | Array of String    | MCP tool names hooks can call but the model never sees: they are absent from the tools payload and the `tool_search` catalog and are not executed if the model requests them. Entries must be listed in `allowed_tools` when it is set; set both, otherwise tools added to the server later stay model-visible. See [Hooks](docs/hooks.md#tools-hidden-from-the-model). | `null`        |
 | resources              | No       | MCPResourcesConfig     | MCP resource exposure config. See [MCP resources configuration](#mcp-resources-configuration). | `null` (disabled) |
 | attachment             | No       | AttachmentConfig       | See also: [AttachmentConfig](#attachment-configuration)               | -             |
 | fallback_configuration | No       | ToolFallbackConfig     | See also: [Tool fallback configuration](#tool-fallback-configuration) | -             |
@@ -1094,7 +1090,7 @@ have different semantics and will diverge once the deployment-scoped endpoint la
 | deployment_id          | Yes      | String             | The DIAL deployment or application id.                                                                                                                                                     | -             |
 | transport              | No       | One of `auto`, `mcp`, `chat-completion` | Routing override. `auto` (default): MCP if the deployment advertises `features.mcp`, otherwise chat completion. `mcp`: force MCP — initialization fails if `features.mcp` is not advertised. `chat-completion`: force chat completion — metadata fetch is skipped. | `auto`        |
 | allowed_tools          | No       | Array of String    | MCP branch only: whitelist the subset of MCP tool names that reach the agent. Ignored (with a warning) on the chat-completion fallback branch.                                             | `null`        |
-| hidden_from_model      | No       | Array of String    | MCP branch only; ignored (with a warning) on the chat-completion branch. `[Preview]` MCP tool names hooks can call but the model never sees: they are absent from the tools payload and the `tool_search` catalog and are not executed if the model requests them. Entries must be listed in `allowed_tools` when it is set; set both, otherwise tools added to the server later stay model-visible. See [Hooks](docs/hooks.md#tools-hidden-from-the-model). | `null`        |
+| hidden_from_model      | No       | Array of String    | MCP branch only; ignored (with a warning) on the chat-completion branch. MCP tool names hooks can call but the model never sees: they are absent from the tools payload and the `tool_search` catalog and are not executed if the model requests them. Entries must be listed in `allowed_tools` when it is set; set both, otherwise tools added to the server later stay model-visible. See [Hooks](docs/hooks.md#tools-hidden-from-the-model). | `null`        |
 | attachment             | No       | AttachmentConfig   | Propagated on both branches. See also: [AttachmentConfig](#attachment-configuration)                                                                                                       | -             |
 | fallback_configuration | No       | ToolFallbackConfig | Propagated on both branches. See also: [Tool fallback configuration](#tool-fallback-configuration)                                                                                         | -             |
 | conversation_mode      | No       | Object             | Resumable conversation for the **chat-completion** branch only; ignored (with a warning) on MCP. See [Conversation mode](#conversation-mode)                                              | `null`        |
@@ -1221,7 +1217,7 @@ The same as ApiKeyAuthorization but for mcp location is not configurable and alw
 | rest_api_method_info   | Yes (if `type` is `rest-api`)        | Object | REST API method information configuration. See [REST API method information configuration](#rest-api-method-information-configuration)                                                    | -                | -             |
 | display                | No                                   | Object | Representation (display) configuration for tool execution results. See [Display configuration](#display-configuration), See [Tool stage configuration](#display-tool-stage-configuration) | -                | `null`        |
 | fallback_configuration | No                                   | Object | Tools fallback configuration. If not present will always raise Error. See [Tool fallback configuration](#tool-fallback-configuration)                                                     | -                | `null`        |
-| propagate_annotations_to_choice | No                          | Boolean | **Preview.** Only for `deployment-tool` and `dial-deployment-simple`. Propagate citation annotations returned by the deployment to the app's answer. See [Citation annotations](#citation-annotations)               | `true`, `false`  | `null`        |
+| propagate_annotations_to_choice | No                          | Boolean | Only for `deployment-tool` and `dial-deployment-simple`. Propagate citation annotations returned by the deployment to the app's answer. See [Citation annotations](#citation-annotations)               | `true`, `false`  | `null`        |
 | conversation_mode               | No                          | Object  | Resumable subagent conversation. Applies to `deployment-tool`, `dial-deployment-simple`, and `dial-app` (chat-completion branch only). See [Conversation mode](#conversation-mode) | - | `null` |
 | content_propagation             | No                          | Object  | Header / **deprecated** history propagation. Prefer `conversation_mode`. See [Content propagation](#content-propagation-deprecated-history-flag) | - | `null` |
 
@@ -1272,8 +1268,7 @@ Annotations are forwarded exactly as the deployment returned them. When any tool
 the orchestrator is additionally instructed to copy every `<cit data-id="..."></cit>` anchor verbatim from tool
 responses into its own answer, so the anchors the annotations point at stay in the text.
 
-This is a preview feature: it requires `ENABLE_PREVIEW_FEATURES=true`, and DIAL Chat does not
-render annotations yet.
+DIAL Chat does not render annotations yet.
 
 ```json
 {
@@ -1756,13 +1751,13 @@ your gateways or downstream services expect.
 | `EXTERNAL_URL_FETCH_HOST_ALLOWLIST`        | —                                                               | No       | Comma-separated allowlist of host patterns for external URL fetches. Unset (default) means no admin-level host restriction. Patterns: exact host (`example.com`) or `*.example.com` for any subdomain. Re-checked on every redirect hop. Per-app `features.external_url_fetch.host_allowlist` narrows further (intersection) but never expands. |
 | `EXTERNAL_URL_FETCH_MAX_REDIRECTS`         | `5`                                                             | No       | Maximum HTTP redirects on external URL fetches. Each hop is SSRF-checked. Hard ceiling 10.                   |
 | `EXTERNAL_URL_FETCH_CONNECT_TIMEOUT_SECONDS` | `5.0`                                                           | No       | TCP connect timeout (seconds) for external URL fetches. Read/write/pool timeouts use the resolved tool timeout. |
-| **Dynamic Tool Discovery** `[Preview]`     |                                                                 |          |                                                                                                              |
-| `MIN_TOOLS_FOR_DEFERRAL`                   | `10`                                                            | No       | Deployment-wide minimum toolset size for deferral to apply. Toolsets with fewer tools than this threshold are promoted to eager loading even when `deferred=true`. Apps override per-app via `orchestrator.tool_discovery.min_tools_for_deferral`. Requires `ENABLE_PREVIEW_FEATURES=true`. |
+| **Dynamic Tool Discovery**                 |                                                                 |          |                                                                                                              |
+| `MIN_TOOLS_FOR_DEFERRAL`                   | `10`                                                            | No       | Deployment-wide minimum toolset size for deferral to apply. Toolsets with fewer tools than this threshold are promoted to eager loading even when `deferred=true`. Apps override per-app via `orchestrator.tool_discovery.min_tools_for_deferral`. |
 | **Skills**                                 |                                                                 |          |                                                                                                              |
 | `DIAL_SKILLS_FILE_MAX_BYTES`               | `262144`                                                        | No       | Cap on a single file read from a DIAL skill resource, `SKILL.md` included. Must exceed the largest manifest you expect: an over-cap manifest drops the skill. See [docs/skills.md](docs/skills.md). |
 | `DIAL_SKILLS_MAX_FILES`                    | `200`                                                           | No       | Maximum bundled files advertised to the agent per DIAL skill resource; beyond it the listing is truncated     |
 | `DIAL_SKILLS_LISTING_MAX_PAGES`            | `10`                                                            | No       | Maximum file-listing pages followed per DIAL skill resource, bounding a server-supplied cursor                |
-| `SKILL_INVOCATION_MAX_SKILLS`              | `10`                                                            | No       | Maximum distinct skills a user may have invoked from the messages of one conversation (`custom_content.skills`), counted newest first. Each one adds a `<skill>` block to the system prompt and one DIAL Core fetch per turn; beyond the cap the oldest picks stop being registered. Preview-gated. See [docs/skills.md](docs/skills.md). |
+| `SKILL_INVOCATION_MAX_SKILLS`              | `10`                                                            | No       | Maximum distinct skills a user may have invoked from the messages of one conversation (`custom_content.skills`), counted newest first. Each one adds a `<skill>` block to the system prompt and one DIAL Core fetch per turn; beyond the cap the oldest picks stop being registered. See [docs/skills.md](docs/skills.md). |
 | **Feature Gating**                         |                                                                 |          |                                                                                                              |
 | `ENABLE_PREVIEW_FEATURES`                  | `false`                                                         | No       | Enable preview features across the deployment (schema visibility + runtime activation)                       |
 | **Templates**                              |                                                                 |          |                                                                                                              |

@@ -96,11 +96,7 @@ def _make_simple_initializer(
     deployment_cache = MagicMock()
     deployment_cache.fetch_basic_tool_config = AsyncMock(return_value=cached_config)
     toolset = DeploymentToolSet(name="deployment", tools=[simple_tool])
-    # Assigned after construction (not passed to create_app_configuration) so
-    # ApplicationConfig's preview-field nullification validator, which only runs at
-    # construction time, doesn't strip simple_tool's preview-gated overrides.
-    app_config = create_app_configuration([])
-    app_config.tool_sets = [toolset]
+    app_config = create_app_configuration([toolset])
     return _DeploymentToolInitializer(
         context=MagicMock(),
         deferred_context=MagicMock(),

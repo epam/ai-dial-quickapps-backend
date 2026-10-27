@@ -2,7 +2,7 @@ from typing import Annotated, Literal, Self
 
 from pydantic import Field, model_validator
 
-from quickapp.common.base_config import DialResourceConfigField, PreviewField
+from quickapp.common.base_config import DialResourceConfigField
 from quickapp.config.tools.base import AttachmentConfig
 from quickapp.config.tools.deployment import ConversationMode
 from quickapp.config.tools.tool_fallback import ToolFallbackConfig
@@ -36,7 +36,7 @@ class DialAppToolSet(BaseToolSet):
             "Ignored (with a warning) on the chat-completion fallback branch."
         ),
     )
-    hidden_from_model: list[str] | None = PreviewField(  # type: ignore[assignment]
+    hidden_from_model: list[str] | None = Field(
         default=None,
         description=(
             f"MCP branch only. {HIDDEN_FROM_MODEL_DESCRIPTION} "

@@ -1,6 +1,5 @@
 from pydantic import BaseModel, Field
 
-from quickapp.common.base_config import PreviewField
 from quickapp.common.localized_string import LocalizedString
 
 
@@ -18,7 +17,7 @@ class BaseToolSet(BaseModel):
         default=None, description="The description of the tool set."
     )
     enabled: bool = Field(default=True, description="Whether the toolset is enabled.")
-    deferred: bool | None = PreviewField(  # type: ignore[assignment]
+    deferred: bool | None = Field(
         default=None,
         json_schema_extra={"default": True},
         description=(

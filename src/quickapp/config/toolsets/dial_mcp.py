@@ -2,12 +2,7 @@ from typing import Annotated, Literal, Self
 
 from pydantic import Field, model_validator
 
-from quickapp.common.base_config import (
-    DialResourceConfigField,
-    LegacyAlias,
-    LegacyAliasModel,
-    PreviewField,
-)
+from quickapp.common.base_config import DialResourceConfigField, LegacyAlias, LegacyAliasModel
 from quickapp.config.tools.base import AttachmentConfig
 from quickapp.config.tools.tool_fallback import ToolFallbackConfig
 from quickapp.config.toolsets.base import BaseToolSet
@@ -36,7 +31,7 @@ class DialMCPToolSet(BaseToolSet, LegacyAliasModel):
     allowed_tools: list[str] | None = Field(
         default=None, description="Allowed MCP tool names from the server"
     )
-    hidden_from_model: list[str] | None = PreviewField(  # type: ignore[assignment]
+    hidden_from_model: list[str] | None = Field(
         default=None, description=HIDDEN_FROM_MODEL_DESCRIPTION
     )
     attachment: AttachmentConfig = Field(

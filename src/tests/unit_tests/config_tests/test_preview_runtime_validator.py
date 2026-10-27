@@ -2,7 +2,7 @@ import logging
 
 from pydantic import BaseModel
 
-from quickapp.common.base_config import PreviewField
+from quickapp.common.base_config import PreviewField, preview_model
 from quickapp.config.application import nullify_preview_fields
 
 
@@ -60,22 +60,24 @@ class TestNullifyPreviewFields:
         assert "preview features are disabled" in caplog.records[0].message
 
     def test_preview_model_entries_removed_from_list(self, caplog):
-        from quickapp.config.context import FileContextConfig, FolderContextConfig
+        class StableEntry(BaseModel):
+            name: str
+
+        @preview_model
+        class PreviewEntry(BaseModel):
+            name: str
 
         class Cfg(BaseModel):
-            contexts: list[FileContextConfig | FolderContextConfig]
+            contexts: list[StableEntry | PreviewEntry]
 
         model = Cfg.model_construct(
-            contexts=[
-                FileContextConfig(url="files/bucket/a.pdf"),
-                FolderContextConfig(url="metadata/files/bucket/docs/"),
-            ]
+            contexts=[StableEntry(name="stable"), PreviewEntry(name="preview")]
         )
         with caplog.at_level(logging.WARNING):
             nullify_preview_fields(model)
 
         assert len(model.contexts) == 1
-        assert isinstance(model.contexts[0], FileContextConfig)
+        assert isinstance(model.contexts[0], StableEntry)
         assert any(
             "contexts" in r.message and "preview features are disabled" in r.message
             for r in caplog.records

@@ -5,7 +5,6 @@ from injector import Binder, Module, ProviderOf, multiprovider, singleton
 
 from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.exceptions import InitializationException
-from quickapp.common.preview import preview_module
 from quickapp.skills.dial_resource._dial_skill_initializer import _DialSkillInitializer
 from quickapp.skills.dial_resource._dial_skill_reader import DialSkillReader
 from quickapp.skills.dial_resource._dial_skill_resolver import DialSkillResolver
@@ -18,7 +17,6 @@ from quickapp.skills.skills_provider import SkillsProvider
 logger = logging.getLogger(__name__)
 
 
-@preview_module
 class DialSkillsModule(Module):
 
     def configure(self, binder: Binder) -> None:

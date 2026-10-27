@@ -1,6 +1,7 @@
 # Design: Tools Hidden from the Model
 
 - **Status:** Implemented
+- **Graduated:** out of preview, stable since [PR#693](https://github.com/epam/ai-dial-quickapps-backend/pull/693)
 - **User-facing:** [CONFIGURATION - MCP tool set](../../CONFIGURATION.md#tool-sets-configuration) (`hidden_from_model`);
   [docs/hooks.md](../hooks.md#tools-hidden-from-the-model)
 - **Phases:** Phase 1 (this iteration, specified in detail) covers MCP toolsets plus the type-agnostic

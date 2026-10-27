@@ -1,5 +1,6 @@
 # Design: Dynamic Tool Discovery
 - **Status:** Implemented
+- **Graduated:** out of preview, stable since [PR#693](https://github.com/epam/ai-dial-quickapps-backend/pull/693)
 - **User-facing:** [CONFIGURATION - Tool discovery](../../CONFIGURATION.md#tool-discovery-configuration)
 - **Issue:** [#430](https://github.com/epam/ai-dial-quickapps-backend/issues/430)
 - **Chosen approach:** Option #6

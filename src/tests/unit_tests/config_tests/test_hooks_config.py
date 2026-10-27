@@ -2,6 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from quickapp.common.synthetic_injection.injection_enums import InjectionFrequency
+from quickapp.config.application import ApplicationConfig
 from quickapp.config.hooks import HookConfig, HookEvent, ToolCallHookConfig, TTLRefreshCondition
 from tests.unit_tests.common.common import create_app_configuration
 
@@ -82,21 +83,16 @@ class TestToolCallHookConfig:
 
 
 class TestApplicationConfigHooksField:
-    def test_hooks_field_exists_and_defaults_to_none(self, monkeypatch):
-        monkeypatch.setenv("ENABLE_PREVIEW_FEATURES", "true")
+    def test_hooks_field_exists_and_defaults_to_none(self):
         config = create_app_configuration([])
         assert config.hooks is None
 
-    def test_hooks_field_nullified_when_preview_disabled(self, monkeypatch):
+    def test_hooks_field_preserved_when_preview_disabled(self, monkeypatch):
         monkeypatch.delenv("ENABLE_PREVIEW_FEATURES", raising=False)
-        config = create_app_configuration([])
-        assert config.hooks is None
-
-    def test_hooks_field_preserved_when_supplied_with_preview_enabled(self, monkeypatch):
-        monkeypatch.setenv("ENABLE_PREVIEW_FEATURES", "true")
         hook = ToolCallHookConfig(event=HookEvent.ON_REQUEST_START, tool_name="my_tool")
-        config = create_app_configuration([])
-        config.hooks = [hook]
+        data = create_app_configuration([]).model_dump(mode="json")
+        data["hooks"] = [hook.model_dump(mode="json")]
+        config = ApplicationConfig.model_validate(data)
         assert config.hooks is not None
         assert len(config.hooks) == 1
         assert config.hooks[0].tool_name == "my_tool"
