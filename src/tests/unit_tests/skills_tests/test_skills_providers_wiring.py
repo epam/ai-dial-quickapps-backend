@@ -97,7 +97,7 @@ class TestSkillSourcesWiring:
             ]
         )
 
-    def test_registry_resolves_with_only_always_on_sources(self):
+    def test_registry_resolves_without_dial_skills_module(self):
         # DialSkillsModule omitted: the registry must not depend on every source being wired.
         client = _make_client([SkillsModule(), DialPromptSkillsModule()])
 

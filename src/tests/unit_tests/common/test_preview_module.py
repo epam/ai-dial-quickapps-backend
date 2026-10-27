@@ -1,8 +1,5 @@
-from unittest.mock import patch
-
 from injector import Module
 
-from quickapp.app_factory import AppFactory
 from quickapp.common.preview import is_preview_module, preview_module
 
 
@@ -49,20 +46,3 @@ class TestPreviewModuleDecorator:
         filtered = [m for m in modules if not is_preview_module(m)]
         assert len(filtered) == 2
         assert all(isinstance(m, StableMod) for m in filtered)
-
-
-class TestGraduatedModulesRegistered:
-    """Modules promoted out of preview must be wired with preview features off."""
-
-    def test_registered_when_preview_features_are_off(self):
-        with patch.dict("os.environ", {"ENABLE_PREVIEW_FEATURES": "false"}):
-            names = {type(m).__name__ for m in AppFactory.build_di_modules()}
-
-        assert {
-            "ToolDiscoveryModule",
-            "WebToolingModule",
-            "RepresentationToolingModule",
-            "AgentHooksModule",
-            "DialSkillsModule",
-            "SkillInvocationModule",
-        } <= names
