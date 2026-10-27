@@ -33,6 +33,15 @@ class AgentSettings(BaseSettings):
         alias="ALLOW_OVERRIDE_SYSTEM_MESSAGE",
     )
 
+    prompt_cache_breakpoints_enabled: bool = Field(
+        default=True,
+        description=(
+            "Mark the system message, last message and last tool with prompt-cache breakpoints "
+            "when the orchestrator deployment advertises features.cache (Core cacheSupported)."
+        ),
+        alias="PROMPT_CACHE_BREAKPOINTS_ENABLED",
+    )
+
     @field_validator("default_orchestrator_deployment_id", mode="after")
     @classmethod
     def _blank_to_none(cls, value: str | None) -> str | None:
