@@ -55,10 +55,10 @@ class TestWebToolingModuleGating:
         )
         assert builder.build.call_args.kwargs["max_inline_size"] == 1234
 
-    def test_module_is_preview(self):
+    def test_module_is_not_preview(self):
         from quickapp.common.preview import is_preview_module
 
-        assert is_preview_module(WebToolingModule())
+        assert not is_preview_module(WebToolingModule())
 
 
 class TestEgressGate:

@@ -695,8 +695,7 @@
           ],
           "default": true,
           "description": "When true or unset, this toolset's tool schemas are withheld from the initial LLM payload. Requires orchestrator.tool_discovery.enabled=true. Tools are discovered on demand via the tool_search meta-tool. Set to false to keep this toolset always eager.",
-          "title": "Deferred",
-          "x-preview": true
+          "title": "Deferred"
         },
         "type": {
           "const": "dial-deployment",
@@ -784,8 +783,7 @@
           ],
           "default": true,
           "description": "When true or unset, this toolset's tool schemas are withheld from the initial LLM payload. Requires orchestrator.tool_discovery.enabled=true. Tools are discovered on demand via the tool_search meta-tool. Set to false to keep this toolset always eager.",
-          "title": "Deferred",
-          "x-preview": true
+          "title": "Deferred"
         },
         "type": {
           "const": "dial-app",
@@ -841,8 +839,7 @@
           ],
           "default": null,
           "description": "MCP branch only. MCP tool names (as the server reports them) that hooks can call but the model never sees: they are absent from the tools payload and the tool_search catalog, and are not executed if the model requests them. When allowed_tools is set, every entry must be listed there. Tools added to the server later stay visible to the model unless allowed_tools pins the set. Ignored (with a warning) on the chat-completion fallback branch.",
-          "title": "Hidden From Model",
-          "x-preview": true
+          "title": "Hidden From Model"
         },
         "tools_config": {
           "anyOf": [
@@ -1108,8 +1105,7 @@
           ],
           "default": null,
           "description": "Propagate citation annotations returned by the deployment (`choices[].delta.custom_fields.annotations`) onto the app's choice. Annotations are forwarded unchanged; the orchestrator is instructed to copy the matching `<cit data-id=\"...\"></cit>` anchors verbatim into its answer.",
-          "title": "Propagate Annotations To Choice",
-          "x-preview": true
+          "title": "Propagate Annotations To Choice"
         },
         "type": {
           "const": "dial-deployment-simple",
@@ -1228,8 +1224,7 @@
           ],
           "default": null,
           "description": "Propagate citation annotations returned by the deployment (`choices[].delta.custom_fields.annotations`) onto the app's choice. Annotations are forwarded unchanged; the orchestrator is instructed to copy the matching `<cit data-id=\"...\"></cit>` anchors verbatim into its answer.",
-          "title": "Propagate Annotations To Choice",
-          "x-preview": true
+          "title": "Propagate Annotations To Choice"
         },
         "supports_url_attachments": {
           "default": false,
@@ -1560,8 +1555,7 @@
           ],
           "default": true,
           "description": "When true or unset, this toolset's tool schemas are withheld from the initial LLM payload. Requires orchestrator.tool_discovery.enabled=true. Tools are discovered on demand via the tool_search meta-tool. Set to false to keep this toolset always eager.",
-          "title": "Deferred",
-          "x-preview": true
+          "title": "Deferred"
         },
         "type": {
           "const": "dial-mcp",
@@ -1616,8 +1610,7 @@
           ],
           "default": null,
           "description": "MCP tool names (as the server reports them) that hooks can call but the model never sees: they are absent from the tools payload and the tool_search catalog, and are not executed if the model requests them. When allowed_tools is set, every entry must be listed there. Tools added to the server later stay visible to the model unless allowed_tools pins the set.",
-          "title": "Hidden From Model",
-          "x-preview": true
+          "title": "Hidden From Model"
         },
         "tools_config": {
           "anyOf": [
@@ -1707,8 +1700,7 @@
         "url"
       ],
       "title": "DialSkillConfig",
-      "type": "object",
-      "x-preview": true
+      "type": "object"
     },
     "DialSystemPromptConfig": {
       "properties": {
@@ -1854,8 +1846,7 @@
             }
           ],
           "default": null,
-          "description": "Built-in internal_web_fetch tool: fetch an external resource and return it inline, or persist it to the workspace when a save_path is given (binary / oversized content must be saved rather than read inline).",
-          "x-preview": true
+          "description": "Built-in internal_web_fetch tool: fetch an external resource and return it inline, or persist it to the workspace when a save_path is given (binary / oversized content must be saved rather than read inline)."
         },
         "representation_tooling": {
           "anyOf": [
@@ -1867,8 +1858,7 @@
             }
           ],
           "default": null,
-          "description": "Enables tools that control how the agent surfaces its output to the user. Omit or set to null to disable the whole section. Set to {} to enable with defaults, or set individual sub-fields to false to disable specific tools while keeping the section enabled.",
-          "x-preview": true
+          "description": "Enables tools that control how the agent surfaces its output to the user. Omit or set to null to disable the whole section. Set to {} to enable with defaults, or set individual sub-fields to false to disable specific tools while keeping the section enabled."
         }
       },
       "title": "Features",
@@ -1977,8 +1967,7 @@
         "url"
       ],
       "title": "FolderContextConfig",
-      "type": "object",
-      "x-preview": true
+      "type": "object"
     },
     "FormattedParameterConfig": {
       "properties": {
@@ -2226,8 +2215,7 @@
           ],
           "default": true,
           "description": "When true or unset, this toolset's tool schemas are withheld from the initial LLM payload. Requires orchestrator.tool_discovery.enabled=true. Tools are discovered on demand via the tool_search meta-tool. Set to false to keep this toolset always eager.",
-          "title": "Deferred",
-          "x-preview": true
+          "title": "Deferred"
         },
         "type": {
           "const": "internal",
@@ -2672,8 +2660,7 @@
           ],
           "default": true,
           "description": "When true or unset, this toolset's tool schemas are withheld from the initial LLM payload. Requires orchestrator.tool_discovery.enabled=true. Tools are discovered on demand via the tool_search meta-tool. Set to false to keep this toolset always eager.",
-          "title": "Deferred",
-          "x-preview": true
+          "title": "Deferred"
         },
         "type": {
           "const": "mcp",
@@ -2715,8 +2702,7 @@
           ],
           "default": null,
           "description": "MCP tool names (as the server reports them) that hooks can call but the model never sees: they are absent from the tools payload and the tool_search catalog, and are not executed if the model requests them. When allowed_tools is set, every entry must be listed there. Tools added to the server later stay visible to the model unless allowed_tools pins the set.",
-          "title": "Hidden From Model",
-          "x-preview": true
+          "title": "Hidden From Model"
         },
         "tools_config": {
           "anyOf": [
@@ -3568,8 +3554,7 @@
           ],
           "default": true,
           "description": "When true or unset, this toolset's tool schemas are withheld from the initial LLM payload. Requires orchestrator.tool_discovery.enabled=true. Tools are discovered on demand via the tool_search meta-tool. Set to false to keep this toolset always eager.",
-          "title": "Deferred",
-          "x-preview": true
+          "title": "Deferred"
         },
         "type": {
           "const": "rest-api",
@@ -4259,8 +4244,7 @@
             }
           ],
           "default": null,
-          "description": "Dynamic tool discovery configuration. When enabled, toolsets with deferred=true are withheld from the initial LLM payload and discovered on demand via the tool_search meta-tool.",
-          "x-preview": true
+          "description": "Dynamic tool discovery configuration. When enabled, toolsets with deferred=true are withheld from the initial LLM payload and discovered on demand via the tool_search meta-tool."
         }
       },
       "required": [
@@ -4436,7 +4420,6 @@
       "default": null,
       "description": "Config-driven hooks fired at named orchestrator seams.",
       "title": "Hooks",
-      "x-preview": true,
       "dial:meta": {
         "dial:propertyKind": "server",
         "dial:propertyOrder": 7

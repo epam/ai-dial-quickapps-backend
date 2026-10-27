@@ -35,7 +35,7 @@ class DialAppToolSet(BaseToolSet):
             "Ignored (with a warning) on the chat-completion fallback branch."
         ),
     )
-    hidden_from_model: list[str] | None = PreviewField(  # type: ignore[assignment]
+    hidden_from_model: list[str] | None = Field(
         default=None,
         description=(
             f"MCP branch only. {HIDDEN_FROM_MODEL_DESCRIPTION} "

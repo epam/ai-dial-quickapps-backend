@@ -5,7 +5,6 @@ from injector import AssistedBuilder, Binder, Module, multiprovider
 
 from quickapp.common import StagedBaseTool
 from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
-from quickapp.common.preview import preview_module
 from quickapp.config.application import ApplicationConfig
 from quickapp.tool_discovery._anonymous_agent import _AnonymousAgent
 from quickapp.tool_discovery._tool_configs import TOOL_SEARCH_TOOL_CONFIG
@@ -16,7 +15,6 @@ from quickapp.tool_discovery._tool_search_tool import _ToolSearchTool
 logger = logging.getLogger(__name__)
 
 
-@preview_module
 class ToolDiscoveryModule(Module):
 
     def configure(self, binder: Binder) -> None:

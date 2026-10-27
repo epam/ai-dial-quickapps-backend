@@ -294,7 +294,7 @@ For design details, see [the design doc](designs/skills_as_dial_resource.md).
 
 ---
 
-## Invoking a Skill from a Message (preview)
+## Invoking a Skill from a Message
 
 A user can bring **their own** skill into a conversation with an agent they do not own. The client
 puts the picked skill on the user message; QuickApps loads it for that turn and keeps it readable for
@@ -352,7 +352,7 @@ the rest of the conversation. The model does not get to choose — a picked skil
 - A chip that cannot be loaded gets an error result naming the skill, so the model can say so, and
   the reason is reported to the user. The request is still served.
 - The field is stripped from the working messages before they reach the orchestrator or any DIAL
-  deployment tool, whether or not preview features are enabled.
+  deployment tool.
 
 ### Limits
 
@@ -366,7 +366,6 @@ their names no longer resolve.
 
 ### Limitations
 
-- Preview-gated: with `ENABLE_PREVIEW_FEATURES=false` a chip is neither resolved nor injected.
 - The user can only pick skills from their own catalog — the agent's own skills are not offered.
 - Only `skills/` resources can be picked; a declared `prompts/` skill is used by the model as today.
 - A skill that was shared with the user and later unshared makes every later turn of that

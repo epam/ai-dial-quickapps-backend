@@ -91,7 +91,7 @@ request from Core's prompts API; and DIAL skill resources (`skills/dial_resource
 Core's `/v2/skills` API — a folder with `SKILL.md` plus bundled text files the agent reads on demand via
 `read_skill(skill_name, file_path)`.
 `SkillsRegistry` merges all three per request and owns precedence (predefined > dial-prompt > dial-skill).
-A user can also invoke one of their own skills from a message (`skills/invocation/`, preview): the
+A user can also invoke one of their own skills from a message (`skills/invocation/`): the
 `custom_content.skills[*]` chips are resolved per request, registered ahead of every agent source, and
 injected as a synthetic `read_skill` pair.
 

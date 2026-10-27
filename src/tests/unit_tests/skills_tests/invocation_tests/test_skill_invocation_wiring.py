@@ -66,15 +66,7 @@ class TestWiring:
 
 class TestRegistration:
 
-    def test_registered_when_preview_features_are_on(self):
-        with patch.dict("os.environ", {"ENABLE_PREVIEW_FEATURES": "true"}):
-            names = [type(m).__name__ for m in AppFactory.build_di_modules()]
-        assert "SkillInvocationModule" in names
-
-    def test_dropped_when_preview_features_are_off(self):
+    def test_registered_when_preview_features_are_off(self):
         with patch.dict("os.environ", {"ENABLE_PREVIEW_FEATURES": "false"}):
             names = [type(m).__name__ for m in AppFactory.build_di_modules()]
-        assert "SkillInvocationModule" not in names
-        # The chips are still scrubbed: _ScrubExtraFieldsTransformer lives in the never-gated
-        # AgentModule.
-        assert "AgentModule" in names
+        assert "SkillInvocationModule" in names

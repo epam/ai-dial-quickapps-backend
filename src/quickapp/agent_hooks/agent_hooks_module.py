@@ -14,14 +14,12 @@ from quickapp.common.abstract.base_transformer import MessagesTransformer
 from quickapp.common.abstract.completion_hook_runner import CompletionHookRunner
 from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher
 from quickapp.common.exceptions import InitializationException
-from quickapp.common.preview import preview_module
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.hooks import HookEvent, ToolCallHookConfig
 
 logger = logging.getLogger(__name__)
 
 
-@preview_module
 class AgentHooksModule(Module):
 
     def configure(self, binder: Binder) -> None:

@@ -2,7 +2,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
-from quickapp.common.base_config import DialResourceConfigField, preview_model
+from quickapp.common.base_config import DialResourceConfigField
 
 
 class DialPromptSkillConfig(BaseModel):
@@ -18,7 +18,6 @@ class DialPromptSkillConfig(BaseModel):
     ]
 
 
-@preview_model
 class DialSkillConfig(BaseModel):
     type: Literal["dial-skill"] = Field(
         default="dial-skill",

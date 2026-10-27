@@ -2,7 +2,6 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from quickapp.common.base_config import PreviewField
 from quickapp.config.dial_deployment import DialDeploymentToolConfig
 from quickapp.config.prompt import ToolSystemPromptConfig
 from quickapp.config.tools.base import BaseOpenAITool
@@ -56,7 +55,7 @@ class DialDeploymentTool(BaseOpenAITool):
         default=None,
         description="Conversation session behavior for the DIAL deployment tool.",
     )
-    propagate_annotations_to_choice: bool | None = PreviewField(  # type: ignore[assignment]
+    propagate_annotations_to_choice: bool | None = Field(
         default=None,
         description=(
             "Propagate citation annotations returned by the deployment "
