@@ -10,28 +10,25 @@ class _UsageStatisticsRenderer:
             "|-----------------|---------------|---------------|-------------------|------|\n"
         )
 
-        orchestrator_stat = next(
-            (stat for stat in aggregated_stats if stat.deployment_name == ORCHESTRATOR), None
-        )
+        orchestrator_stats = [
+            stat for stat in aggregated_stats if stat.deployment_name == ORCHESTRATOR
+        ]
+        tool_stats = [stat for stat in aggregated_stats if stat.deployment_name != ORCHESTRATOR]
 
         total_cost: float = 0
         all_costs_presented = True
 
-        # Add the orchestrator stat first if it exists
-        if orchestrator_stat:
-            markdown_table += (
-                f"| {orchestrator_stat.deployment_name} | {orchestrator_stat.deployment_id} | "
-                f"{orchestrator_stat.total_prompt_tokens} | {orchestrator_stat.total_completion_tokens} | {orchestrator_stat.total_cost} |\n"
-            )
-            if isinstance(orchestrator_stat.total_cost, float):
-                total_cost += orchestrator_stat.total_cost
+        for stat in orchestrator_stats:
+            markdown_table += _UsageStatisticsRenderer._render_row(stat.deployment_name, stat)
+            if isinstance(stat.total_cost, float):
+                total_cost += stat.total_cost
             else:
                 all_costs_presented = False
 
-        for stat in aggregated_stats:
-            if stat == orchestrator_stat:
-                continue
-            markdown_table += f"| {"Tool"} | {stat.deployment_id} | {stat.total_prompt_tokens} | {stat.total_completion_tokens} | {stat.total_cost} |\n"
+        for stat in tool_stats:
+            markdown_table += _UsageStatisticsRenderer._render_row(
+                f"Tool: {stat.deployment_name}", stat
+            )
             if isinstance(stat.total_cost, float):
                 total_cost += stat.total_cost
             else:
@@ -41,3 +38,10 @@ class _UsageStatisticsRenderer:
             markdown_table += f"| **Total** | - | - | - | **{round(total_cost, 7)}** |\n"
 
         return markdown_table
+
+    @staticmethod
+    def _render_row(label: str, stat: _AggregatedStats) -> str:
+        return (
+            f"| {label} | {stat.deployment_id} | {stat.total_prompt_tokens} | "
+            f"{stat.total_completion_tokens} | {stat.total_cost} |\n"
+        )

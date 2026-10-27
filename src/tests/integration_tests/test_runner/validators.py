@@ -19,6 +19,7 @@ from tests.integration_tests.test_runner.utils.string_utils import truncate_stri
 logger = logging.getLogger(__name__)
 
 SYNTHETIC_CALL_ID_PREFIX = SyntheticToolCallInjector.call_id_prefix
+USAGE_STATISTICS_STAGE = "Usage Statistics"
 
 
 class ParsedToolCall(NamedTuple):
@@ -320,6 +321,54 @@ class ResponseValidator:
             ResponseValidator._check_unexpected_tools(tool_call_history, expected_tool_calls, ts)
         )
 
+        return failures
+
+    @staticmethod
+    def check_usage_statistics(
+        stages: list[Any] | None,
+        expected: list[str] | None,
+        not_expected: list[str] | None,
+        ts: TestStats,
+    ) -> list[Failure]:
+        """Checks the "Usage Statistics" stage: it must contain every expected text and none of the unexpected."""
+        if not expected and not not_expected:
+            return []
+
+        content = next(
+            (stage.content or "" for stage in stages or [] if stage.name == USAGE_STATISTICS_STAGE),
+            None,
+        )
+        if content is None:
+            ts.increment_failure(FailureReason.USAGE_STATISTICS)
+            return [
+                Failure(
+                    actual=[stage.name for stage in stages or []],
+                    expected=f"a '{USAGE_STATISTICS_STAGE}' stage",
+                    comment="Usage statistics stage is missing (is SHOW_USAGE_STATISTICS on?).",
+                )
+            ]
+
+        failures = []
+        for text in expected or []:
+            if text not in content:
+                failures.append(
+                    Failure(
+                        actual=content,
+                        expected=f"'{text}' in the usage statistics table",
+                        comment="Usage statistics table misses an expected row.",
+                    )
+                )
+                ts.increment_failure(FailureReason.USAGE_STATISTICS)
+        for text in not_expected or []:
+            if text in content:
+                failures.append(
+                    Failure(
+                        actual=content,
+                        expected=f"no '{text}' in the usage statistics table",
+                        comment="Usage statistics table has an unexpected row.",
+                    )
+                )
+                ts.increment_failure(FailureReason.USAGE_STATISTICS)
         return failures
 
     @staticmethod

@@ -18,23 +18,24 @@ class UsageStatisticsService:
     async def process_usage_statistics(self, usage_per_deployment: list[DeploymentUsage]):
         if len(usage_per_deployment) == 0:
             return
-        aggregated = dict[str, _AggregatedStats]()
+        # One row per (orchestrator/tool, model): a nested QuickApp reports several models for one tool.
+        aggregated = dict[tuple[str, str], _AggregatedStats]()
         for usage in usage_per_deployment:
             total_cost = await self._calculate_total_cost(usage)
 
-            key = usage.deployment_name
+            deployment_id = usage.model_name if usage.is_orchestrator() else usage.deployment_id
+            key = (usage.deployment_name, deployment_id)
             if key not in aggregated:
                 aggregated[key] = _AggregatedStats(
                     usage.deployment_name,
-                    usage.model_name if usage.is_orchestrator() else usage.deployment_id,
-                    usage.prompt_tokens if usage.is_orchestrator() else "-",
-                    usage.completion_tokens if usage.is_orchestrator() else "-",
+                    deployment_id,
+                    usage.prompt_tokens,
+                    usage.completion_tokens,
                     total_cost if isinstance(total_cost, float) else "-",
                 )
             else:
-                if usage.is_orchestrator():
-                    aggregated[key].add_prompt_tokens(usage.prompt_tokens)
-                    aggregated[key].add_completion_tokens(usage.completion_tokens)
+                aggregated[key].add_prompt_tokens(usage.prompt_tokens)
+                aggregated[key].add_completion_tokens(usage.completion_tokens)
                 aggregated[key].add_total_cost(total_cost)
 
         markdown_table = _UsageStatisticsRenderer.render_usage_statistics_table(
