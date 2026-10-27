@@ -7,8 +7,10 @@ import pytest
 from quickapp.common.chat_completion_recovery import ChatCompletionRecoveryService
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
+from quickapp.config.agent_settings import AgentSettings
 from quickapp.core.agent import AssistantInvoker
 from quickapp.core.agent._chat_completion_config_builder import _ChatCompletionConfigBuilder
+from quickapp.core.agent._prompt_cache_breakpoints import _PromptCacheBreakpoints
 from quickapp.core.agent._tool_choice_holder import _ToolChoiceHolder
 from quickapp.core.agent.lazy_loaded_tools_holder import LazyLoadedToolsHolder
 from quickapp.core.agent.orchestrator_capabilities import OrchestratorCapabilities
@@ -74,9 +76,11 @@ def _make_config_builder(
         lazy_loaded_tools_holder=LazyLoadedToolsHolder(),
         capabilities=OrchestratorCapabilities(
             deployment=SimpleNamespace(  # type: ignore[arg-type]
-                id="test-model", features=SimpleNamespace(reasoning_efforts=[])
+                id="test-model", features=SimpleNamespace(reasoning_efforts=[], cache=None)
             )
         ),
+        agent_settings=AgentSettings(),
+        prompt_cache_breakpoints=_PromptCacheBreakpoints(),
     )
 
 

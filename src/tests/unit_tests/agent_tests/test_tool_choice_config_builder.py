@@ -5,7 +5,9 @@ import pytest
 from aidial_sdk.chat_completion.request import FunctionChoice, ToolChoice
 from aidial_sdk.exceptions import InvalidRequestError
 
+from quickapp.config.agent_settings import AgentSettings
 from quickapp.core.agent._chat_completion_config_builder import _ChatCompletionConfigBuilder
+from quickapp.core.agent._prompt_cache_breakpoints import _PromptCacheBreakpoints
 from quickapp.core.agent._tool_choice_holder import _ToolChoiceHolder
 from quickapp.core.agent.lazy_loaded_tools_holder import LazyLoadedToolsHolder
 from quickapp.core.agent.orchestrator_capabilities import OrchestratorCapabilities
@@ -14,7 +16,7 @@ from quickapp.core.agent.orchestrator_capabilities import OrchestratorCapabiliti
 def _capabilities() -> OrchestratorCapabilities:
     return OrchestratorCapabilities(
         deployment=SimpleNamespace(  # type: ignore[arg-type]
-            id="test-model", features=SimpleNamespace(reasoning_efforts=[])
+            id="test-model", features=SimpleNamespace(reasoning_efforts=[], cache=None)
         )
     )
 
@@ -37,6 +39,8 @@ def _make_builder(
         forwarded_headers=None,
         lazy_loaded_tools_holder=LazyLoadedToolsHolder(),
         capabilities=_capabilities(),
+        agent_settings=AgentSettings(),
+        prompt_cache_breakpoints=_PromptCacheBreakpoints(),
     )
 
 
@@ -85,6 +89,8 @@ class TestToolChoiceInPayload:
             forwarded_headers=None,
             lazy_loaded_tools_holder=LazyLoadedToolsHolder(),
             capabilities=_capabilities(),
+            agent_settings=AgentSettings(),
+            prompt_cache_breakpoints=_PromptCacheBreakpoints(),
         )
         first = builder.build([])
         assert first["tool_choice"] == "required"

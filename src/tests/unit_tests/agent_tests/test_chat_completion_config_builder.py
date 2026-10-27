@@ -1,10 +1,13 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
 from aidial_client.types.deployment import Features
 from aidial_sdk.chat_completion import Message, Role
 
+from quickapp.config.agent_settings import AgentSettings
 from quickapp.core.agent._chat_completion_config_builder import _ChatCompletionConfigBuilder
+from quickapp.core.agent._prompt_cache_breakpoints import _PromptCacheBreakpoints
 from quickapp.core.agent._tool_choice_holder import _ToolChoiceHolder
 from quickapp.core.agent.lazy_loaded_tools_holder import LazyLoadedToolsHolder
 from quickapp.core.agent.models import STATE_KEY_ORCHESTRATOR as ORCH
@@ -20,6 +23,8 @@ def _make_builder(
     lazy_holder: LazyLoadedToolsHolder | None = None,
     parameters: dict | None = None,
     reasoning_efforts: list[str] | None = None,
+    cache: bool | None = None,
+    breakpoints_enabled: bool = True,
 ) -> _ChatCompletionConfigBuilder:
     config = MagicMock()
     config.orchestrator.deployment.parameters.model_dump.return_value = parameters or {}
@@ -36,10 +41,16 @@ def _make_builder(
         capabilities=OrchestratorCapabilities(
             deployment=SimpleNamespace(  # type: ignore[arg-type]
                 id="test-model",
-                features=Features(reasoning_efforts=reasoning_efforts or []),
+                features=Features(reasoning_efforts=reasoning_efforts or [], cache=cache),
             )
         ),
+        agent_settings=AgentSettings(PROMPT_CACHE_BREAKPOINTS_ENABLED=breakpoints_enabled),
+        prompt_cache_breakpoints=_PromptCacheBreakpoints(),
     )
+
+
+def _system_and_user() -> list[Message]:
+    return [Message(role=Role.SYSTEM, content="prompt"), Message(role=Role.USER, content="hi")]
 
 
 def test_build_merges_lazy_tools_after_eager_tools():
@@ -222,3 +233,45 @@ def test_only_empty_configuration_adds_no_extra_body():
     result = builder.build([])
 
     assert "extra_body" not in result
+
+
+def test_cache_breakpoints_mark_system_last_message_and_last_tool_when_deployment_supports_cache():
+    builder = _make_builder([_make_tool_dict("eager_tool")], cache=True)
+
+    payload = builder.build(_system_and_user())
+
+    assert payload["messages"][0]["custom_fields"] == {"cache_breakpoint": {}}
+    assert payload["messages"][1]["custom_fields"] == {"cache_breakpoint": {}}
+    assert payload["tools"][0]["custom_fields"] == {"cache_breakpoint": {}}
+
+
+@pytest.mark.parametrize(
+    "cache, breakpoints_enabled",
+    [(None, True), (True, False)],
+    ids=["without_cache_feature", "setting_disabled"],
+)
+def test_no_cache_breakpoint(cache: bool | None, breakpoints_enabled: bool):
+    builder = _make_builder(
+        [_make_tool_dict("eager_tool")], cache=cache, breakpoints_enabled=breakpoints_enabled
+    )
+
+    payload = builder.build(_system_and_user())
+
+    assert all("custom_fields" not in m for m in payload["messages"])
+    assert "custom_fields" not in payload["tools"][0]
+
+
+def test_cache_breakpoint_does_not_mutate_injected_tools_or_messages():
+    """The breakpoints land on the per-call payload; nothing shared across builds changes."""
+    tools = [_make_tool_dict("eager_tool")]
+    messages = _system_and_user()
+    builder = _make_builder(tools, cache=True)
+
+    builder.build(messages)
+    second = builder.build(messages)
+
+    assert tools == [_make_tool_dict("eager_tool")]
+    assert messages[0].custom_fields is None
+    assert messages[1].custom_fields is None
+    assert second["messages"][0]["custom_fields"] == {"cache_breakpoint": {}}
+    assert second["tools"][0]["custom_fields"] == {"cache_breakpoint": {}}
