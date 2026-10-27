@@ -2,7 +2,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
-from quickapp.common.base_config import DialResourceConfigField, PreviewField
+from quickapp.common.base_config import DialResourceConfigField
 from quickapp.config.tools.deployment import ConversationMode
 
 
@@ -13,7 +13,7 @@ class DialDeploymentSimpleTool(BaseModel):
         default=None,
         description="Conversation session behavior for the DIAL deployment tool.",
     )
-    propagate_annotations_to_choice: bool | None = PreviewField(  # type: ignore[assignment]
+    propagate_annotations_to_choice: bool | None = Field(
         default=None,
         description=(
             "Propagate citation annotations returned by the deployment "

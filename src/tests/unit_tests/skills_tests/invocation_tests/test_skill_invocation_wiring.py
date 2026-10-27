@@ -1,13 +1,12 @@
 """DI wiring for ``SkillInvocationModule`` — an ordinary provider, initializer and
-transformer, registered in ``app_factory`` behind the preview flag."""
+transformer, registered in ``app_factory``."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from fastapi_injector import Injected, request_scope
 from injector import Binder, Module, multiprovider
 from starlette.testclient import TestClient
 
-from quickapp.app_factory import AppFactory
 from quickapp.common import REQUEST_MESSAGES, StagedBaseTool
 from quickapp.common.abstract.base_transformer import MessagesTransformer
 from quickapp.common.base_initializer import CompletionInitializer
@@ -62,19 +61,3 @@ class TestWiring:
         assert body["providers"] == ["_InvokedSkillsContext"]
         assert body["initializers"] == ["_SkillInvocationInitializer"]
         assert body["transformers"] == ["_SkillInvocationInjector"]
-
-
-class TestRegistration:
-
-    def test_registered_when_preview_features_are_on(self):
-        with patch.dict("os.environ", {"ENABLE_PREVIEW_FEATURES": "true"}):
-            names = [type(m).__name__ for m in AppFactory.build_di_modules()]
-        assert "SkillInvocationModule" in names
-
-    def test_dropped_when_preview_features_are_off(self):
-        with patch.dict("os.environ", {"ENABLE_PREVIEW_FEATURES": "false"}):
-            names = [type(m).__name__ for m in AppFactory.build_di_modules()]
-        assert "SkillInvocationModule" not in names
-        # The chips are still scrubbed: _ScrubExtraFieldsTransformer lives in the never-gated
-        # AgentModule.
-        assert "AgentModule" in names

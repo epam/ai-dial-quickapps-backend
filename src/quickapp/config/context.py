@@ -2,7 +2,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-from quickapp.common.base_config import DialFileConfigField, preview_model
+from quickapp.common.base_config import DialFileConfigField
 
 _FOLDER_MAX_DEPTH = 10
 
@@ -15,7 +15,6 @@ class FileContextConfig(BaseModel):
     )
 
 
-@preview_model
 class FolderContextConfig(BaseModel):
     type: Literal["folder"] = Field(default="folder", description="The type of the context.")
     mime: str = Field(

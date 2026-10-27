@@ -66,7 +66,7 @@ class MCPToolSet(BaseToolSet):
     allowed_tools: list[str] | None = Field(
         default=None, description="Allowed MCP tool names from the server"
     )
-    hidden_from_model: list[str] | None = PreviewField(  # type: ignore[assignment]
+    hidden_from_model: list[str] | None = Field(
         default=None, description=HIDDEN_FROM_MODEL_DESCRIPTION
     )
     tools_config: dict[str, MCPToolConfig] | None = PreviewField(  # type: ignore[assignment]

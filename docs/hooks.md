@@ -1,7 +1,5 @@
 # Hooks
 
-> **Preview** — requires `ENABLE_PREVIEW_FEATURES=true`. May change without a major version bump.
-
 Hooks run a configured tool at a fixed point of a request, without the model deciding to call it.
 This guide describes how that works at runtime. Fields and examples are in
 [CONFIGURATION — Hooks](../CONFIGURATION.md#hooks-configuration); the reasoning behind the design is in
@@ -145,8 +143,6 @@ the turn's iterations and tool calls.
 - Hiding works by listing. A tool added to the server later is visible to the model unless `allowed_tools` pins
   the set, so set both.
 - `None` and an empty list both mean every tool is visible.
-- The field is preview-gated. With `ENABLE_PREVIEW_FEATURES` off it is ignored and the tools stay model-visible,
-  consistent with no hooks running.
 - On the chat-completion branch of `dial-app` the field is ignored with a warning, like `allowed_tools`.
 - During a rolling upgrade or after a rollback, a replica running an older version ignores the unknown field and
   exposes the tools to the model.
@@ -178,7 +174,7 @@ The platform delivers the result correctly and the model can quote it when asked
 | The model says it has no tool for the data a hook already fetched | Known issue on Claude Opus 4.6 / 4.7: see [Known issues](#known-issues) |
 | `tool '...' not found in initialized tools` for a hidden tool | The name is missing from the server's tool list, or from `allowed_tools`; check the warning logged at initialization |
 | Manifest rejected: `hidden_from_model entries not present in allowed_tools` | Add the entry to `allowed_tools` or remove it from `hidden_from_model` |
-| The model still sees the tool | Preview features are off, or the request ran on an older replica |
+| The model still sees the tool | The request ran on an older replica |
 | The model asks for the hidden tool and then continues without it | Expected: see [If the model calls a hidden tool anyway](#if-the-model-calls-a-hidden-tool-anyway) |
 
 ## Related

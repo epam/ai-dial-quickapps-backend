@@ -1,6 +1,7 @@
 # Design: Hook Context, Parameter Templating, and Lifecycle Events
 
 - **Status:** Implemented
+- **Graduated:** out of preview, stable since [PR#693](https://github.com/epam/ai-dial-quickapps-backend/pull/693)
 - **User-facing:** [CONFIGURATION - Hooks](../../CONFIGURATION.md#hooks-configuration) / [Hooks guide](../hooks.md)
 - **Phases:** Phase 1 (this iteration, specified in detail) and Phase 2 (background execution, a
   hook-level `condition` and role-filtered message lists, conditional) — see [Phasing](#phasing)

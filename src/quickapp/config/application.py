@@ -7,7 +7,6 @@ from pydantic.fields import FieldInfo
 
 from quickapp.common.base_config import (
     BaseApplicationTypeConfig,
-    PreviewField,
     has_preview_marker,
     is_preview_model,
 )
@@ -104,7 +103,7 @@ class OrchestratorConfig(BaseModel):
             "MIMEs are surfaced as XML metadata only)."
         ),
     )
-    tool_discovery: ToolDiscoveryConfig | None = PreviewField(  # type: ignore[assignment]
+    tool_discovery: ToolDiscoveryConfig | None = Field(
         default=None,
         description="Dynamic tool discovery configuration. When enabled, toolsets with deferred=true are withheld from the initial LLM payload and discovered on demand via the tool_search meta-tool.",
     )
@@ -221,7 +220,7 @@ class Features(BaseModel):
         default=None,
         description="Built-in DIAL files tools (list / read / search / write / edit / delete / copy / move).",
     )
-    web_fetch: WebFetchConfig | None = PreviewField(  # type: ignore[assignment]
+    web_fetch: WebFetchConfig | None = Field(
         default=None,
         description=(
             "Built-in internal_web_fetch tool: fetch an external resource and return "
@@ -229,7 +228,7 @@ class Features(BaseModel):
             "(binary / oversized content must be saved rather than read inline)."
         ),
     )
-    representation_tooling: RepresentationToolingConfig | None = PreviewField(  # type: ignore[assignment]
+    representation_tooling: RepresentationToolingConfig | None = Field(
         default=None,
         description=(
             "Enables tools that control how the agent surfaces its output to the user. "
@@ -280,7 +279,7 @@ class ApplicationConfig(BaseApplicationTypeConfig):
         default=None,
         description="Optional list of user-configured agent skills.",
     )
-    hooks: list[HookConfig] | None = PreviewField(  # type: ignore[assignment]
+    hooks: list[HookConfig] | None = Field(
         default=None,
         description="Config-driven hooks fired at named orchestrator seams.",
     )

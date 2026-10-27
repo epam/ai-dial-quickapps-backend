@@ -43,7 +43,7 @@ class _ScrubExtraFieldsTransformer(MessagesTransformer):
     orchestrator deployment. Features that read extras (skill chips) read them from
     the request's own messages instead.
 
-    Registered by the never-preview-gated ``AgentModule``. Messages carrying extras are
+    Registered by ``AgentModule``. Messages carrying extras are
     copied, not edited: the working list shares objects with the request's own messages.
     """
 

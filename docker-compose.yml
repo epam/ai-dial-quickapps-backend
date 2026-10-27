@@ -122,9 +122,8 @@ services:
       # - applicationName: must equal dial:applicationTypeDisplayName in
       #   docker_compose_files/core/configuration/application-schemas.json — it prefixes the
       #   postMessage events (`<name>/readyToSave`) that enable chat's Save & Exit / Preview buttons.
-      # - *Enabled: editor toggles (Context & Tools / features), JSON booleans. Web fetch and
-      #   Add attachment are preview fields on the backend: need ENABLE_PREVIEW_FEATURES=true
-      #   (web fetch also EXTERNAL_URL_FETCH_ENABLED=true). Code interpreter needs a reachable
+      # - *Enabled: editor toggles (Context & Tools / features), JSON booleans. Web fetch
+      #   needs EXTERNAL_URL_FETCH_ENABLED=true. Code interpreter needs a reachable
       #   interpreter on DIAL_URL or PY_INTERPRETER_URL.
       CUSTOM_CLIENT_VARIABLES: >-
         {"allowedOrigin": "http://localhost:3012",
