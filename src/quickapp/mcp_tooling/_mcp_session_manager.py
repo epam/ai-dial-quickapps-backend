@@ -1,7 +1,8 @@
 import asyncio
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
 from contextlib import AbstractAsyncContextManager
+from typing import TypeVar
 
 from injector import inject
 from mcp import ClientSession
@@ -10,8 +11,23 @@ from quickapp.common.request_async_close_registry import RequestAsyncCloseRegist
 
 logger = logging.getLogger(__name__)
 
+_T = TypeVar("_T")
+
 # A zero-arg factory returning an async context manager that yields the live session.
 SessionOpener = Callable[[], AbstractAsyncContextManager[ClientSession]]
+
+
+def _retrieve_task_outcome(task: asyncio.Task) -> None:
+    """Mark a task's exception as retrieved so a cancelled in-flight call does not warn."""
+    if task.cancelled():
+        return
+    task.exception()
+
+
+def _task_cancelled(task: asyncio.Task) -> bool:
+    if task.cancelled():
+        return True
+    return isinstance(task.exception(), asyncio.CancelledError)
 
 
 class _SessionHandle:
@@ -89,7 +105,41 @@ class _MCPSessionManager:
             handle.ready.set()
             if isinstance(exc, asyncio.CancelledError):
                 raise
-            logger.debug("MCP session owner for '%s' ended with error: %s", key, exc)
+            logger.debug("MCP session owner for '%s' ended with error: %s", key, type(exc).__name__)
+
+    async def await_while_session_alive(self, key: str, call: Coroutine[object, object, _T]) -> _T:
+        """Await ``call`` until it finishes or the session owner for ``key`` dies.
+
+        The MCP streamable-HTTP client runs each POST in a background task and, on
+        any status other than 202/404 (including 403), calls ``raise_for_status()``
+        there. That exception kills the owner task and is never delivered to the
+        in-flight ``call_tool`` / ``read_resource``, which would otherwise block
+        until the tool read timeout — the chat turn then produces no reply.
+        """
+        handle = self.__handles.get(key)
+        call_task = asyncio.create_task(call)
+        call_task.add_done_callback(_retrieve_task_outcome)
+        try:
+            owner = handle.task if handle is not None else None
+            if owner is None:
+                return await call_task
+
+            _done, _pending = await asyncio.wait(
+                {call_task, owner}, return_when=asyncio.FIRST_COMPLETED
+            )
+            if call_task.done() and not _task_cancelled(call_task):
+                return call_task.result()
+
+            if not call_task.done():
+                call_task.cancel()
+                await asyncio.gather(call_task, return_exceptions=True)
+            if handle is not None and handle.error is not None:
+                raise handle.error
+            raise RuntimeError("MCP session closed while a request was in flight")
+        except asyncio.CancelledError:
+            if not call_task.done():
+                call_task.cancel()
+            raise
 
     async def aclose_all(self) -> None:
         """Signal every owner task to exit its session context, then await them concurrently."""
