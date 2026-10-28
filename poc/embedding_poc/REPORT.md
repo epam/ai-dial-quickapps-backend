@@ -15,9 +15,44 @@
 - Reproduce: `python poc/embedding_poc/build_suite.py`, then
   `poetry run python poc/embedding_poc/embedding_search.py eval --model <model> --tools poc/embedding_poc/tools_1000.json --queries poc/embedding_poc/queries_1000.json` (add `--backend dial` for the DIAL model, with `DIAL_URL` and `DIAL_API_KEY` set).
 
+## Legend
+
+- **recall@k**: for each query, the share of its expected tools that appear among the k highest-scoring tools, averaged over the 62 queries that have an expected tool. A query with two expected tools scores 0.5 if only one is in the top k.
+  - **recall@1**: the right tool is ranked first. This is what matters if the search returns a single tool.
+  - **recall@3 / recall@5**: the right tool is within the first 3 or 5 results. This is what matters if a second stage, such as an LLM selector, picks from a short list. recall@5 close to 1.0 means a shortlist of 5 almost never loses the right tool.
+  - recall@1 can never exceed recall@3, and recall@3 can never exceed recall@5.
+- **MRR** (mean reciprocal rank): for each query, 1 divided by the rank of the first expected tool (1.0 if first, 0.5 if second, 0.33 if third, and so on), averaged over the same 62 queries. It rewards ranking the right tool near the top and punishes a lower rank more gently than recall@1 does. 1.0 is perfect.
+- **Top score (real vs off-topic)**: the cosine similarity of the best-ranked tool, averaged separately over queries that have an answer and over the 4 off-topic queries. A large gap means a score floor can tell "no match" apart.
+- **Cold index time**: time to embed all 1000 tools from scratch. **Query time**: mean time to embed one query and rank all tools.
+
+## Parameters used
+
+All runs used the same search parameters, which are the defaults of `embedding_search.py`:
+
+| Parameter | Value used | What it does |
+|---|---|---|
+| `--top-k` | 5 | Maximum number of tools a search returns. |
+| `--min-score` | 0.0 (disabled) | Absolute cosine-similarity floor: tools scoring below it are dropped. |
+| `--margin` | 1.0 (disabled) | Tools scoring more than this below the best hit are dropped (relative cut-off). |
+| `--toolset-weight` | 0.0 (disabled) | Weight of the parent toolset's similarity added to each tool's score. |
+
+**What these parameters change in the numbers above:** recall@1/3/5 and MRR are computed from the full ranking of all 1000 tools, so they do not depend on `--top-k`, `--min-score` or `--margin`. They measure the ranking quality of the model only. The parameters affect only what a real search would return, which shows in two other metrics:
+
+- **no_match_acc** (share of the 4 off-topic queries that return nothing) is 0.000 in every run, because with the floor disabled the search always returns 5 tools. It is not a quality result.
+- **avg_selected** is 5.0 in every run for the same reason.
+
+How each parameter would move quality in production:
+
+- **`--top-k`**: a larger k raises the chance the right tool is in the result (see recall@5 against recall@3) but gives the next stage more candidates, which costs tokens and can add confusion among near-duplicate tools. A smaller k cuts that cost but loses the right tool whenever it ranks below k. With near-duplicate tools, k of 5 to 10 is a reasonable range to test.
+- **`--min-score`**: raising it lets the search answer "no match" and returns fewer tools for off-topic queries. If it is too high it also cuts correct tools whose similarity is low, such as a non-English query or a vague one, and recall drops below the recall@k values above. It is model-specific: the safe range is between the off-topic and real-query top scores in the "no match" table (for example, roughly 0.2 to 0.5 for `text-embedding-3-large`, but the range for `multilingual-e5-large-instruct` is only 0.74 to 0.87). The best floor depends on the model and was not tuned on the 1000-tool run.
+- **`--margin`**: keeps only tools close to the best score, so a clear match returns 1 to 2 tools and a vague query returns more. A small margin saves tokens but can cut a second expected tool in multi-tool queries. A large margin behaves like plain top-k.
+- **`--toolset-weight`**: blends in the parent toolset similarity. It may help when the right toolset is clear but tools inside it look alike, and may hurt when a query spans two toolsets. It was not tested.
+
+On the 20-tool suite, `--min-score 0.4 --margin 0.15` with bge-m3 gave no-match accuracy 1.0 and about 2.9 selected tools per query, with recall unchanged. This has not been repeated on the 1000-tool catalog, so the combined effect of the floor and margin on recall there is unmeasured.
+
 ## Quality
 
-recall@k is the share of expected tools found in the top k. MRR is the mean reciprocal rank of the first expected tool. Both are computed over the 62 queries that have an expected tool.
+recall@k and MRR are defined in the [Legend](#legend).
 
 | Model | Where | recall@1 | recall@3 | recall@5 | MRR |
 |---|---|---|---|---|---|
