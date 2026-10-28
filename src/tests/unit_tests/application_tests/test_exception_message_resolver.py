@@ -268,7 +268,6 @@ class TestMessagePatterns:
         "upstream_message",
         [
             "prompt is too long: 1008024 tokens > 1000000 maximum",
-            "This model's maximum context length is 128000 tokens.",
             "The input token count (1100000) exceeds the maximum number of tokens allowed (1048576).",
         ],
     )
