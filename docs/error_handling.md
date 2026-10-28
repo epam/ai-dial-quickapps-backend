@@ -61,6 +61,9 @@ The message is selected by a fixed precedence — the most specific and trustwor
    advice could contradict a precise upstream explanation.
 2. **Known error codes.** A curated set of causes gets tailored, actionable advice: content-policy
    rejections ("please rephrase your message"), context-window overflows ("please shorten your messages").
+   Some providers report an overflow as a plain 400 with no specific error code; a known provider overflow
+   wording in the internal message is then treated the same way (the internal message itself is still never
+   shown).
 3. **Status-class messages.** Failing that, the status determines a canned message, worded for the failing
    component: *AI model* wording when the model call failed, *service* wording when a platform service did.
    Authentication, permission, not-found, payload-size, rate-limit, timeout, and connectivity causes each
