@@ -80,8 +80,9 @@ class BaseStageWrapper(ABC):
         for attachment in attachments:
             self.add_attachment(attachment)
 
-    def add_exception(self, exception: Exception) -> None:
+    def add_exception(self, exception: Exception, error_reference: str) -> None:
         debug_info = self._build_debug_info_from_exception(exception)
+        debug_info += f"> ##### Error reference:\n{error_reference}\n"
         self.append_stage_content(debug_info)
 
     @abstractmethod
