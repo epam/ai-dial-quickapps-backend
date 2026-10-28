@@ -110,7 +110,6 @@ _CODE_MESSAGES: dict[str, str] = {
 # via DIAL adapters). Matched against the internal message only; it is never shown.
 _CONTEXT_LENGTH_MESSAGE_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"prompt is too long", re.IGNORECASE),  # Anthropic
-    re.compile(r"maximum context length", re.IGNORECASE),  # OpenAI
     re.compile(r"input token count .* exceeds the maximum", re.IGNORECASE),  # Gemini
 )
 
