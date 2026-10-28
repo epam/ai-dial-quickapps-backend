@@ -93,3 +93,13 @@ def test_unknown_exception_keeps_generic_text():
     rendered = _make_wrapper()._build_debug_info_from_exception(RuntimeError("boom"))
 
     assert "General exception" in rendered
+
+
+def test_error_reference_is_appended_to_stage_content():
+    wrapper = _make_wrapper()
+
+    wrapper.add_exception(RuntimeError("boom"), "ab12cd34")
+
+    rendered = wrapper.stage.append_content.call_args.args[0]
+    assert "Error reference" in rendered
+    assert "ab12cd34" in rendered

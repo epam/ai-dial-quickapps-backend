@@ -189,10 +189,13 @@ def test_build_debug_info_from_params_and_exception(mock_stage, wrapper, params)
     exception = ValueError("Invalid value provided")
 
     wrapper.add_parameters(params)
-    wrapper.add_exception(exception)
+    wrapper.add_exception(exception, "ab12cd34")
 
     expected_params = "> ##### Request:\n```json\n{\n    \"email\": \"test@example.com\",\n    \"message\": \"Hello\",\n    \"subject\": \"Test\"\n}\n```\n\n"
-    expected_exception = "> ##### Exception:\nValueError: Invalid value provided\n"
+    expected_exception = (
+        "> ##### Exception:\nValueError: Invalid value provided\n"
+        "> ##### Error reference:\nab12cd34\n"
+    )
 
     assert mock_stage.append_content.call_count == 2
     mock_stage.append_content.assert_any_call(expected_params)
@@ -205,9 +208,12 @@ def test_tool_error_stage_shows_body_not_structural_str(mock_stage, wrapper):
     body = "the real mcp error text"
     exception = MCPToolErrorException("mcp_tool", body)
 
-    wrapper.add_exception(exception)
+    wrapper.add_exception(exception, "ab12cd34")
 
-    expected = f"> ##### Error:\nMCP tool 'mcp_tool' returned an error: {body}\n"
+    expected = (
+        f"> ##### Error:\nMCP tool 'mcp_tool' returned an error: {body}\n"
+        "> ##### Error reference:\nab12cd34\n"
+    )
     mock_stage.append_content.assert_called_once_with(expected)
 
 
