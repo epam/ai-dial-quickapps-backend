@@ -37,10 +37,10 @@ No Chat or Core change is needed.
 
 | # | Trigger | Outcome |
 |---|---------|---------|
-| UC-1 | A Kyiv user asks "what's on my calendar today?" at 00:30 local (22:30 UTC) | Injected `2026-10-30T00:30:00+02:00 (Europe/Kyiv, source=request)`; the agent queries 30 Oct |
-| UC-2 | An API client sends no header; the app sets `default_timezone: Europe/Warsaw` | Warsaw time, `source=default` |
+| UC-1 | A Kyiv user asks "what's on my calendar today?" at 00:30 local (22:30 UTC) | Injected `2026-10-30T00:30:00+02:00 (Europe/Kyiv, source=user)`; the agent queries 30 Oct |
+| UC-2 | An API client sends no header; the app sets `default_timezone: Europe/Warsaw` | Warsaw time, `source=app_default` |
 | UC-3 | The header is `UTC+3` (invalid) | Ignored with a DEBUG record; falls back to `default_timezone`, then UTC |
-| UC-4 | A Kyiv user asks for the time in Tokyo | `current_timestamp({"timezone": "Asia/Tokyo"})` as today; with no argument it returns Kyiv time |
+| UC-4 | A Kyiv user asks for the time in Tokyo | `current_timestamp({"timezone": "Asia/Tokyo"})` returns `…+09:00 (Asia/Tokyo)`, no source; with no argument it returns Kyiv time |
 | UC-5 | The user's zone changes mid-conversation | Old entries keep their zone and offset; the new turn uses the new zone |
 
 ---
@@ -52,9 +52,9 @@ flowchart LR
     H["X-Timezone"] --> C["TIMEZONE_HEADER_VALUE (raw)"]
     C --> R{"resolve_user_timezone"}
     A["features.timestamp.default_timezone"] --> R
-    R -->|"valid header"| P1["TimeProvider(zone, REQUEST)"]
-    R -->|"else default set"| P2["TimeProvider(zone, DEFAULT)"]
-    R -->|"else"| P3["TimeProvider(UTC, DEFAULT)"]
+    R -->|"valid header"| P1["zone · request · user"]
+    R -->|"else default set"| P2["zone · default · app_default"]
+    R -->|"else"| P3["UTC · default · fallback"]
 ```
 
 ### 1. Reading the header
@@ -67,12 +67,20 @@ flowchart LR
 
 ### 2. Resolving and validating (`timestamp_tooling`)
 
-- `resolve_user_timezone(header_value, default_timezone) -> tuple[ZoneInfo, TimestampSource]`:
-  valid header → `REQUEST`; else `default_timezone` → `DEFAULT`; else UTC → `DEFAULT`. The user's zone wins over
-  the app default.
-- `TimestampSource` keeps its two values: `request` means the zone was given explicitly (header or
-  `current_timestamp` argument), and `default` means it was assumed. A new value would break older pods during a
-  rollout, because `get_metadata_from_state` rejects unknown values.
+- `resolve_user_timezone(header_value, default_timezone) -> ResolvedTimezone` returns the zone, the stored
+  `TimestampSource` and the label the model sees. The user's zone wins over the app default.
+
+  | Zone from | Stored `timestamp_source` | Label shown to the model |
+  |-----------|---------------------------|--------------------------|
+  | `X-Timezone` header | `request` | `source=user` |
+  | `default_timezone` | `default` | `source=app_default` |
+  | UTC fallback | `default` | `source=fallback` |
+  | `current_timestamp` argument from the LLM | `None` | none: `(Asia/Tokyo)` |
+
+- Stored values stay within what older pods can parse: `get_metadata_from_state` rejects unknown enum values,
+  and `None` is already allowed. `request` returns to the original design's meaning ("provided in the request").
+  The label says whose zone it is, which is what the model reasons about. An LLM-argument result needs no label,
+  because its call arguments show where the zone came from. Nothing reads `timestamp_source` for logic.
 - `is_valid_iana_timezone(name)` in `common/` checks membership in the `tzdata` package's `zones` list (598 names)
   minus `Factory`. It does not use `ZoneInfo(name)`, which probes the filesystem: that call accepts `europe/warsaw`
   on macOS and resolves `localtime` to the server's zone. `tzdata` becomes a direct dependency.
@@ -82,8 +90,9 @@ flowchart LR
 
 ### 3. Building `TimeProvider` (`TimestampModule`)
 
-- A request-scoped `@provider` replaces the class binding. It returns `TimeProvider(*resolve_user_timezone(...))`,
-  or plain UTC without resolving when the feature is off.
+- A request-scoped `@provider` replaces the class binding. It builds `TimeProvider` from `resolve_user_timezone`,
+  or uses UTC/`fallback` without resolving when the feature is off. `TimeProvider` gains a non-persisted
+  `source_label`, which `format_timestamp` renders.
 - Ordering: `TimeProvider` is first resolved through `ProviderOf` in `_MessagesSetup.run_transformers`, after
   `setup_context`. Fix the stale comment in `_provide_message_transformers` that says otherwise. A unit test pins
   this.
@@ -92,7 +101,8 @@ flowchart LR
 
 | Surface | Today | After (Kyiv) |
 |---------|-------|--------------|
-| Injected timestamp | `2026-10-29T11:36:12+00:00 (UTC, source=default)` | `2026-10-29T13:36:12+02:00 (Europe/Kyiv, source=request)` |
+| Injected timestamp | `2026-10-29T11:36:12+00:00 (UTC, source=default)` | `2026-10-29T13:36:12+02:00 (Europe/Kyiv, source=user)` |
+| `current_timestamp` with an LLM argument | `…+09:00 (Asia/Tokyo, source=request)` | `…+09:00 (Asia/Tokyo)`; stored `timestamp_source` is `None` |
 | Tool-result annotation | `[Timestamp: 2026-10-29 11:36:12 UTC]` | `[Timestamp: 2026-10-29 13:36:12+02:00 Europe/Kyiv]` (adds `%:z`) |
 | `current_timestamp` `timezone` description | "Defaults to UTC." | "Defaults to the time zone of the injected current timestamp." |
 
@@ -130,11 +140,11 @@ flowchart LR
 { "features": { "timestamp": { "default_timezone": "Europe/Warsaw" } } }
 ```
 
-| `X-Timezone` | `default_timezone` | Zone | `source` |
-|--------------|--------------------|------|----------|
-| `Europe/Kyiv` | any | `Europe/Kyiv` | `request` |
-| absent / empty / invalid | `Europe/Warsaw` | `Europe/Warsaw` | `default` |
-| absent / empty / invalid | unset | `UTC` | `default` |
+| `X-Timezone` | `default_timezone` | Zone | Model sees |
+|--------------|--------------------|------|------------|
+| `Europe/Kyiv` | any | `Europe/Kyiv` | `source=user` |
+| absent / empty / invalid | `Europe/Warsaw` | `Europe/Warsaw` | `source=app_default` |
+| absent / empty / invalid | unset | `UTC` | `source=fallback` |
 
 API clients set `X-Timezone` themselves; Core forwards it.
 
@@ -150,6 +160,9 @@ API clients set `X-Timezone` themselves; Core forwards it.
 ### Non-breaking changes
 
 - `default_timezone` is optional.
+- No new `TimestampSource` value, so a rolling deploy or rollback is safe.
+- Old chats keep their stored text (`source=default`, `source=request`) next to new turns (`source=user`). Each
+  entry carries its own zone and offset, so nothing needs migrating.
 - Integration-test LLM caches that include the tool description or annotations must be re-recorded.
 
 ### Known issues (to record in `docs/time_awareness.md`)
@@ -167,7 +180,8 @@ API clients set `X-Timezone` themselves; Core forwards it.
 | `common/` | `is_valid_iana_timezone` |
 | `core/application/` | `_RequestContext.timezone_header_value`; read in `setup_context`; provided by `AppModule` |
 | `config/timestamp.py` | `default_timezone` (`PreviewField`) with validator |
-| `timestamp_tooling/` | `resolve_user_timezone`; `TimeProvider` provider; offset in the annotation; tool description; argument validation; stale comment fixed |
+| `common/time_provider.py` | `source_label`, rendered by `format_timestamp` |
+| `timestamp_tooling/` | `resolve_user_timezone` / `ResolvedTimezone`; `TimeProvider` provider; offset in the annotation; tool description; argument validation; LLM-argument results store `None` with no source text; stale comment fixed |
 | `pyproject.toml` | `tzdata` as a direct dependency |
 | `CONFIGURATION.md`, `docs/time_awareness.md` | `default_timezone`; local-zone behaviour; known issues |
 | `docs/README.md` | Time awareness row: add this design to the L3 column |
