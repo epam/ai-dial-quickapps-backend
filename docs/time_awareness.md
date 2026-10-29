@@ -12,8 +12,8 @@ their production timestamps.
 
 When enabled, the feature provides three capabilities:
 
-1. **The agent always knows the current time.** At every user turn, the current UTC timestamp is automatically
-   injected into the conversation. The agent can answer time-sensitive questions immediately, without making any
+1. **The agent always knows the current time.** At every user turn, the current timestamp, in the user's
+   [time zone](#time-zone), is automatically injected into the conversation. The agent can answer time-sensitive questions immediately, without making any
    tool calls.
 
 2. **The agent can convert timezones.** If a user asks "what time is it in Tokyo?", the agent calls the
@@ -62,7 +62,7 @@ On the first turn, the agent receives the current time as if it had called a too
 ```
 [user]      What day is it?
 [assistant] (tool_call: current_timestamp -> {})
-[tool]      2026-03-24T14:30:00+00:00 (UTC, source=default)
+[tool]      2026-03-24T16:30:00+02:00 (Europe/Kyiv, source=user)
 [assistant] Today is Monday, March 24, 2026.
 ```
 
@@ -76,7 +76,7 @@ being sent to the LLM:
 
 ```
 {"temperature": 22, "unit": "celsius"}
-[Timestamp: 2026-03-24 14:30:00 UTC]
+[Timestamp: 2026-03-24 16:30:00+02:00 Europe/Kyiv]
 ```
 
 The agent can compare this against the current time to reason about freshness. For instance, if the agent
@@ -85,3 +85,23 @@ to call the API again rather than reusing stale data.
 
 These annotations are transient — they are visible only to the LLM during processing and do not appear in the
 persisted conversation history or in the response shown to the user.
+
+## Time zone
+
+The zone comes from the first usable source:
+
+| Source | `source=` shown to the agent |
+|--------|------------------------------|
+| `X-Timezone` request header (DIAL Chat sends the browser's zone; API clients may send it) | `user` |
+| [`default_timezone`](../CONFIGURATION.md#timestamp-configuration) in the app config | `app_default` |
+| UTC | `fallback` |
+
+The header must be an IANA name such as `Europe/Warsaw`; any other value is ignored and the request still
+succeeds. When the agent calls `current_timestamp` with an explicit zone, the result has no `source=`.
+
+### Known issues
+
+| What happens | Where | Workaround |
+|--------------|-------|------------|
+| No header, so `default_timezone` or UTC is used | API clients, scheduled runs, DIAL Chat releases without `X-Timezone` | Send `X-Timezone`, or set `default_timezone` |
+| A valid but wrong zone is used | Firefox with `privacy.resistFingerprinting` and Tor Browser report `UTC` or `Atlantic/Reykjavik`; an OS with the wrong zone | Fix the browser or OS setting, or tell the agent your zone |

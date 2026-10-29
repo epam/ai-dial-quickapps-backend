@@ -21,7 +21,10 @@ CURRENT_TIMESTAMP_TOOL_CONFIG = InternalTool(
                 properties={
                     "timezone": ConfigurableSchemaSimpleType(
                         type=JsonTypeEnum.string,
-                        description="IANA timezone name (e.g. 'Asia/Tokyo'). Defaults to UTC.",
+                        description=(
+                            "IANA timezone name (e.g. 'Asia/Tokyo'). Defaults to the time zone "
+                            "of the injected current timestamp."
+                        ),
                     )
                 },
             ),

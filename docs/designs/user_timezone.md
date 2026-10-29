@@ -92,8 +92,11 @@ flowchart LR
 
 - A request-scoped `@provider` replaces the class binding. It builds `TimeProvider` from `resolve_user_timezone`,
   or uses UTC/`fallback` without resolving when the feature is off. `TimeProvider` gains a non-persisted
-  `source_label`, which `format_timestamp` renders.
-- Ordering: `TimeProvider` is first resolved through `ProviderOf` in `_MessagesSetup.run_transformers`, after
+  `label` (`TimezoneLabel`), which `format_timestamp` renders.
+- Independent of the injection strategy: injectors only call `TimeProvider` (`tz`, `label`,
+  `format_timestamp`), so the `<app_context>` delivery planned in
+  [I#661](https://github.com/epam/ai-dial-quickapps-backend/issues/661) reuses the resolved zone as is.
+- Ordering: `TimeProvider` is first resolved through `ProviderOf` in `_MessagesSetup.run_transformers` (from `setup_messages`), after
   `setup_context`. Fix the stale comment in `_provide_message_transformers` that says otherwise. A unit test pins
   this.
 
@@ -163,7 +166,7 @@ API clients set `X-Timezone` themselves; Core forwards it.
 - No new `TimestampSource` value, so a rolling deploy or rollback is safe.
 - Old chats keep their stored text (`source=default`, `source=request`) next to new turns (`source=user`). Each
   entry carries its own zone and offset, so nothing needs migrating.
-- Integration-test LLM caches that include the tool description or annotations must be re-recorded.
+- Integration-test LLM caches stay valid: the cache key covers only system, user and assistant text.
 
 ### Known issues (to record in `docs/time_awareness.md`)
 
@@ -180,7 +183,7 @@ API clients set `X-Timezone` themselves; Core forwards it.
 | `common/` | `is_valid_iana_timezone` |
 | `core/application/` | `_RequestContext.timezone_header_value`; read in `setup_context`; provided by `AppModule` |
 | `config/timestamp.py` | `default_timezone` (`PreviewField`) with validator |
-| `common/time_provider.py` | `source_label`, rendered by `format_timestamp` |
+| `common/time_provider.py` | `TimezoneLabel`; `label`, rendered by `format_timestamp` |
 | `timestamp_tooling/` | `resolve_user_timezone` / `ResolvedTimezone`; `TimeProvider` provider; offset in the annotation; tool description; argument validation; LLM-argument results store `None` with no source text; stale comment fixed |
 | `pyproject.toml` | `tzdata` as a direct dependency |
 | `CONFIGURATION.md`, `docs/time_awareness.md` | `default_timezone`; local-zone behaviour; known issues |

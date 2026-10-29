@@ -7,6 +7,7 @@ from quickapp.common import (
     CLIENT_CHANNEL_ID,
     DIAL_API_KEY,
     DIAL_BEARER,
+    TIMEZONE_HEADER_VALUE,
     TOOL_CHOICE,
     ForwardedHeaders,
 )
@@ -57,6 +58,7 @@ class _RequestContext(MessagesMixin, RequestMessagesMixin):
     _tool_choice: TOOL_CHOICE = None
     _extra_tools: list[Tool] | None = None
     _accept_language: ACCEPT_LANGUAGE = None
+    _timezone_header_value: TIMEZONE_HEADER_VALUE = None
 
     @property
     def bearer(self) -> DIAL_BEARER:
@@ -168,3 +170,13 @@ class _RequestContext(MessagesMixin, RequestMessagesMixin):
         if self._accept_language is not None:
             raise RuntimeError("Accept-Language is already set")
         self._accept_language = value
+
+    @property
+    def timezone_header_value(self) -> TIMEZONE_HEADER_VALUE:
+        return self._timezone_header_value
+
+    @timezone_header_value.setter
+    def timezone_header_value(self, value: TIMEZONE_HEADER_VALUE) -> None:
+        if self._timezone_header_value is not None:
+            raise RuntimeError("Timezone header value is already set")
+        self._timezone_header_value = value

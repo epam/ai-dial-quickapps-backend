@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 from quickapp.common.message_metadata import TimestampSource
-from quickapp.common.time_provider import TimeProvider
+from quickapp.common.time_provider import TimeProvider, TimezoneLabel
 
 
 class TestTimeProvider:
@@ -41,7 +41,17 @@ class TestTimeProvider:
         result = provider.format_timestamp(dt)
         assert "2026-03-24T14:30:00+00:00" in result
         assert "UTC" in result
-        assert "source=default" in result
+        assert "source=fallback" in result
+
+    def test_format_timestamp_renders_label_not_stored_source(self):
+        provider = TimeProvider(
+            tz=ZoneInfo("Europe/Warsaw"),
+            source=TimestampSource.DEFAULT,
+            label=TimezoneLabel.APP_DEFAULT,
+        )
+        dt = datetime(2026, 3, 24, 14, 30, 0, tzinfo=ZoneInfo("Europe/Warsaw"))
+        result = provider.format_timestamp(dt)
+        assert result == "2026-03-24T14:30:00+01:00 (Europe/Warsaw, source=app_default)"
 
     def test_format_timestamp_uses_datetime_timezone(self):
         provider = TimeProvider()

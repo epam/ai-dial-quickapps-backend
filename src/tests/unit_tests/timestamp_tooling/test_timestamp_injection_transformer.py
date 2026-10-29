@@ -79,7 +79,7 @@ class TestTimestampInjectionTransformer:
         tool_msg = result[2]
         content = str(tool_msg.content)
         assert "UTC" in content
-        assert "source=default" in content
+        assert "source=fallback" in content
         assert "T" in content
 
     @pytest.mark.asyncio

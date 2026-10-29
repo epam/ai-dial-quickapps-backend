@@ -1,8 +1,11 @@
 from unittest.mock import MagicMock
+from zoneinfo import ZoneInfo
 
 import pytest
 
-from quickapp.common.time_provider import TimeProvider
+from quickapp.common.exceptions import InvalidToolCallParameterException
+from quickapp.common.message_metadata import TimestampSource, get_metadata_from_state
+from quickapp.common.time_provider import TimeProvider, TimezoneLabel
 from quickapp.timestamp_tooling._current_timestamp_tool import _CurrentTimestampTool
 from quickapp.timestamp_tooling._tool_configs import CURRENT_TIMESTAMP_TOOL_CONFIG
 
@@ -25,22 +28,49 @@ class TestCurrentTimestampTool:
         result = await tool._run_in_stage_async(stage_wrapper=None)
 
         assert "UTC" in result.content
-        assert "source=default" in result.content
+        assert "source=fallback" in result.content
         assert "T" in result.content  # ISO 8601
 
     @pytest.mark.asyncio
-    async def test_timezone_conversion(self):
+    async def test_defaults_to_user_zone_from_time_provider(self):
+        tp = TimeProvider(
+            tz=ZoneInfo("Europe/Kyiv"), source=TimestampSource.REQUEST, label=TimezoneLabel.USER
+        )
+        tool = _build_tool(tp)
+        result = await tool._run_in_stage_async(stage_wrapper=None)
+
+        assert "(Europe/Kyiv, source=user)" in result.content
+        metadata = get_metadata_from_state(result.state)
+        assert metadata is not None and metadata.timestamp is not None
+        assert metadata.timestamp.timestamp_source == TimestampSource.REQUEST
+
+    @pytest.mark.asyncio
+    async def test_timezone_conversion_has_no_source_label(self):
         tool = _build_tool()
         result = await tool._run_in_stage_async(stage_wrapper=None, timezone="Asia/Tokyo")
 
-        assert "Asia/Tokyo" in result.content
-        assert "source=request" in result.content
+        assert result.content.endswith("+09:00 (Asia/Tokyo)")
+        assert "source=" not in result.content
+        metadata = get_metadata_from_state(result.state)
+        assert metadata is not None and metadata.timestamp is not None
+        assert metadata.timestamp.timestamp_source is None
+        assert metadata.timestamp.timezone_name == "Asia/Tokyo"
 
     @pytest.mark.asyncio
-    async def test_invalid_timezone_raises(self):
+    @pytest.mark.parametrize("value", ["", "   "])
+    async def test_empty_timezone_argument_counts_as_absent(self, value):
         tool = _build_tool()
-        with pytest.raises(KeyError):
-            await tool._run_in_stage_async(stage_wrapper=None, timezone="Invalid/Timezone")
+        result = await tool._run_in_stage_async(stage_wrapper=None, timezone=value)
+
+        assert "(UTC, source=fallback)" in result.content
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("value", ["Invalid/Timezone", "europe/warsaw", "localtime"])
+    async def test_invalid_timezone_raises_parameter_error(self, value):
+        tool = _build_tool()
+        with pytest.raises(InvalidToolCallParameterException) as excinfo:
+            await tool._run_in_stage_async(stage_wrapper=None, timezone=value)
+        assert excinfo.value.parameter_name == "timezone"
 
     @pytest.mark.asyncio
     async def test_result_has_state_with_metadata(self):
