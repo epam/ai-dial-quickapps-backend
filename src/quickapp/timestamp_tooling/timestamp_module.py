@@ -44,11 +44,9 @@ class TimestampModule(Module):
     def _provide_time_provider(
         self, app_config: ApplicationConfig, timezone_header_value: TIMEZONE_HEADER_VALUE
     ) -> TimeProvider:
-        timestamp = app_config.features.timestamp if app_config.features else None
-        if timestamp is None:
+        if app_config.features is None or app_config.features.timestamp is None:
             return TimeProvider()
-        resolved = resolve_user_timezone(timezone_header_value, timestamp.default_timezone)
-        return TimeProvider(tz=resolved.tz, source=resolved.source, label=resolved.label)
+        return resolve_user_timezone(timezone_header_value)
 
     @staticmethod
     def _is_timestamp_feature_enabled(app_config: ApplicationConfig) -> bool:

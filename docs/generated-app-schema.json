@@ -3940,23 +3940,6 @@
           "default": "tool_call",
           "title": "Injection Strategy",
           "type": "string"
-        },
-        "default_timezone": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "IANA time zone (e.g. 'Europe/Warsaw') used when the request carries no valid X-Timezone header. Unset means UTC.",
-          "examples": [
-            "Europe/Warsaw"
-          ],
-          "title": "Default Timezone",
-          "x-preview": true
         }
       },
       "title": "ToolCallTimestampConfig",

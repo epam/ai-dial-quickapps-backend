@@ -494,11 +494,9 @@ tool, transformers, and metadata enricher are then not registered at all.
 | Field                | Required | Type   | Description                                                                                                | Available Values | Default Value |
 |----------------------|----------|--------|----------------------------------------------------------------------------------------------------------------|------------------|---------------|
 | `injection_strategy` | No       | String | How the current timestamp reaches the model. `tool_call` injects a synthetic `current_timestamp` tool-call and result after the last user message. | `tool_call`      | `tool_call`   |
-| `default_timezone`   | No       | String | `[Preview]` IANA time zone (e.g. `Europe/Warsaw`) used when the request has no valid `X-Timezone` header. An unknown name fails config validation. | IANA zone names | — (UTC)       |
 
 Timestamps are shown in the user's time zone, taken from the `X-Timezone` request header that DIAL Chat
-sends (any client may send it). Order: a valid `X-Timezone`, then `default_timezone`, then UTC. An invalid
-header is ignored. See [Time awareness](./docs/time_awareness.md#time-zone).
+sends (any client may send it). Without a valid `X-Timezone`, UTC is used; an invalid header is ignored. See [Time awareness](./docs/time_awareness.md#time-zone).
 
 `tool_call` is the only strategy available today, so you can leave the field out — `{}` behaves
 exactly like `{"injection_strategy": "tool_call"}`. Other strategies may be added in the future.

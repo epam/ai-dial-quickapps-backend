@@ -53,7 +53,12 @@ class _CurrentTimestampTool(StagedBaseTool):
         *args: Any,
         **kwargs: Any,
     ) -> ToolCallResult:
-        timezone_str = normalize_timezone_name(kwargs.get("timezone"))
+        raw_timezone = kwargs.get("timezone")
+        if raw_timezone is not None and not isinstance(raw_timezone, str):
+            raise InvalidToolCallParameterException(
+                "timezone", "Must be a string IANA time zone name like 'Europe/Warsaw'."
+            )
+        timezone_str = normalize_timezone_name(raw_timezone)
 
         source: TimestampSource | None
         if timezone_str is not None:

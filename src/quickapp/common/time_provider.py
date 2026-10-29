@@ -9,7 +9,6 @@ class TimezoneLabel(StrEnum):
     """Whose zone the model is looking at; rendered as ``source=<label>``, never persisted."""
 
     USER = "user"  # from the request (X-Timezone header)
-    APP_DEFAULT = "app_default"  # features.timestamp.default_timezone
     FALLBACK = "fallback"  # nothing usable given, UTC
 
 
@@ -23,11 +22,9 @@ class TimeProvider:
     def __init__(
         self,
         tz: ZoneInfo = ZoneInfo("UTC"),
-        source: TimestampSource = TimestampSource.DEFAULT,
         label: TimezoneLabel = TimezoneLabel.FALLBACK,
     ):
         self._tz = tz
-        self._source = source
         self._label = label
 
     def now(self) -> datetime:
@@ -43,7 +40,12 @@ class TimeProvider:
 
     @property
     def source(self) -> TimestampSource:
-        return self._source
+        # Stored values stay within what older pods can parse; the label carries the detail.
+        return (
+            TimestampSource.REQUEST
+            if self._label is TimezoneLabel.USER
+            else TimestampSource.DEFAULT
+        )
 
     @property
     def label(self) -> TimezoneLabel:
@@ -51,4 +53,7 @@ class TimeProvider:
 
     def format_timestamp(self, dt: datetime) -> str:
         tz_name = str(dt.tzinfo) if dt.tzinfo else self.tz_name
+        if tz_name != self.tz_name:
+            # Converted to another zone: the label describes the provider's zone, not this one.
+            return f"{dt.isoformat()} ({tz_name})"
         return f"{dt.isoformat()} ({tz_name}, source={self._label.value})"

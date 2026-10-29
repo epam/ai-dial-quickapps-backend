@@ -33,9 +33,7 @@ class TestCurrentTimestampTool:
 
     @pytest.mark.asyncio
     async def test_defaults_to_user_zone_from_time_provider(self):
-        tp = TimeProvider(
-            tz=ZoneInfo("Europe/Kyiv"), source=TimestampSource.REQUEST, label=TimezoneLabel.USER
-        )
+        tp = TimeProvider(tz=ZoneInfo("Europe/Kyiv"), label=TimezoneLabel.USER)
         tool = _build_tool(tp)
         result = await tool._run_in_stage_async(stage_wrapper=None)
 
@@ -67,6 +65,14 @@ class TestCurrentTimestampTool:
     @pytest.mark.asyncio
     @pytest.mark.parametrize("value", ["Invalid/Timezone", "europe/warsaw", "localtime"])
     async def test_invalid_timezone_raises_parameter_error(self, value):
+        tool = _build_tool()
+        with pytest.raises(InvalidToolCallParameterException) as excinfo:
+            await tool._run_in_stage_async(stage_wrapper=None, timezone=value)
+        assert excinfo.value.parameter_name == "timezone"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("value", [3, ["Asia/Tokyo"], {"name": "Asia/Tokyo"}])
+    async def test_non_string_timezone_raises_parameter_error(self, value):
         tool = _build_tool()
         with pytest.raises(InvalidToolCallParameterException) as excinfo:
             await tool._run_in_stage_async(stage_wrapper=None, timezone=value)

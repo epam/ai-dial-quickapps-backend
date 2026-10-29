@@ -4,7 +4,6 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from aidial_sdk.chat_completion import Message, Role
-from pydantic import ValidationError
 
 from quickapp.common.message_metadata import TimestampSource
 from quickapp.common.time_provider import TimeProvider, TimezoneLabel
@@ -32,12 +31,11 @@ class TestProvideTimeProvider:
         assert tp.source == TimestampSource.REQUEST
         assert tp.label == TimezoneLabel.USER
 
-    def test_app_default_without_header(self):
-        config = ToolCallTimestampConfig(default_timezone="Europe/Warsaw")
-        tp = _provide(_app_config(config), None)
+    def test_utc_fallback_without_header(self):
+        tp = _provide(_app_config(ToolCallTimestampConfig()), None)
 
-        assert tp.tz == ZoneInfo("Europe/Warsaw")
-        assert tp.label == TimezoneLabel.APP_DEFAULT
+        assert tp.tz == ZoneInfo("UTC")
+        assert tp.label == TimezoneLabel.FALLBACK
 
     def test_feature_off_returns_utc_without_resolving(self):
         tp = _provide(_app_config(None), "Asia/Tokyo")
@@ -62,18 +60,3 @@ class TestProvideTimeProvider:
         result = await transformer.transform([Message(role=Role.USER, content="hi")])
 
         assert str(result[2].content).endswith("+09:00 (Asia/Tokyo, source=user)")
-
-
-class TestDefaultTimezoneConfig:
-    def test_valid_zone_is_accepted(self):
-        config = ToolCallTimestampConfig(default_timezone="Europe/Kiev")
-
-        assert config.default_timezone == "Europe/Kiev"
-
-    def test_unset_by_default(self):
-        assert ToolCallTimestampConfig().default_timezone is None
-
-    @pytest.mark.parametrize("value", ["UTC+3", "europe/warsaw", "localtime"])
-    def test_invalid_zone_fails_validation(self, value):
-        with pytest.raises(ValidationError, match="default_timezone"):
-            ToolCallTimestampConfig(default_timezone=value)

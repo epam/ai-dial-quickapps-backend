@@ -88,12 +88,11 @@ persisted conversation history or in the response shown to the user.
 
 ## Time zone
 
-The zone comes from the first usable source:
+The zone comes from the request header; without a valid one, UTC is used:
 
 | Source | `source=` shown to the agent |
 |--------|------------------------------|
 | `X-Timezone` request header (DIAL Chat sends the browser's zone; API clients may send it) | `user` |
-| [`default_timezone`](../CONFIGURATION.md#timestamp-configuration) in the app config | `app_default` |
 | UTC | `fallback` |
 
 The header must be an IANA name such as `Europe/Warsaw`; any other value is ignored and the request still
@@ -103,5 +102,5 @@ succeeds. When the agent calls `current_timestamp` with an explicit zone, the re
 
 | What happens | Where | Workaround |
 |--------------|-------|------------|
-| No header, so `default_timezone` or UTC is used | API clients, scheduled runs, DIAL Chat releases without `X-Timezone` | Send `X-Timezone`, or set `default_timezone` |
+| No header, so UTC is used | API clients, scheduled runs, DIAL Chat releases without `X-Timezone` | Send `X-Timezone` |
 | A valid but wrong zone is used | Firefox with `privacy.resistFingerprinting` and Tor Browser report `UTC` or `Atlantic/Reykjavik`; an OS with the wrong zone | Fix the browser or OS setting, or tell the agent your zone |
