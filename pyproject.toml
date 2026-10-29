@@ -33,6 +33,7 @@ dependencies = [
     # Authentication & networking
     "authlib>=1.9.1,<2.0.0",                       # OAuth / JWT authentication
     "urllib3>=2.8.0,<3.0.0",                      # HTTP client library
+    "dnspython>=2.9.0,<3.0.0",                    # DNS toolkit (CVE pin, transitive)
 
     # Utilities
     "common>=0.1.2,<0.2.0",                       # Shared utilities
