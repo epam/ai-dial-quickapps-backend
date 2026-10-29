@@ -164,7 +164,7 @@ class ErrorDetails(BaseModel):
     display_message: str | None # user-safe by DIAL contract
 ```
 
-**Owner:** `_exception_message_resolver` (private helper within the module).
+**Owner:** `common/error_details.py`, shared by `_exception_message_resolver` and the tool stage wrappers.
 
 **Semantics:** One extraction function understands the four shapes an error reaches us in:
 
