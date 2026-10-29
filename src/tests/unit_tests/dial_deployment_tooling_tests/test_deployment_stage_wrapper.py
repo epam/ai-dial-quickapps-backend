@@ -103,3 +103,12 @@ def test_error_reference_is_appended_to_stage_content():
     rendered = wrapper.stage.append_content.call_args.args[0]
     assert "Error reference" in rendered
     assert "ab12cd34" in rendered
+
+
+def test_rate_limit_display_message_is_capped():
+    error = _make_rate_limit_error({"error": {"display_message": "x" * 600}})
+
+    rendered = _make_wrapper()._build_debug_info_from_exception(error)
+
+    assert "x" * 499 + "…" in rendered
+    assert "x" * 500 not in rendered
