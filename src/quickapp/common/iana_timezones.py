@@ -2,6 +2,7 @@
 
 from functools import cache
 from importlib import resources
+from zoneinfo import ZoneInfo
 
 # In the tzdata list but not a real location: renders as "-00" with no offset rules.
 _EXCLUDED_ZONES = frozenset({"Factory"})
@@ -31,3 +32,19 @@ def is_valid_iana_timezone(name: str) -> bool:
     filesystems and resolves ``localtime`` to the server's own zone.
     """
     return name in _known_zones()
+
+
+def parse_timezone(value: object) -> ZoneInfo | None:
+    """Normalize and validate an untrusted zone name in one step.
+
+    Returns ``None`` when the value is absent or blank. Raises ``ValueError`` when it is not
+    a string or not a known IANA name.
+    """
+    if value is not None and not isinstance(value, str):
+        raise ValueError("time zone must be a string")
+    name = normalize_timezone_name(value)
+    if name is None:
+        return None
+    if not is_valid_iana_timezone(name):
+        raise ValueError("unknown IANA time zone")
+    return ZoneInfo(name)

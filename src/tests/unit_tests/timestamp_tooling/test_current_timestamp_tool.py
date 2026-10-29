@@ -55,6 +55,17 @@ class TestCurrentTimestampTool:
         assert metadata.timestamp.timezone_name == "Asia/Tokyo"
 
     @pytest.mark.asyncio
+    async def test_explicit_user_zone_keeps_user_label(self):
+        tp = TimeProvider(tz=ZoneInfo("Europe/Kyiv"), label=TimezoneLabel.USER)
+        tool = _build_tool(tp)
+        result = await tool._run_in_stage_async(stage_wrapper=None, timezone="Europe/Kyiv")
+
+        assert "(Europe/Kyiv, source=user)" in result.content
+        metadata = get_metadata_from_state(result.state)
+        assert metadata is not None and metadata.timestamp is not None
+        assert metadata.timestamp.timestamp_source == TimestampSource.REQUEST
+
+    @pytest.mark.asyncio
     @pytest.mark.parametrize("value", ["", "   "])
     async def test_empty_timezone_argument_counts_as_absent(self, value):
         tool = _build_tool()

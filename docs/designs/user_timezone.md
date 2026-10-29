@@ -74,7 +74,7 @@ flowchart LR
   |-----------|---------------------------|--------------------------|
   | `X-Timezone` header | `request` | `source=user` |
   | UTC fallback | `default` | `source=fallback` |
-  | `current_timestamp` argument from the LLM | `None` | none: `(Asia/Tokyo)` |
+  | `current_timestamp` argument from the LLM (another zone) | `None` | none: `(Asia/Tokyo)` |
 
 - Stored values stay within what older pods can parse: `get_metadata_from_state` rejects unknown enum values,
   and `None` is already allowed. `request` returns to the original design's meaning ("provided in the request").

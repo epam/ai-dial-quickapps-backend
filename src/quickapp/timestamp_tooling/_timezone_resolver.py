@@ -2,7 +2,7 @@ import logging
 from zoneinfo import ZoneInfo
 
 from quickapp.common import TIMEZONE_HEADER
-from quickapp.common.iana_timezones import is_valid_iana_timezone, normalize_timezone_name
+from quickapp.common.iana_timezones import parse_timezone
 from quickapp.common.time_provider import TimezoneLabel
 
 logger = logging.getLogger(__name__)
@@ -15,14 +15,16 @@ def resolve_user_timezone(header_value: str | None) -> tuple[ZoneInfo, TimezoneL
 
     An invalid header never fails the request; it is skipped like an absent one.
     """
-    header_zone = normalize_timezone_name(header_value)
-    if header_zone is not None:
-        if is_valid_iana_timezone(header_zone):
-            return ZoneInfo(header_zone), TimezoneLabel.USER
+    try:
+        header_zone = parse_timezone(header_value)
+    except ValueError:
         # Client-supplied value: log its size only (CODESTYLE §9).
         logger.debug(
             "Ignoring %s header: not a known IANA time zone (length=%d)",
             TIMEZONE_HEADER,
-            len(header_zone),
+            len((header_value or "").strip()),
         )
-    return _UTC, TimezoneLabel.FALLBACK
+        header_zone = None
+    if header_zone is None:
+        return _UTC, TimezoneLabel.FALLBACK
+    return header_zone, TimezoneLabel.USER

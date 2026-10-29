@@ -1,5 +1,4 @@
 from typing import Any
-from zoneinfo import ZoneInfo
 
 from injector import AssistedBuilder, inject
 
@@ -7,7 +6,7 @@ from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.exceptions import InvalidToolCallParameterException
-from quickapp.common.iana_timezones import is_valid_iana_timezone, normalize_timezone_name
+from quickapp.common.iana_timezones import parse_timezone
 from quickapp.common.message_metadata import (
     MessageMetadata,
     TimestampMetadata,
@@ -53,31 +52,23 @@ class _CurrentTimestampTool(StagedBaseTool):
         *args: Any,
         **kwargs: Any,
     ) -> ToolCallResult:
-        raw_timezone = kwargs.get("timezone")
-        if raw_timezone is not None and not isinstance(raw_timezone, str):
+        try:
+            requested_tz = parse_timezone(kwargs.get("timezone"))
+        except ValueError as e:
             raise InvalidToolCallParameterException(
-                "timezone", "Must be a string IANA time zone name like 'Europe/Warsaw'."
-            )
-        timezone_str = normalize_timezone_name(raw_timezone)
+                "timezone",
+                "Unknown IANA time zone. Use a name like 'Europe/Warsaw' or 'Asia/Tokyo'.",
+            ) from e
 
-        source: TimestampSource | None
-        if timezone_str is not None:
-            if not is_valid_iana_timezone(timezone_str):
-                raise InvalidToolCallParameterException(
-                    "timezone",
-                    f"Unknown IANA time zone '{timezone_str}'. "
-                    "Use a name like 'Europe/Warsaw' or 'Asia/Tokyo'.",
-                )
-            tz = ZoneInfo(timezone_str)
-            now = self.__time_provider.now().astimezone(tz)
-            # The model chose this zone; its call arguments already say so, no source label.
-            source = None
-            content = f"{now.isoformat()} ({tz})"
-        else:
-            tz = self.__time_provider.tz
-            now = self.__time_provider.now()
-            source = self.__time_provider.source
-            content = self.__time_provider.format_timestamp(now)
+        provider_tz = self.__time_provider.tz
+        tz = requested_tz or provider_tz
+        now = self.__time_provider.now().astimezone(tz)
+        # format_timestamp labels only the provider's own zone; another zone the model
+        # asked for carries no source, in the text or in the stored metadata.
+        source: TimestampSource | None = (
+            self.__time_provider.source if str(tz) == str(provider_tz) else None
+        )
+        content = self.__time_provider.format_timestamp(now)
         tz_name = str(tz)
 
         state: dict[str, Any] = {}
