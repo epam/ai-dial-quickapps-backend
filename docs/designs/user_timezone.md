@@ -7,83 +7,40 @@
 
 ## Problem Statement
 
-Time awareness ([time_awareness.md](time_awareness.md)) always works in UTC. `TimestampModule` binds
-`TimeProvider` with its constructor defaults, `ZoneInfo("UTC")` and `TimestampSource.DEFAULT`, so:
+`TimestampModule` binds `TimeProvider` with its defaults (`UTC`, `TimestampSource.DEFAULT`). The injected timestamp,
+the tool-result annotations and `current_timestamp` therefore all use UTC. "Today" or "tomorrow morning" resolves
+against UTC, so near midnight the date is wrong, and times sent to calendar tools are off by the user's offset.
 
-- the timestamp injected before every user turn is UTC;
-- every tool result is annotated with a UTC time, and the annotation has no offset
-  (`[Timestamp: 2026-10-29 11:36:12 UTC]`);
-- `current_timestamp` without an argument returns UTC, and its description tells the model "Defaults to UTC".
+The user's zone already reaches QuickApps. The reason time awareness deferred this ("Core does not pass a time zone")
+no longer holds:
 
-The user's time zone is never used. "Today", "tomorrow morning" or "this evening" resolve against UTC, so near
-midnight the agent gets the date wrong. Times passed to calendar-like tools are off by the user's UTC offset unless
-the user names their zone in every conversation. Asked "What time is it now?" from a browser in Kyiv, the agent
-answers "11:36:12 UTC" instead of 13:36 local time (verified on a local stack, 2026-10-29).
+| Hop | Today |
+|-----|-------|
+| Chat → Core | Chat sends the browser zone as `X-Timezone` ([ai-dial-chat I#8442](https://github.com/epam/ai-dial-chat/issues/8442); Chat 1.1.0+ and `development-0.x`) |
+| Core → app | `ProxyUtil.copyHeaders` forwards it unchanged |
+| QuickApps | Lands in `ForwardedHeaders` (observed: `forwarded_headers=['x-timezone', …]`); not used for time |
 
-The time awareness design deferred this because "DIAL Core does not currently pass timezone in request headers".
-That is no longer true:
-
-| Hop | Behaviour today |
-|-----|-----------------|
-| DIAL Chat → Core | Chat sends the browser's `Intl.DateTimeFormat().resolvedOptions().timeZone` as the `X-Timezone` header on every completion request ([ai-dial-chat I#8442](https://github.com/epam/ai-dial-chat/issues/8442), released in Chat 1.1.0 and also on `development-0.x`). Chat's `chat-api` rejects values that `Intl.DateTimeFormat` does not accept. |
-| Core → application | `BaseDeploymentPostController.sendProxyRequest` copies every request header except hop-by-hop, trace, API-key and application-properties headers, so `X-Timezone` reaches the app unchanged. |
-| QuickApps | `extract_x_headers_from_request` puts `x-timezone` into `ForwardedHeaders`, which are already passed on to the orchestrator LLM, MCP, REST and DIAL deployment tools. Nothing reads it for time. |
-
-No Chat or Core change is needed. The header has been observed arriving at QuickApps (`forwarded_headers=['x-timezone', …]`
-in the request log).
+No Chat or Core change is needed.
 
 ## Design Goals
 
-- When a request carries a valid IANA time zone in `X-Timezone`, the injected timestamp, the tool-result annotations
-  and `current_timestamp` (called without an argument) all use that zone.
-- An app can declare a fallback zone in `features.timestamp.default_timezone`, used when the request has no usable
-  zone (API clients, scheduled runs).
-- With neither, behaviour stays UTC.
-- An invalid header value never fails the request: it is ignored and resolution moves to the next
-  source.
-- Every timestamp the model sees carries an explicit UTC offset, so mixed-zone history stays unambiguous.
+- A valid `X-Timezone` drives the injected timestamp, the tool-result annotations and `current_timestamp` called
+  without an argument.
+- `features.timestamp.default_timezone` is the fallback when the request has none; UTC otherwise.
+- An invalid header never fails the request.
+- Every timestamp the model sees carries its UTC offset.
 
 ---
 
 ## Use Cases
 
-### UC-1: Chat user asks a date-relative question
-
-**Trigger:** A user in Kyiv opens DIAL Chat at 00:30 local time (22:30 UTC the previous day) and asks "What's on my
-calendar today?".
-**Behavior:** Chat sends `X-Timezone: Europe/Kyiv`. The injected timestamp is
-`2026-10-30T00:30:00+02:00 (Europe/Kyiv, source=request)`.
-**Outcome:** The agent queries the calendar for 30 October, not 29 October.
-
-### UC-2: API client without the header, app has a default
-
-**Trigger:** A backend integration calls the app through Core without `X-Timezone`. The app config sets
-`"default_timezone": "Europe/Warsaw"`.
-**Behavior:** The zone resolves to `Europe/Warsaw` with `source=default`.
-**Outcome:** The agent reasons in Warsaw time. A client that wants another zone sends `X-Timezone` itself.
-
-### UC-3: Invalid header value
-
-**Trigger:** A client sends `X-Timezone: UTC+3` (not an IANA name).
-**Behavior:** The value is ignored and a DEBUG record is logged (header name and value length only). Resolution
-falls back to `default_timezone`, then UTC.
-**Outcome:** The request succeeds, and the agent sees the fallback zone.
-
-### UC-4: User asks about another zone
-
-**Trigger:** A user in Kyiv asks "What time is it in Tokyo?".
-**Behavior:** The agent calls `current_timestamp` with `{"timezone": "Asia/Tokyo"}`. Without an argument the tool
-returns Kyiv time, the zone of the injected timestamp.
-**Outcome:** The agent answers with the Tokyo time. The Tokyo result is a model-made call with an explicit argument,
-so a later turn does not mistake it for the user's zone, which keeps coming from the injected timestamp.
-
-### UC-5: Zone changes inside a conversation
-
-**Trigger:** A user continues a conversation after travelling from Kyiv to New York.
-**Behavior:** Earlier synthetic timestamps and tool results keep the zone they were produced in; the new turn uses
-`America/New_York`.
-**Outcome:** The model sees `…+02:00 (Europe/Kyiv…)` and `…-04:00 (America/New_York…)` side by side. Each carries
-its offset, so ordering and elapsed time stay computable.
+| # | Trigger | Outcome |
+|---|---------|---------|
+| UC-1 | A Kyiv user asks "what's on my calendar today?" at 00:30 local (22:30 UTC) | Injected `2026-10-30T00:30:00+02:00 (Europe/Kyiv, source=request)`; the agent queries 30 Oct |
+| UC-2 | An API client sends no header; the app sets `default_timezone: Europe/Warsaw` | Warsaw time, `source=default` |
+| UC-3 | The header is `UTC+3` (invalid) | Ignored with a DEBUG record; falls back to `default_timezone`, then UTC |
+| UC-4 | A Kyiv user asks for the time in Tokyo | `current_timestamp({"timezone": "Asia/Tokyo"})` as today; with no argument it returns Kyiv time |
+| UC-5 | The user's zone changes mid-conversation | Old entries keep their zone and offset; the new turn uses the new zone |
 
 ---
 
@@ -91,184 +48,94 @@ its offset, so ordering and elapsed time stay computable.
 
 ```mermaid
 flowchart LR
-    H["X-Timezone header"] --> C["_RequestContext.timezone_header_value<br/>(raw string)"]
+    H["X-Timezone"] --> C["TIMEZONE_HEADER_VALUE (raw)"]
     C --> R{"resolve_user_timezone"}
     A["features.timestamp.default_timezone"] --> R
     R -->|"valid header"| P1["TimeProvider(zone, REQUEST)"]
     R -->|"else default set"| P2["TimeProvider(zone, DEFAULT)"]
     R -->|"else"| P3["TimeProvider(UTC, DEFAULT)"]
-    P1 & P2 & P3 --> T["injection transformer<br/>metadata enricher<br/>current_timestamp"]
 ```
 
 ### 1. Reading the header
 
-- **What:** A constant `TIMEZONE_HEADER = "X-Timezone"`, a new `_RequestContext.timezone_header_value` field, and
-  a new DI key `TIMEZONE_HEADER_VALUE = Annotated[str | None, "TIMEZONE_HEADER_VALUE"]`, all in
-  `common/_di_types.py`, which `AppModule` provides from the context.
-- **Owner:** `core/application` (`_RequestContextSetup`, `AppModule`).
-- **Semantics:** `_RequestContextSetup.setup_context` reads `request.headers.get(TIMEZONE_HEADER)` next to
-  `accept_language` and stores the raw value, or `None` when the header is absent. It does no validation. The key
-  name says "raw header value" so that no consumer uses it unvalidated. The name is fixed, unlike
-  `PROXY_LANGUAGE_HEADER`, because no proxy is known to rewrite `X-Timezone`. An env override can be added if one
-  turns up.
-- **Change:** One constant, one context field with its provider, and one line in `setup_context`.
+- `common/_di_types.py`: constant `TIMEZONE_HEADER = "X-Timezone"` and DI key
+  `TIMEZONE_HEADER_VALUE = Annotated[str | None, "TIMEZONE_HEADER_VALUE"]`.
+- `_RequestContextSetup.setup_context` stores the raw header value in `_RequestContext.timezone_header_value`, next
+  to `accept_language`. `AppModule` provides it, and no validation happens at this point.
+- The header name is fixed, with no `PROXY_*` env override, because no proxy is known to rewrite it.
 
-### 2. Resolving and validating the zone
+### 2. Resolving and validating (`timestamp_tooling`)
 
-- **What:** A pure function `resolve_user_timezone(header_value, default_timezone) -> tuple[ZoneInfo, TimestampSource]`
-  in `timestamp_tooling`, plus a shared `is_valid_iana_timezone(name)` helper in `common/` used by both the resolver
-  and the config validator.
-- **Owner:** `timestamp_tooling`.
-- **Semantics:**
-  - Precedence: valid header → `(zone, REQUEST)`; else `default_timezone` → `(zone, DEFAULT)`; else
-    `(UTC, DEFAULT)`. The user's own zone wins over the app default, because the default exists for callers that
-    cannot supply one. `TimestampSource` keeps its two existing values with these meanings: `request` means the
-    zone was given explicitly, either by the `X-Timezone` header or as a `current_timestamp` argument (§4), and
-    `default` means it is an assumption, either the app default or UTC.
-  - A name is valid when it is in a set built once at import: the 598 names in the `tzdata` package's `zones` list
-    (read with `importlib.resources`), minus `Factory`. The list has no `localtime` or `posixrules`. Calling
-    `ZoneInfo(name)` and catching errors is not enough, because it probes TZPATH with the raw string.
-    On a case-insensitive filesystem (macOS) it accepts `europe/warsaw`, which then
-    fails on Linux, and wherever a `localtime` file exists under TZPATH it resolves to the server's zone. Building
-    the set from the `tzdata` package, not the system TZPATH, makes it the same on every image for a given `tzdata`
-    version. The runtime image is `python:3.13-alpine`. `tzdata` becomes a direct dependency in `pyproject.toml`
-    (today pandas pulls it in transitively).
-  - Legacy aliases such as `Europe/Kiev` (which Chrome still reports) and `Asia/Calcutta` are in the set and are
-    accepted. They resolve to the same rules as their canonical names.
-  - Surrounding whitespace is stripped. An empty value is treated as absent. An invalid value logs a DEBUG record
-    with the header name and value length only. That is a routine rejection under CODESTYLE §9, and the value is
-    client-supplied, so it stays out of logs.
-- **Change:** New module-level function and helper; no state.
+- `resolve_user_timezone(header_value, default_timezone) -> tuple[ZoneInfo, TimestampSource]`:
+  valid header → `REQUEST`; else `default_timezone` → `DEFAULT`; else UTC → `DEFAULT`. The user's zone wins over
+  the app default.
+- `TimestampSource` keeps its two values: `request` means the zone was given explicitly (header or
+  `current_timestamp` argument), and `default` means it was assumed. A new value would break older pods during a
+  rollout, because `get_metadata_from_state` rejects unknown values.
+- `is_valid_iana_timezone(name)` in `common/` checks membership in the `tzdata` package's `zones` list (598 names)
+  minus `Factory`. It does not use `ZoneInfo(name)`, which probes the filesystem: that call accepts `europe/warsaw`
+  on macOS and resolves `localtime` to the server's zone. `tzdata` becomes a direct dependency.
+- Aliases such as `Europe/Kiev` (still reported by Chrome) are accepted as sent.
+- The value is stripped, and an empty value counts as absent. An invalid value is logged at DEBUG with the header
+  name and value length only (CODESTYLE §9).
 
-### 3. Building `TimeProvider`
+### 3. Building `TimeProvider` (`TimestampModule`)
 
-- **What:** Replace `binder.bind(TimeProvider, to=TimeProvider, scope=request_scope)` in `TimestampModule` with a
-  request-scoped `@provider` that takes `TIMEZONE_HEADER_VALUE` and `ApplicationConfig`, calls `resolve_user_timezone`,
-  and returns `TimeProvider(tz, source)`. When the timestamp feature is off, the provider returns
-  `TimeProvider()` (UTC) without resolving, so an app with `"timestamp": null` never logs header rejections.
-- **Owner:** `TimestampModule`.
-- **Semantics:** This is the seam the time-awareness design reserved.
-  The zone is resolved once per request. It is first constructed when `_MessagesSetup.run_transformers` resolves
-  `list[MessagesTransformer]` through `ProviderOf`, which happens after `setup_context` has populated the
-  context and config. The comment in `TimestampModule._provide_message_transformers` claims the list is resolved
-  during `_RequestContextSetup` construction. That has been stale since `_MessagesSetup` switched to `ProviderOf`,
-  and is corrected as part of this change. A unit test pins the ordering: a request whose header is set must
-  produce a non-UTC injected timestamp.
-  `default_timezone` is read from `features.timestamp`.
-- **Change:** One provider method instead of one binding.
+- A request-scoped `@provider` replaces the class binding. It returns `TimeProvider(*resolve_user_timezone(...))`,
+  or plain UTC without resolving when the feature is off.
+- Ordering: `TimeProvider` is first resolved through `ProviderOf` in `_MessagesSetup.run_transformers`, after
+  `setup_context`. Fix the stale comment in `_provide_message_transformers` that says otherwise. A unit test pins
+  this.
 
 ### 4. What the model sees
 
-- **What:** The tool-result annotation adds the offset, and the `current_timestamp` description changes.
-- **Owner:** `timestamp_tooling`.
-- **Semantics:**
+| Surface | Today | After (Kyiv) |
+|---------|-------|--------------|
+| Injected timestamp | `2026-10-29T11:36:12+00:00 (UTC, source=default)` | `2026-10-29T13:36:12+02:00 (Europe/Kyiv, source=request)` |
+| Tool-result annotation | `[Timestamp: 2026-10-29 11:36:12 UTC]` | `[Timestamp: 2026-10-29 13:36:12+02:00 Europe/Kyiv]` (adds `%:z`) |
+| `current_timestamp` `timezone` description | "Defaults to UTC." | "Defaults to the time zone of the injected current timestamp." |
 
-  | Surface | Today | After (Kyiv user) |
-  |---------|-------|-------------------|
-  | Injected timestamp | `2026-10-29T11:36:12+00:00 (UTC, source=default)` | `2026-10-29T13:36:12+02:00 (Europe/Kyiv, source=request)` |
-  | Tool-result annotation | `[Timestamp: 2026-10-29 11:36:12 UTC]` | `[Timestamp: 2026-10-29 13:36:12+02:00 Europe/Kyiv]` |
-  | `current_timestamp` description (`timezone` param) | "Defaults to UTC." | "Defaults to the time zone of the injected current timestamp." |
+### 5. App-level default (`config/timestamp.py`)
 
-  The injected format already carries the ISO offset, the zone name and the source. The annotation switches from
-  `strftime('%Y-%m-%d %H:%M:%S')` to the same rendering plus `%:z`. The zone name is what the client sent:
-  `Europe/Kiev` stays `Europe/Kiev`, and no canonicalization is attempted.
-  `TimestampSource` gets no new value. A new value would not parse on an older pod, because
-  `get_metadata_from_state` raises on an unknown `timestamp_source`, so a rolling deploy or rollback would fail every
-  request whose history has such a result. Explicit `current_timestamp` conversions keep `source=request`. The model
-  tells them apart from the user's zone by the tool-call argument (`{"timezone": "Asia/Tokyo"}` against the
-  argument-less injected call).
-- **Change:** One format string and one description string.
-
-### 5. App-level default
-
-- **What:** `ToolCallTimestampConfig.default_timezone: str | None = PreviewField(default=None)`.
-- **Owner:** `config/timestamp.py`.
-- **Semantics:** `None` means no app default (UTC fallback). A non-`None` value must pass `is_valid_iana_timezone`,
-  or config validation fails, like the other semantic config checks (for example hook template expressions). That
-  is deliberately stricter than the header. A typo in the app config is the author's error, and it should surface
-  the first time the author runs the app, not be silently replaced by UTC for every user. The JSON
-  schema exposes it as a plain string with an example. Inlining ~600 zone names as an `enum` would bloat the schema
-  for little gain.
-  The field is preview-gated with `PreviewField`, like other new config fields. Header-driven resolution is not
-  gated. It fixes a Stable feature, has no config surface to gate, and an app that must stay on UTC can turn the
-  feature off with `"timestamp": null` (see *Out of Scope → App-pinned zone*).
-- **Change:** One field; `make dump_app_schema` regenerates the schema.
+- Add `ToolCallTimestampConfig.default_timezone: str | None = PreviewField(default=None)`.
+- An invalid value fails config validation. A typo by the app author should be loud, not silently UTC.
+- In the schema it is a plain string; no enum of about 600 names.
+- Only the field is preview-gated. Header resolution fixes a Stable feature, and `"timestamp": null` turns it off.
 
 ---
 
 ## Secondary Fixes
 
-### `current_timestamp` with an invalid `timezone` argument
-
-`_CurrentTimestampTool._run_in_stage_async` passes the model-supplied string straight to `ZoneInfo`. On an invalid
-name the raised `ZoneInfoNotFoundError` / `ValueError` is caught by `StagedBaseTool` and the raw exception text goes
-back to the model, which works but reads poorly. The same filesystem-probing quirks apply: `europe/warsaw` succeeds on
-macOS and fails on Linux. Apply the header's normalization first: strip whitespace and treat an empty string as an
-absent argument. Models often send `""` for an optional parameter, and that must not cost a retry. Then validate
-with `is_valid_iana_timezone`, and on failure raise
-`InvalidToolCallParameterException("timezone", …)`. `StagedBaseTool` already turns that into a retry instruction for
-the model.
+- `current_timestamp` passes the model's `timezone` argument straight to `ZoneInfo`. Apply the header's
+  normalization instead: strip the value, and treat an empty string as absent (models often send `""`). Then call
+  `is_valid_iana_timezone` and raise `InvalidToolCallParameterException("timezone", …)`, so the model retries.
 
 ---
 
 ## Out of Scope
 
-### Agent learns the zone from conversation
-
-The time-awareness design deferred "I'm in Warsaw → use Warsaw from now on". With the header available on every
-Chat request, the remaining gap is API clients. They can send the header or rely on `default_timezone`. Persisting a
-learned zone across turns would need new state for a case that is now rare. Revisit if API-only apps report it.
-
-### Editor surface for `default_timezone`
-
-The Quick Apps editor (epam/ai-dial-chat) has no field for it yet; authors can set it in the JSON config. A
-follow-up editor issue will add a zone picker under the timestamp feature.
-
-### App-pinned zone
-
-An app cannot force a zone over the user's: the header always wins over `default_timezone`. An app that reasons in
-one fixed zone (for example an ops agent that reads UTC logs) can say so in its system prompt or call
-`current_timestamp` with that zone. No such app has been reported, so a `fixed` mode would be speculative. If one
-appears, a `timezone_mode: fallback | fixed` field next to `default_timezone` adds it without breaking anything.
-
-### Per-user persisted preference
-
-A zone stored in user settings would override the browser, for example for users whose OS zone is wrong. That
-belongs to Chat or Core user settings, not QuickApps, and nobody has asked for it.
+| Item | Why deferred |
+|------|--------------|
+| Learn the zone from conversation | Chat already sends the header, and API clients can send it or rely on `default_timezone` |
+| Editor field for `default_timezone` | JSON config works today; tracked as a follow-up editor issue |
+| App-pinned zone (override the user's) | No demand. Workaround: system prompt or an explicit `current_timestamp` zone. Can be added later as `timezone_mode: fallback \| fixed` |
+| Per-user stored preference | Belongs in Chat or Core user settings |
 
 ---
 
 ## Configuration / Usage Examples
 
-App config with a fallback zone:
-
 ```json
-{
-  "features": {
-    "timestamp": {
-      "injection_strategy": "tool_call",
-      "default_timezone": "Europe/Warsaw"
-    }
-  }
-}
+{ "features": { "timestamp": { "default_timezone": "Europe/Warsaw" } } }
 ```
 
-API client choosing its zone:
-
-```bash
-curl "$DIAL_URL/openai/deployments/my-app/chat/completions?api-version=2024-02-01" \
-  -H "Api-Key: $KEY" -H "X-Timezone: America/New_York" \
-  -d '{"messages":[{"role":"user","content":"What day is it?"}]}'
-```
-
-Resolution summary:
-
-| `X-Timezone` | `default_timezone` | Zone used | `source` |
-|--------------|--------------------|-----------|----------|
+| `X-Timezone` | `default_timezone` | Zone | `source` |
+|--------------|--------------------|------|----------|
 | `Europe/Kyiv` | any | `Europe/Kyiv` | `request` |
-| absent / empty | `Europe/Warsaw` | `Europe/Warsaw` | `default` |
-| `UTC+3` (invalid) | `Europe/Warsaw` | `Europe/Warsaw` | `default` (DEBUG record) |
-| absent / invalid | unset | `UTC` | `default` |
+| absent / empty / invalid | `Europe/Warsaw` | `Europe/Warsaw` | `default` |
+| absent / empty / invalid | unset | `UTC` | `default` |
+
+API clients set `X-Timezone` themselves; Core forwards it.
 
 ---
 
@@ -276,41 +143,32 @@ Resolution summary:
 
 ### Breaking changes
 
-None for configs. Behaviour changes for every Chat user with time awareness enabled (the default): timestamps the
-model sees switch from UTC to the browser's zone. That is the intended fix. An app whose system prompt assumes
-UTC (for example "all times are UTC") should drop that assumption. The release notes call this out.
+- Behaviour change: Chat users see local time instead of UTC. Apps whose prompts assume UTC should drop that
+  assumption. Call this out in the release notes.
 
 ### Non-breaking changes
 
-- `default_timezone` is optional; existing configs validate unchanged.
-- Integration-test cached LLM responses that include the `current_timestamp` tool description or tool-result
-  annotations are invalidated by the new strings and must be re-recorded.
+- `default_timezone` is optional.
+- Integration-test LLM caches that include the tool description or annotations must be re-recorded.
 
-### Known issues (recorded in `docs/time_awareness.md`)
+### Known issues (to record in `docs/time_awareness.md`)
 
 | What happens | Where | Workaround |
 |--------------|-------|------------|
-| No header, so the zone falls back to `default_timezone` or UTC | API clients and scheduled runs that do not send `X-Timezone`; Chat releases older than the one that added it | Send `X-Timezone`, or set `default_timezone` |
-| A valid but wrong zone arrives and overrides `default_timezone` | Browsers that spoof the zone, such as Firefox with `privacy.resistFingerprinting` or Tor Browser (they report `UTC` or `Atlantic/Reykjavik`, both UTC+00:00), or an OS with the wrong zone set | Fix the browser or OS setting; or the user states their zone and the agent passes it to `current_timestamp` |
+| No header, so `default_timezone` or UTC is used | API clients, scheduled runs, Chat older than I#8442 | Send `X-Timezone` or set `default_timezone` |
+| A valid but wrong zone overrides `default_timezone` | Firefox `resistFingerprinting` / Tor Browser (`UTC` or `Atlantic/Reykjavik`), or a misconfigured OS | Fix the browser or OS; or name the zone so the agent passes it to `current_timestamp` |
 
 ## Summary of Changes
 
 | Component | Change |
 |-----------|--------|
-| `core/application/_request_context.py` | Added `timezone_header_value` |
-| `core/application/_request_context_setup.py` | Reads the header into the context |
-| `core/application/app_module.py` | Provides `TIMEZONE_HEADER_VALUE` |
-| `common/_di_types.py` | Added `TIMEZONE_HEADER` constant and `TIMEZONE_HEADER_VALUE` key |
-| `common/` (new helper) | `is_valid_iana_timezone` |
-| `config/timestamp.py` | Added `default_timezone` (`PreviewField`) with validator |
-| `pyproject.toml` | `tzdata` declared as a direct dependency |
-| `timestamp_tooling/timestamp_module.py` | `TimeProvider` built by a provider from `resolve_user_timezone` (UTC when the feature is off); stale comment fixed |
-| `timestamp_tooling/` (new) | `resolve_user_timezone` |
-| `timestamp_tooling/_timestamp_annotation_transformer.py` | Annotation includes UTC offset |
-| `timestamp_tooling/_tool_configs.py` | `timezone` parameter description |
-| `timestamp_tooling/_current_timestamp_tool.py` | Validates the `timezone` argument |
-| `CONFIGURATION.md` | `default_timezone` field |
-| `docs/time_awareness.md` | Describes local-zone behaviour, resolution order and the `X-Timezone` header; new `### Known issues` subsection (see *Migration → Known issues*) |
+| `common/_di_types.py` | `TIMEZONE_HEADER`, `TIMEZONE_HEADER_VALUE` |
+| `common/` | `is_valid_iana_timezone` |
+| `core/application/` | `_RequestContext.timezone_header_value`; read in `setup_context`; provided by `AppModule` |
+| `config/timestamp.py` | `default_timezone` (`PreviewField`) with validator |
+| `timestamp_tooling/` | `resolve_user_timezone`; `TimeProvider` provider; offset in the annotation; tool description; argument validation; stale comment fixed |
+| `pyproject.toml` | `tzdata` as a direct dependency |
+| `CONFIGURATION.md`, `docs/time_awareness.md` | `default_timezone`; local-zone behaviour; known issues |
 | `docs/README.md` | Time awareness row: add this design to the L3 column |
 | App schema | Regenerated |
 
