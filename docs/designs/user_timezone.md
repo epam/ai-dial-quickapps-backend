@@ -122,7 +122,7 @@ flowchart LR
 
 | Item | Why deferred |
 |------|--------------|
-| Learn the zone from conversation | Chat already sends the header, and API clients can send it |
+| Remember a zone the user states in the conversation ("I'm in Tokyo, remember it") | Today the agent passes the stated zone to `current_timestamp` on each turn that needs it, so one extra tool call per turn. Later: a `set_user_timezone` tool that saves the zone in conversation state, used by the resolver before the header (new label, e.g. `source=user_stated`), so later turns need no call. Letting the model convert from the injected offset itself was rejected: it risks wrong DST rules |
 | App-level default zone (`default_timezone`) for requests without the header | No demand: Chat sends the header, API clients can send it, and UTC stays the fallback as today. Can be added later without breaking changes |
 | App-pinned zone (override the user's) | No demand. Workaround: system prompt or an explicit `current_timestamp` zone. Can be added later as `timezone_mode: fallback \| fixed` |
 | Per-user stored preference | Belongs in Chat or Core user settings |
