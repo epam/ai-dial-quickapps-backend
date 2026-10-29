@@ -98,7 +98,7 @@ flowchart LR
 ### 5. App-level default (`config/timestamp.py`)
 
 - Add `ToolCallTimestampConfig.default_timezone: str | None = PreviewField(default=None)`.
-- An invalid value fails config validation. A typo by the app author should be loud, not silently UTC.
+- An invalid value (per `is_valid_iana_timezone`) fails config validation. A typo by the app author should be loud, not silently UTC.
 - In the schema it is a plain string; no enum of about 600 names.
 - Only the field is preview-gated. Header resolution fixes a Stable feature, and `"timestamp": null` turns it off.
 
@@ -369,3 +369,37 @@ does not block approval.
 - **Nit 2 (Summary pointer; line width)** — **resolved.** The `docs/time_awareness.md` row now points to
   *Migration → Known issues*. The UC-3 *Behavior* line and the §2 validation bullet are wrapped. The remaining wide
   lines are table rows, apart from lines 32 and 85, which are only a few characters over the wrap width.
+
+---
+
+## Review Notes — Round 4
+
+- **Reviewer:** Claude (quickapps-design-review skill)
+- **Date:** 2026-10-29
+
+### Verdict
+
+`Approval-ready`
+
+The condensed body keeps every decision from Round 3: the precedence order, the two-value `TimestampSource` and
+why it stays at two (the rollback limit, now in §2), validation against the `tzdata` list minus `Factory` with
+`tzdata` as a direct dependency, aliases kept as sent, strip/empty-as-absent with a DEBUG log of the length only,
+the UTC short-circuit when the feature is off, the stale-comment fix with its ordering test, `PreviewField` gating
+of the field only, the `current_timestamp` argument normalization, all four Out of Scope items, and both known-issue
+rows. The one new factual claim holds: `ProxyUtil.copyHeaders` (ai-dial-core `ProxyUtil.java:70`, called from
+`BaseDeploymentPostController.sendProxyRequest`) drops only hop-by-hop, trace and the excluded auth/application
+headers, so `X-Timezone` reaches the app unchanged. The §3 ordering claim still matches `_RequestContextSetup`:
+`setup_messages` → `run_transformers` runs after `setup_context`. The §4 annotation still renders `timezone_name`,
+so the after value shows `Europe/Kyiv` (not `EET`).
+
+### Nits
+
+1. **[Proposed Design §5]** — The condensing dropped which check the config validator uses. The earlier text said
+   a non-`None` `default_timezone` "must pass `is_valid_iana_timezone`". Now §5 says only "An invalid value fails
+   config validation". If the validator used `ZoneInfo(name)` instead, `europe/warsaw` would pass on a macOS dev
+   machine and then fail in `ZoneInfo` on Linux on every request.
+   **Suggestion:** "An invalid value (per `is_valid_iana_timezone`) fails config validation."
+
+### Changes since previous round
+
+- **Nit 1 (Tor Browser zone)** — **resolved.** The *Known issues* row names `UTC` or `Atlantic/Reykjavik`.
