@@ -1,7 +1,7 @@
 import logging
 
 from fastapi_injector import request_scope
-from injector import AssistedBuilder, Binder, Module, multiprovider, provider
+from injector import AssistedBuilder, Binder, Module, ProviderOf, multiprovider, provider
 
 from quickapp.common import TIMEZONE_HEADER_VALUE, StagedBaseTool
 from quickapp.common.abstract.base_transformer import MessagesTransformer, PreInvocationTransformer
@@ -41,12 +41,9 @@ class TimestampModule(Module):
 
     @provider
     @request_scope
-    def _provide_time_provider(
-        self, app_config: ApplicationConfig, timezone_header_value: TIMEZONE_HEADER_VALUE
-    ) -> TimeProvider:
-        if app_config.features is None or app_config.features.timestamp is None:
-            return TimeProvider()
-        return resolve_user_timezone(timezone_header_value)
+    def _provide_time_provider(self, timezone_header_value: TIMEZONE_HEADER_VALUE) -> TimeProvider:
+        tz, label = resolve_user_timezone(timezone_header_value)
+        return TimeProvider(tz=tz, label=label)
 
     @staticmethod
     def _is_timestamp_feature_enabled(app_config: ApplicationConfig) -> bool:
@@ -70,15 +67,15 @@ class TimestampModule(Module):
             )
         ]
 
-    # Always registered — the transformer self-gates on the feature flag. The list is
-    # resolved lazily (ProviderOf in _MessagesSetup), after setup_context, so its
-    # TimeProvider dependency already sees the request's config and headers.
     @multiprovider
     def _provide_message_transformers(
         self,
-        injection_transformer: _TimestampInjectionTransformer,
+        app_config: ApplicationConfig,
+        injection_transformer: ProviderOf[_TimestampInjectionTransformer],
     ) -> list[MessagesTransformer]:
-        return [injection_transformer]
+        if not self._is_timestamp_feature_enabled(app_config):
+            return []
+        return [injection_transformer.get()]
 
     @multiprovider
     def _provide_pre_invocation_transformers(
@@ -94,8 +91,8 @@ class TimestampModule(Module):
     def _provide_enrichers(
         self,
         app_config: ApplicationConfig,
-        time_provider: TimeProvider,
+        time_provider: ProviderOf[TimeProvider],
     ) -> list[ToolCallResultEnricher]:
         if not self._is_timestamp_feature_enabled(app_config):
             return []
-        return [_TimestampMetadataEnricher(time_provider)]
+        return [_TimestampMetadataEnricher(time_provider.get())]

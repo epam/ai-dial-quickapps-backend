@@ -67,8 +67,8 @@ flowchart LR
 
 ### 2. Resolving and validating (`timestamp_tooling`)
 
-- `resolve_user_timezone(header_value) -> TimeProvider` sets the zone and the label the model sees; the stored
-  `TimestampSource` is derived from the label.
+- `resolve_user_timezone(header_value) -> (ZoneInfo, TimezoneLabel)` returns the zone and the label the model
+  sees; `TimeProvider` derives the stored `TimestampSource` from the label.
 
   | Zone from | Stored `timestamp_source` | Label shown to the model |
   |-----------|---------------------------|--------------------------|
@@ -89,15 +89,17 @@ flowchart LR
 
 ### 3. Building `TimeProvider` (`TimestampModule`)
 
-- A request-scoped `@provider` replaces the class binding. It builds `TimeProvider` from `resolve_user_timezone`,
-  or uses UTC/`fallback` without resolving when the feature is off. `TimeProvider` gains a non-persisted
-  `label` (`TimezoneLabel`), which `format_timestamp` renders.
+- A request-scoped `@provider` replaces the class binding and builds `TimeProvider` from `resolve_user_timezone`.
+  `TimeProvider` gains a non-persisted `label` (`TimezoneLabel`), which `format_timestamp` renders.
+- Feature gating: `_provide_message_transformers` returns `[]` when the feature is off, like the tool,
+  annotation and enricher providers; the injection transformer drops its own run-time check. Providers take
+  `TimeProvider` and the transformer through `ProviderOf`, so nothing builds them when the feature is off.
 - Independent of the injection strategy: injectors only call `TimeProvider` (`tz`, `label`,
   `format_timestamp`), so the `<app_context>` delivery planned in
   [I#661](https://github.com/epam/ai-dial-quickapps-backend/issues/661) reuses the resolved zone as is.
 - Ordering: `TimeProvider` is first resolved through `ProviderOf` in `_MessagesSetup.run_transformers` (from
-  `setup_messages`), after `setup_context`. Fix the stale comment in `_provide_message_transformers` that says
-  otherwise. A unit test pins this.
+  `setup_messages`), after `setup_context`, which is also why the transformer list can be gated on config. Drop
+  the stale comment in `_provide_message_transformers` that says otherwise. A unit test pins this.
 
 ### 4. What the model sees
 
@@ -106,7 +108,7 @@ flowchart LR
 | Injected timestamp | `2026-10-29T11:36:12+00:00 (UTC, source=default)` | `2026-10-29T13:36:12+02:00 (Europe/Kyiv, source=user)` |
 | `current_timestamp` with an LLM argument | `…+09:00 (Asia/Tokyo, source=request)` | `…+09:00 (Asia/Tokyo)`; stored `timestamp_source` is `None` |
 | Tool-result annotation | `[Timestamp: 2026-10-29 11:36:12 UTC]` | `[Timestamp: 2026-10-29 13:36:12+02:00 Europe/Kyiv]` (adds `%:z`) |
-| `current_timestamp` `timezone` description | "Defaults to UTC." | "Defaults to the time zone of the injected current timestamp." |
+| `current_timestamp` `timezone` description | "Defaults to UTC." | "Defaults to the user's time zone, or UTC if it is unknown." |
 
 ---
 
@@ -172,7 +174,7 @@ API clients set `X-Timezone` themselves; Core forwards it.
 | `common/` | `is_valid_iana_timezone` |
 | `core/application/` | `_RequestContext.timezone_header_value`; read in `setup_context`; provided by `AppModule` |
 | `common/time_provider.py` | `TimezoneLabel`; `label`, rendered by `format_timestamp` |
-| `timestamp_tooling/` | `resolve_user_timezone`; `TimeProvider` provider; offset in the annotation; tool description; argument validation; LLM-argument results store `None` with no source text; stale comment fixed |
+| `timestamp_tooling/` | `resolve_user_timezone`; `TimeProvider` provider; offset in the annotation; tool description; argument validation; LLM-argument results store `None` with no source text; transformer list gated on the feature; stale comment removed |
 | `pyproject.toml` | `tzdata` as a direct dependency |
 | `CONFIGURATION.md`, `docs/time_awareness.md` | Local-zone behaviour; known issues |
 | `docs/README.md` | Time awareness row: add this design to the L3 column |

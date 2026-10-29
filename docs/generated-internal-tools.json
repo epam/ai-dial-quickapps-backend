@@ -412,7 +412,7 @@
     "properties": {
       "timezone": {
         "type": "string",
-        "description": "IANA timezone name (e.g. 'Asia/Tokyo'). Defaults to the time zone of the injected current timestamp."
+        "description": "IANA timezone name (e.g. 'Asia/Tokyo'). Defaults to the user's time zone, or UTC if it is unknown."
       }
     }
   },

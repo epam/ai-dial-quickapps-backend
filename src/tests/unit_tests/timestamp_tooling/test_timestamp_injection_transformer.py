@@ -1,13 +1,9 @@
-from types import SimpleNamespace
-from unittest.mock import Mock
-
 import pytest
 from aidial_sdk.chat_completion import Message, Role
 
 from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher
 from quickapp.common.message_metadata import get_metadata_from_state
 from quickapp.common.time_provider import TimeProvider
-from quickapp.config.timestamp import ToolCallTimestampConfig
 from quickapp.timestamp_tooling._timestamp_injection_transformer import (
     _TimestampInjectionTransformer,
 )
@@ -19,21 +15,11 @@ from quickapp.timestamp_tooling._tool_configs import (
 from tests.unit_tests.common.common import make_provider
 
 
-def _make_config_provider(enabled: bool = True) -> Mock:
-    features = SimpleNamespace(timestamp=ToolCallTimestampConfig() if enabled else None)
-    config = SimpleNamespace(features=features)
-    provider = Mock()
-    provider.get.return_value = config
-    return provider
-
-
 def _make_transformer(
-    enabled: bool = True,
     enrichers: list[ToolCallResultEnricher] | None = None,
 ) -> _TimestampInjectionTransformer:
     return _TimestampInjectionTransformer(
         time_provider=TimeProvider(),
-        config_provider=_make_config_provider(enabled),
         enrichers_provider=make_provider(enrichers if enrichers is not None else []),
     )
 
@@ -95,14 +81,6 @@ class TestTimestampInjectionTransformer:
     async def test_empty_messages_returns_empty(self):
         transformer = _make_transformer()
         messages: list[Message] = []
-        result = await transformer.transform(messages)
-
-        assert result is messages
-
-    @pytest.mark.asyncio
-    async def test_noop_when_feature_disabled(self):
-        transformer = _make_transformer(enabled=False)
-        messages = [Message(role=Role.USER, content="hi")]
         result = await transformer.transform(messages)
 
         assert result is messages
