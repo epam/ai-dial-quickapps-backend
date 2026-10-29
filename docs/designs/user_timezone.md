@@ -65,8 +65,8 @@ calendar today?".
 ### UC-3: Invalid header value
 
 **Trigger:** A client sends `X-Timezone: UTC+3` (not an IANA name).
-**Behavior:** The value is ignored and a DEBUG record is logged (header name and value length only). Resolution falls back to
-`default_timezone`, then UTC.
+**Behavior:** The value is ignored and a DEBUG record is logged (header name and value length only). Resolution
+falls back to `default_timezone`, then UTC.
 **Outcome:** The request succeeds, and the agent sees the fallback zone.
 
 ### UC-4: User asks about another zone
@@ -123,10 +123,12 @@ flowchart LR
   - Precedence: valid header → `(zone, REQUEST)`; else `default_timezone` → `(zone, DEFAULT)`; else
     `(UTC, DEFAULT)`. The user's own zone wins over the app default, because the default exists for callers that
     cannot supply one. `TimestampSource` keeps its two existing values with these meanings: `request` means the
-    zone came from the request, and `default` means it is an assumption, either the app default or UTC.
+    zone was given explicitly, either by the `X-Timezone` header or as a `current_timestamp` argument (§4), and
+    `default` means it is an assumption, either the app default or UTC.
   - A name is valid when it is in a set built once at import: the 598 names in the `tzdata` package's `zones` list
-    (read with `importlib.resources`), minus `Factory`. The list has no `localtime` or `posixrules`. Calling `ZoneInfo(name)` and catching errors is not enough, because it probes
-    TZPATH with the raw string. On a case-insensitive filesystem (macOS) it accepts `europe/warsaw`, which then
+    (read with `importlib.resources`), minus `Factory`. The list has no `localtime` or `posixrules`. Calling
+    `ZoneInfo(name)` and catching errors is not enough, because it probes TZPATH with the raw string.
+    On a case-insensitive filesystem (macOS) it accepts `europe/warsaw`, which then
     fails on Linux, and wherever a `localtime` file exists under TZPATH it resolves to the server's zone. Building
     the set from the `tzdata` package, not the system TZPATH, makes it the same on every image for a given `tzdata`
     version. The runtime image is `python:3.13-alpine`. `tzdata` becomes a direct dependency in `pyproject.toml`
@@ -201,7 +203,9 @@ flowchart LR
 `_CurrentTimestampTool._run_in_stage_async` passes the model-supplied string straight to `ZoneInfo`. On an invalid
 name the raised `ZoneInfoNotFoundError` / `ValueError` is caught by `StagedBaseTool` and the raw exception text goes
 back to the model, which works but reads poorly. The same filesystem-probing quirks apply: `europe/warsaw` succeeds on
-macOS and fails on Linux. Validate with `is_valid_iana_timezone`, and on failure raise
+macOS and fails on Linux. Apply the header's normalization first: strip whitespace and treat an empty string as an
+absent argument. Models often send `""` for an optional parameter, and that must not cost a retry. Then validate
+with `is_valid_iana_timezone`, and on failure raise
 `InvalidToolCallParameterException("timezone", …)`. `StagedBaseTool` already turns that into a retry instruction for
 the model.
 
@@ -306,7 +310,7 @@ UTC (for example "all times are UTC") should drop that assumption. The release n
 | `timestamp_tooling/_tool_configs.py` | `timezone` parameter description |
 | `timestamp_tooling/_current_timestamp_tool.py` | Validates the `timezone` argument |
 | `CONFIGURATION.md` | `default_timezone` field |
-| `docs/time_awareness.md` | Describes local-zone behaviour, resolution order and the `X-Timezone` header; new `### Known issues` subsection (see below) |
+| `docs/time_awareness.md` | Describes local-zone behaviour, resolution order and the `X-Timezone` header; new `### Known issues` subsection (see *Migration → Known issues*) |
 | `docs/README.md` | Time awareness row: add this design to the L3 column |
 | App schema | Regenerated |
 
@@ -405,3 +409,65 @@ belongs to the user. Several suggestions tighten the validation rationale, migra
 5. **[Secondary Fixes]** — Name the existing mechanism. Raising `InvalidToolCallParameterException("timezone", …)`
    (`common/exceptions/invalid_tool_call_parameter.py`) already becomes a retry instruction in
    `StagedBaseTool.__run_tool_body`, so a new error path is not needed.
+
+---
+
+## Review Notes — Round 2
+
+- **Reviewer:** Claude (quickapps-design-review skill)
+- **Date:** 2026-10-29
+
+### Verdict
+
+`Ready for approval pending minor suggestions`
+
+All Round 1 findings are addressed. Keeping `TimestampSource` at two values is the right trade-off. It avoids the
+rollback break, and the zone the model should treat as the user's is the one in the argument-less injected
+`current_timestamp` pair. `_TimestampInjectionTransformer` appends that pair on every turn (`InjectionFrequency.ALWAYS`,
+with `get_arguments()` returning `{}`). The new claims hold against the code and the locked packages:
+
+- `tzdata` 2026.4 lists 598 zones. `Factory`, `Europe/Kiev` and `Asia/Calcutta` are in the list, and `localtime` and
+  `posixrules` are not.
+- A persisted `response_timestamp` keeps its offset through the `TimestampMetadata` round-trip, so `%:z` renders
+  correctly for both old and new history.
+- Older pods render the new metadata without errors.
+- `LazyOnDemandStrategyModule.provide_message_transformers` already injects `ApplicationConfig` directly into a
+  `MessagesTransformer` provider, so the new `TimeProvider` provider is safe at the point §3 names.
+
+Nothing below blocks approval.
+
+### Suggestions
+
+1. **[Secondary Fixes]** — The `timezone` argument does not get the normalization that §2 gives the header. Models
+   often fill an optional string parameter with `""`. `ZoneInfo("")` raises `ValueError` today. After this change it
+   raises `InvalidToolCallParameterException`, which costs a retry round-trip for a call that only wanted the default
+   zone.
+   **Suggestion:** Use the header's rule: strip whitespace, and treat an empty value as absent (that is, use the
+   `TimeProvider` zone).
+
+### Nits
+
+1. **[Proposed Design §2 vs §4]** — §2 says "`request` means the zone came from the request", but §4 says explicit
+   `current_timestamp` conversions also keep `source=request`. Make §2's definition cover both cases, for example
+   "`request` means the zone was given explicitly, by the `X-Timezone` header or by the tool's `timezone` argument".
+2. **[Summary of Changes; formatting]** — The `docs/time_awareness.md` row says "new `### Known issues` subsection
+   (see below)", but that table is above it, under *Migration*. Line 128 (the §2 validation bullet, 178 characters) and
+   line 68 (UC-3 *Behavior*) are much wider than the wrap width the rest of the doc uses.
+
+### Changes since previous round
+
+- **Blocking 1 (`source=request` overload)** — **resolved.** The doc keeps two values and drops the §4 claim. It
+  explains how the model tells the cases apart (by the tool-call argument) and gives the rollback reason for not adding
+  a value. One wording leftover is Nit 1.
+- **Suggestion 1 (validation set)** — **resolved.** The set is built from the `tzdata` `zones` list minus `Factory`,
+  and `tzdata` becomes a direct dependency. Checked against tzdata 2026.4.
+- **Suggestion 2 (unknown enum value on older pods)** — **resolved (moot).** No new value is added, and §4 gives the
+  rollback limit as the reason.
+- **Suggestion 3 (feature-off path)** — **resolved.** The provider returns UTC without resolving, and §3 and
+  *Summary of Changes* agree.
+- **Suggestion 4 (pinning and gating)** — **resolved.** *Out of Scope → App-pinned zone* gives the workaround and the
+  future shape. `default_timezone` is a `PreviewField`, and §5 explains why header resolution is not gated.
+- **Suggestion 5 (documentation hierarchy)** — **resolved.** The known-issues table is aimed at
+  `docs/time_awareness.md`. That guide has no Troubleshooting table, so no row is needed there. The `docs/README.md` L3
+  link is listed in *Summary of Changes*.
+- **Nits 1–5** — **resolved.**
