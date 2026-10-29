@@ -1,7 +1,9 @@
 # Design: User Time Zone
 
-- **Status:** Approved
+- **Status:** Implemented
 - **Approved:** 2026-10-29
+- **User-facing:** [CONFIGURATION - Timestamp](../../CONFIGURATION.md#timestamp-configuration),
+  [Time awareness - Time zone](../time_awareness.md#time-zone)
 - **Issue:** [I#649](https://github.com/epam/ai-dial-quickapps-backend/issues/649)
 - **Dependencies:**
   - [Time Awareness](time_awareness.md)

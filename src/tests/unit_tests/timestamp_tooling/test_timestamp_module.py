@@ -32,8 +32,7 @@ class TestProvideTimeProvider:
         assert tp.source == TimestampSource.REQUEST
         assert tp.label == TimezoneLabel.USER
 
-    def test_app_default_without_header(self, monkeypatch):
-        monkeypatch.setenv("ENABLE_PREVIEW_FEATURES", "true")
+    def test_app_default_without_header(self):
         config = ToolCallTimestampConfig(default_timezone="Europe/Warsaw")
         tp = _provide(_app_config(config), None)
 
@@ -66,8 +65,7 @@ class TestProvideTimeProvider:
 
 
 class TestDefaultTimezoneConfig:
-    def test_valid_zone_is_accepted(self, monkeypatch):
-        monkeypatch.setenv("ENABLE_PREVIEW_FEATURES", "true")
+    def test_valid_zone_is_accepted(self):
         config = ToolCallTimestampConfig(default_timezone="Europe/Kiev")
 
         assert config.default_timezone == "Europe/Kiev"
@@ -76,7 +74,6 @@ class TestDefaultTimezoneConfig:
         assert ToolCallTimestampConfig().default_timezone is None
 
     @pytest.mark.parametrize("value", ["UTC+3", "europe/warsaw", "localtime"])
-    def test_invalid_zone_fails_validation(self, monkeypatch, value):
-        monkeypatch.setenv("ENABLE_PREVIEW_FEATURES", "true")
+    def test_invalid_zone_fails_validation(self, value):
         with pytest.raises(ValidationError, match="default_timezone"):
             ToolCallTimestampConfig(default_timezone=value)
