@@ -291,7 +291,7 @@ UTC (for example "all times are UTC") should drop that assumption. The release n
 | What happens | Where | Workaround |
 |--------------|-------|------------|
 | No header, so the zone falls back to `default_timezone` or UTC | API clients and scheduled runs that do not send `X-Timezone`; Chat releases older than the one that added it | Send `X-Timezone`, or set `default_timezone` |
-| A valid but wrong zone arrives and overrides `default_timezone` | Browsers that spoof the zone, such as Firefox with `privacy.resistFingerprinting` or Tor Browser (both report `UTC`), or an OS with the wrong zone set | Fix the browser or OS setting; or the user states their zone and the agent passes it to `current_timestamp` |
+| A valid but wrong zone arrives and overrides `default_timezone` | Browsers that spoof the zone, such as Firefox with `privacy.resistFingerprinting` or Tor Browser (they report `UTC` or `Atlantic/Reykjavik`, both UTC+00:00), or an OS with the wrong zone set | Fix the browser or OS setting; or the user states their zone and the agent passes it to `current_timestamp` |
 
 ## Summary of Changes
 
@@ -471,3 +471,43 @@ Nothing below blocks approval.
   `docs/time_awareness.md`. That guide has no Troubleshooting table, so no row is needed there. The `docs/README.md` L3
   link is listed in *Summary of Changes*.
 - **Nits 1–5** — **resolved.**
+
+---
+
+## Review Notes — Round 3
+
+- **Reviewer:** Claude (quickapps-design-review skill)
+- **Date:** 2026-10-29
+
+### Verdict
+
+`Approval-ready`
+
+All Round 2 findings are resolved, and the new text holds against the code. The `current_timestamp` normalization
+in *Secondary Fixes* makes an empty or whitespace-only argument fall into the existing `timezone_str is None` branch
+of `_CurrentTimestampTool._run_in_stage_async`, which takes both the zone and the source from `TimeProvider`. So a
+`{"timezone": ""}` call returns the same result as an argument-less one, and §2's two-way definition of
+`source=request` stays true. Re-checked on Python 3.13: `%:z` renders `+02:00` both on a live `ZoneInfo` datetime
+and after the `TimestampMetadata` JSON round-trip. The UC-1 and UC-5 offsets are correct for the dates used: Kyiv is
+`+02:00` after 25 October 2026 and New York is `-04:00` until 1 November 2026. Only one factual nit remains, and it
+does not block approval.
+
+### Nits
+
+1. **[Migration — Known issues, row 2]** — "(they report `UTC` or `Atlantic/Reykjavik`, both UTC+00:00)" is out of date. Tor Browser switched its spoofed
+   zone from `UTC` to `Atlantic/Reykjavik` in early 2024 (tor-browser bug 42397), because sites block
+   `Atlantic/Reykjavik` less often than plain `UTC`. Mozilla's own description of `resistFingerprinting` says the zone is
+   reported as "UTC or Icelandic". The behaviour the row describes is still right: either value is a valid IANA name,
+   so the header wins over `default_timezone`, with a +00:00 offset. This row is going to be copied into
+   `docs/time_awareness.md`, so it should name the right value. Suggested wording: "(report `UTC` or
+   `Atlantic/Reykjavik`, both UTC+00:00)".
+
+### Changes since previous round
+
+- **Suggestion 1 (empty `timezone` argument)** — **resolved.** *Secondary Fixes* now strips the argument and treats
+  an empty value as absent before validation, so the call does not cost a retry.
+- **Nit 1 (§2 definition of `request`)** — **resolved.** §2 now says the zone was "given explicitly, either by the
+  `X-Timezone` header or as a `current_timestamp` argument". This matches §4 and the tool code.
+- **Nit 2 (Summary pointer; line width)** — **resolved.** The `docs/time_awareness.md` row now points to
+  *Migration → Known issues*. The UC-3 *Behavior* line and the §2 validation bullet are wrapped. The remaining wide
+  lines are table rows, apart from lines 32 and 85, which are only a few characters over the wrap width.
