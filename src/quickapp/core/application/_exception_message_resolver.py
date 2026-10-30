@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import Any
 
 import httpx
@@ -104,6 +105,18 @@ _CODE_MESSAGES: dict[str, str] = {
     "context_length_exceeded": _MSG_AI_MODEL_CONTEXT_LENGTH,
     "truncate_prompt_error": _MSG_AI_MODEL_CONTEXT_LENGTH,
 }
+
+# Provider wordings for a 400 that carries no known code (e.g. Anthropic via DIAL
+# adapters). Matched against the internal message only; it is never shown.
+_MESSAGE_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    # Anthropic
+    (re.compile(r"prompt is too long", re.IGNORECASE), _MSG_AI_MODEL_CONTEXT_LENGTH),
+    # Gemini
+    (
+        re.compile(r"input token count .* exceeds the maximum", re.IGNORECASE),
+        _MSG_AI_MODEL_CONTEXT_LENGTH,
+    ),
+)
 
 
 class ErrorDetails(BaseModel):
@@ -216,6 +229,15 @@ def _resolve_by_code(details: ErrorDetails) -> _Resolution | None:
         return None
     message = _CODE_MESSAGES.get(details.code)
     return (message, False) if message is not None else None
+
+
+def _resolve_by_message(details: ErrorDetails) -> _Resolution | None:
+    if details.status_code != 400 or not details.message:
+        return None
+    for pattern, message in _MESSAGE_PATTERNS:
+        if pattern.search(details.message):
+            return message, False
+    return None
 
 
 def _resolve_ai_model_status(status: int | None) -> _Resolution | None:
@@ -358,9 +380,10 @@ def _compose(message: str, retryable: bool, details: ErrorDetails) -> ResolvedEr
 def resolve_exception(e: Exception) -> ResolvedError:
     """Resolve any exception into user-facing text plus a retryability classification.
 
-    Precedence: display_message -> code map -> status/type map -> stream-failure rule ->
-    internal map -> tool-error -> fallback. Never leaks raw internal detail: only
-    ``display_message`` (user-safe by contract) and curated canned messages reach the user.
+    Precedence: display_message -> code map -> message patterns -> status/type map ->
+    stream-failure rule -> internal map -> tool-error -> fallback. Never leaks raw internal
+    detail: only ``display_message`` (user-safe by contract) and curated canned messages
+    reach the user.
     """
     details = _extract_error_details(e)
 
@@ -381,26 +404,31 @@ def resolve_exception(e: Exception) -> ResolvedError:
     if resolution is not None:
         return _compose(*resolution, details)
 
-    # 3. Status / type ladders (source-specific wording; unmatched -> None to continue).
+    # 3. A 400 without a known code whose internal message matches a known provider wording.
+    resolution = _resolve_by_message(details)
+    if resolution is not None:
+        return _compose(*resolution, details)
+
+    # 4. Status / type ladders (source-specific wording; unmatched -> None to continue).
     resolution = _resolve_status_or_type(e, details)
     if resolution is not None:
         return _compose(*resolution, details)
 
-    # 4. Mid-stream openai APIError with no usable status/code — terminal for the stream
+    # 5. Mid-stream openai APIError with no usable status/code — terminal for the stream
     #    path, so a mid-stream failure can never reach the generic fallback.
     if isinstance(e, openai.APIError) and not isinstance(e, openai.APIStatusError):
         return _compose(_MSG_AI_MODEL_STREAM_FAILURE, True, details)
 
-    # 5. Internal, in-process exceptions.
+    # 6. Internal, in-process exceptions.
     resolution = _resolve_internal(e)
     if resolution is not None:
         return _compose(*resolution, details)
 
-    # 6. Tool errors: delegate to cause-aware resolution.
+    # 7. Tool errors: delegate to cause-aware resolution.
     if isinstance(e, ToolErrorException):
         resolved = _resolve_tool_error(e)
         if resolved is not None:
             return resolved
 
-    # 7. Generic fallback (non-retryable).
+    # 8. Generic fallback (non-retryable).
     return _compose(_FALLBACK_MESSAGE, False, details)

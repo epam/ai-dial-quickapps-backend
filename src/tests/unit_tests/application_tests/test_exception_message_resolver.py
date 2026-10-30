@@ -263,6 +263,65 @@ class TestCodeMap:
         assert "context length" in resolve_exception(e).message.lower()
 
 
+class TestMessagePatterns:
+    @pytest.mark.parametrize(
+        "upstream_message",
+        [
+            "prompt is too long: 1008024 tokens > 1000000 maximum",
+            "The input token count (1100000) exceeds the maximum number of tokens allowed (1048576).",
+        ],
+    )
+    def test_context_overflow_wording_on_codeless_400(self, upstream_message: str) -> None:
+        e = _make_openai_status_error(
+            openai.BadRequestError,
+            400,
+            body={"error": {"code": "400", "message": upstream_message}},
+        )
+        resolved = resolve_exception(e)
+        assert "context length" in resolved.message.lower()
+        assert resolved.retryable is False
+
+    def test_context_overflow_wording_mid_stream(self) -> None:
+        e = _make_openai_api_error(
+            body={"code": "400", "message": "prompt is too long: 1008024 tokens > 1000000 maximum"}
+        )
+        assert "context length" in resolve_exception(e).message.lower()
+
+    def test_context_overflow_wording_on_aidial_exception(self) -> None:
+        e = AiDialInvalidRequestError(
+            message="prompt is too long: 1008024 tokens > 1000000 maximum"
+        )
+        assert "context length" in resolve_exception(e).message.lower()
+
+    def test_context_overflow_raw_detail_not_leaked(self) -> None:
+        e = _make_openai_status_error(
+            openai.BadRequestError,
+            400,
+            body={"error": {"message": "prompt is too long: 1008024 tokens > 1000000 maximum"}},
+        )
+        message = resolve_exception(e).message
+        assert "1008024" not in message
+        assert "prompt is too long" not in message
+
+    def test_unrelated_400_message_stays_invalid_request(self) -> None:
+        e = _make_openai_status_error(
+            openai.BadRequestError,
+            400,
+            body={"error": {"code": "400", "message": "messages: unexpected role"}},
+        )
+        assert "rejected as invalid" in resolve_exception(e).message.lower()
+
+    def test_context_overflow_wording_on_non_400_uses_status_ladder(self) -> None:
+        e = _make_openai_status_error(
+            openai.InternalServerError,
+            500,
+            body={"error": {"message": "prompt is too long: 1008024 tokens > 1000000 maximum"}},
+        )
+        resolved = resolve_exception(e)
+        assert "context length" not in resolved.message.lower()
+        assert resolved.retryable is True
+
+
 class TestStreamFailure:
     def test_plain_api_error_without_body_is_stream_failure(self) -> None:
         resolved = resolve_exception(_make_openai_api_error(body=None))
