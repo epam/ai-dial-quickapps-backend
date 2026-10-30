@@ -47,7 +47,7 @@ REMOTE_DIAL_API_KEY=...
 | `test_multi_tool.py` | Multi-tool chaining and multi-turn conversations |
 | `test_e2e.py` | Happy-path smoke tests (always live, no cache) |
 | `test_hidden_from_model.py` | MCP tools listed in `hidden_from_model`: callable by hooks, absent from the `tools` sent to the LLM, `requires_mcp`, live (`no_cache=True`) |
-| `test_usage_statistics.py` | A deployment tool's usage reaches the "Usage Statistics" stage; the tool is a stub deployment served by the cache middleware (`test_runner/stub_deployment.py`) that reports usage only on `stream_options.include_usage`; live orchestrator (`no_cache=True`) |
+| `test_usage_statistics.py` | A deployment tool's usage reaches the "Usage Statistics" stage; the tool is a stub deployment served by the cache middleware (`test_runner/stub_deployment.py`) that reports usage only on `stream_options.include_usage`; also covers an offloaded tool result keeping its usage (`TOOL_CALL_RESULT_OFFLOAD__SIZE_THRESHOLD` lowered via `env=`); live orchestrator (`no_cache=True`) |
 
 ## Writing a New Test
 
