@@ -38,6 +38,7 @@ See [Feature Lifecycle](../README.md#feature-lifecycle) in the root README.
 | Orchestrator / agent loop | [CONFIGURATION — Orchestrator](../CONFIGURATION.md#orchestrator-configuration) | [agent.md](./agent.md) | — |
 | Attachment strategy (`lazy_on_demand`) | [CONFIGURATION — Attachment strategy](../CONFIGURATION.md#attachment-strategy-configuration) | [agent.md](./agent.md#orchestrator-attachment-strategies) | [pass_attachments_to_orchestrator.md](./designs/pass_attachments_to_orchestrator.md) |
 | Tool sets (REST, MCP, DIAL, internal) | [CONFIGURATION — Tool sets](../CONFIGURATION.md#tool-sets-configuration) | [agent.md](./agent.md) | — |
+| Prompt caching (tools, system prompt, history) | [CONFIGURATION — Environment Variables](../CONFIGURATION.md#environment-variables) | [agent.md](./agent.md#prompt-caching) | [prompt_cache_breakpoints.md](./designs/prompt_cache_breakpoints.md) |
 | Tool fallbacks | [CONFIGURATION — Tool Fallback](../CONFIGURATION.md#tool-fallback-configuration) | — | [fallback_strategies_refactor.md](./designs/fallback_strategies_refactor.md) |
 | File transfer (`file:{prefix}::`) | — | [file_transfer.md](./file_transfer.md) | — |
 | External URL egress | [CONFIGURATION — External URL fetch](../CONFIGURATION.md#external-url-fetch-configuration) | [file_transfer.md](./file_transfer.md) | [external_url_attachments.md](./designs/external_url_attachments.md) |

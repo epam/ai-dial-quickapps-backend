@@ -55,6 +55,7 @@ from quickapp.core.agent._orchestrator_deployment_initializer import (
     _OrchestratorDeploymentInitializer,
     _OrchestratorStaticToolsContext,
 )
+from quickapp.core.agent._prompt_cache_breakpoints import _PromptCacheBreakpoints
 from quickapp.core.agent._prompt_providers import ConfigBasedPromptProvider
 from quickapp.core.agent._scrub_extra_fields_transformer import _ScrubExtraFieldsTransformer
 from quickapp.core.agent._suppressed_attachment_registry import SuppressedAttachmentRegistry
@@ -110,6 +111,7 @@ class AgentModule(Module):
         )
         binder.bind(AssistantInvoker, to=AssistantInvoker, scope=NoScope)
         binder.bind(_ChatCompletionConfigBuilder, to=_ChatCompletionConfigBuilder, scope=NoScope)
+        binder.bind(_PromptCacheBreakpoints, to=_PromptCacheBreakpoints, scope=singleton)
         binder.bind(LazyLoadedToolsHolder, to=LazyLoadedToolsHolder, scope=request_scope)
         binder.bind(ChatStreamSinkFactory, to=ChatStreamSinkFactory, scope=NoScope)
         binder.bind(ChatCompletionStreamHandler, to=ChatCompletionStreamHandler, scope=NoScope)
