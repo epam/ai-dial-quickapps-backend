@@ -106,11 +106,16 @@ _CODE_MESSAGES: dict[str, str] = {
     "truncate_prompt_error": _MSG_AI_MODEL_CONTEXT_LENGTH,
 }
 
-# Providers' context-overflow wording for a 400 that carries no known code (e.g. Anthropic
-# via DIAL adapters). Matched against the internal message only; it is never shown.
-_CONTEXT_LENGTH_MESSAGE_PATTERNS: tuple[re.Pattern[str], ...] = (
-    re.compile(r"prompt is too long", re.IGNORECASE),  # Anthropic
-    re.compile(r"input token count .* exceeds the maximum", re.IGNORECASE),  # Gemini
+# Provider wordings for a 400 that carries no known code (e.g. Anthropic via DIAL
+# adapters). Matched against the internal message only; it is never shown.
+_MESSAGE_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    # Anthropic
+    (re.compile(r"prompt is too long", re.IGNORECASE), _MSG_AI_MODEL_CONTEXT_LENGTH),
+    # Gemini
+    (
+        re.compile(r"input token count .* exceeds the maximum", re.IGNORECASE),
+        _MSG_AI_MODEL_CONTEXT_LENGTH,
+    ),
 )
 
 
@@ -229,8 +234,9 @@ def _resolve_by_code(details: ErrorDetails) -> _Resolution | None:
 def _resolve_by_message(details: ErrorDetails) -> _Resolution | None:
     if details.status_code != 400 or not details.message:
         return None
-    if any(pattern.search(details.message) for pattern in _CONTEXT_LENGTH_MESSAGE_PATTERNS):
-        return _MSG_AI_MODEL_CONTEXT_LENGTH, False
+    for pattern, message in _MESSAGE_PATTERNS:
+        if pattern.search(details.message):
+            return message, False
     return None
 
 
@@ -398,7 +404,7 @@ def resolve_exception(e: Exception) -> ResolvedError:
     if resolution is not None:
         return _compose(*resolution, details)
 
-    # 3. A 400 without a known code whose message carries a provider's context-overflow wording.
+    # 3. A 400 without a known code whose internal message matches a known provider wording.
     resolution = _resolve_by_message(details)
     if resolution is not None:
         return _compose(*resolution, details)
