@@ -45,7 +45,7 @@ See [Feature Lifecycle](../README.md#feature-lifecycle) in the root README.
 | Tool access filter | [CONFIGURATION — Tool access filter](../CONFIGURATION.md#tool-access-filter-configuration) | [agent.md](./agent.md#tool-access-filter) | [access_aware_tool_availability.md](./designs/access_aware_tool_availability.md) |
 | Stage display | [CONFIGURATION — Stage display](../CONFIGURATION.md#stage-display-configuration) | — | [stage_display_level.md](./designs/stage_display_level.md) |
 | Nested sub-stage propagation | [CONFIGURATION — Stage display](../CONFIGURATION.md#stage-display-configuration) | — | [sub-stage-propagation.md](./designs/sub-stage-propagation.md) |
-| Time awareness | [CONFIGURATION — Timestamp](../CONFIGURATION.md#timestamp-configuration) | [time_awareness.md](./time_awareness.md) | [time_awareness.md](./designs/time_awareness.md) |
+| Time awareness | [CONFIGURATION — Timestamp](../CONFIGURATION.md#timestamp-configuration) | [time_awareness.md](./time_awareness.md) | [time_awareness.md](./designs/time_awareness.md), [user_timezone.md](./designs/user_timezone.md) |
 | Resumable subagents | [CONFIGURATION — Conversation mode](../CONFIGURATION.md#conversation-mode) | — | [subagents_conversation_mode.md](./designs/subagents_conversation_mode.md) |
 | Conversation starters | [CONFIGURATION — Conversation starters](../CONFIGURATION.md#conversation-starters-configuration) | — | — |
 | MCP resources | [CONFIGURATION — MCP resources](../CONFIGURATION.md#mcp-resources-configuration) | — | [mcp_capabilities_extension.md](./designs/mcp_capabilities_extension.md) |

@@ -85,10 +85,12 @@ class ToolCallResultOffloadProcessor(ToolCallResultProcessor):
 
         uploaded.title = f"Offloaded response from '{ctx.tool_name}'"
 
-        return ToolCallResult(
-            tool_call_id=result.tool_call_id,
-            content=notice,
-            content_type="text/plain",
-            attachments=[*(result.attachments or []), uploaded],
-            state=state,
+        # Only the content is offloaded: usage, annotations and propagated attachments carry over.
+        return result.model_copy(
+            update={
+                "content": notice,
+                "content_type": "text/plain",
+                "attachments": [*(result.attachments or []), uploaded],
+                "state": state,
+            }
         )

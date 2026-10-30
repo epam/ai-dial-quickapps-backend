@@ -45,7 +45,7 @@ class TestTimestampAnnotationTransformer:
 
         assert len(result) == 1
         content = str(result[0].content)
-        assert "[Timestamp: 2026-01-15 12:30:00 UTC]" in content
+        assert "[Timestamp: 2026-01-15 12:30:00+00:00 UTC]" in content
         assert '{"data": 42}' in content
 
     def test_skips_synthetic_timestamp_messages(self):

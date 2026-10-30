@@ -1,11 +1,12 @@
 from typing import Any
-from zoneinfo import ZoneInfo
 
 from injector import AssistedBuilder, inject
 
 from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
+from quickapp.common.exceptions import InvalidToolCallParameterException
+from quickapp.common.iana_timezones import parse_timezone
 from quickapp.common.message_metadata import (
     MessageMetadata,
     TimestampMetadata,
@@ -51,19 +52,24 @@ class _CurrentTimestampTool(StagedBaseTool):
         *args: Any,
         **kwargs: Any,
     ) -> ToolCallResult:
-        timezone_str: str | None = kwargs.get("timezone")
+        try:
+            requested_tz = parse_timezone(kwargs.get("timezone"))
+        except ValueError as e:
+            raise InvalidToolCallParameterException(
+                "timezone",
+                "Unknown IANA time zone. Use a name like 'Europe/Warsaw' or 'Asia/Tokyo'.",
+            ) from e
 
-        if timezone_str is not None:
-            tz = ZoneInfo(timezone_str)
-            source = TimestampSource.REQUEST
-        else:
-            tz = self.__time_provider.tz
-            source = self.__time_provider.source
-
+        provider_tz = self.__time_provider.tz
+        tz = requested_tz or provider_tz
         now = self.__time_provider.now().astimezone(tz)
+        # format_timestamp labels only the provider's own zone; another zone the model
+        # asked for carries no source, in the text or in the stored metadata.
+        source: TimestampSource | None = (
+            self.__time_provider.source if str(tz) == str(provider_tz) else None
+        )
+        content = self.__time_provider.format_timestamp(now)
         tz_name = str(tz)
-
-        content = f"{now.isoformat()} ({tz_name}, source={source.value})"
 
         state: dict[str, Any] = {}
         set_metadata_in_state(
