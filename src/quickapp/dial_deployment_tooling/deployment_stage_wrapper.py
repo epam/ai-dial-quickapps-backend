@@ -4,6 +4,12 @@ from aidial_client import DialException
 from injector import inject
 
 from quickapp.common import TimedStageWrapper, ToolCallResult
+from quickapp.common.error_details import (
+    MSG_AI_MODEL_RATE_LIMITED,
+    RETRY_SENTENCE,
+    extract_error_details,
+    sanitize_display_message,
+)
 from quickapp.dial_deployment_tooling.constants import TOOLS_PARAM
 
 
@@ -23,6 +29,13 @@ class DeploymentStageWrapper(TimedStageWrapper):
                 f"> #### Error:\n{exception.message}\n"
                 f"> #### Status Code:\n{exception.status_code}\n"
             )
+        # Backfills the status from `code` for mid-stream errors, which carry no HTTP status.
+        details = extract_error_details(exception)
+        if details.status_code == 429:
+            message = sanitize_display_message(details.display_message or "") or (
+                f"{MSG_AI_MODEL_RATE_LIMITED} {RETRY_SENTENCE}"
+            )
+            return f"> #### Error:\n{message}\n> #### Status Code:\n{details.status_code}\n"
         return "> #### Exception:\nGeneral exception occurred while calling other DIAL deployment\n"
 
     def _build_debug_info_from_result(self, result: ToolCallResult) -> str:

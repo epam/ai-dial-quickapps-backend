@@ -1,6 +1,7 @@
 import logging
 import sys
 import time
+import uuid
 from abc import ABC, abstractmethod
 from typing import Any, ClassVar
 
@@ -214,16 +215,19 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
     ) -> ToolCallResult:
         # The failure WARNING is written by _run_in_stage_report_success; here we only
         # translate it into stage UI and a fallback result (hands-onward layer).
+        # Same format as the top-level error reference: logged and shown in the stage.
+        error_reference = uuid.uuid4().hex[:8]
         try:
             return await self._run_in_stage_report_success(
                 tool_call_id,
                 stage_wrapper,
+                error_reference,
                 *args,
                 skip_parameters=skip_parameters,
                 **kwargs,
             )
         except InvalidToolCallParameterException as e:
-            self._report_error_to_stage(stage_wrapper, e)
+            self._report_error_to_stage(stage_wrapper, e, error_reference)
             return FallbackProcessor.process_fallback(
                 [
                     RetryStrategyModel(
@@ -239,13 +243,14 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
                 error_to_show = e
             else:
                 error_to_show = Exception("An error occurred while executing the tool.")
-            self._report_error_to_stage(stage_wrapper, error_to_show)
+            self._report_error_to_stage(stage_wrapper, error_to_show, error_reference)
             return FallbackProcessor.process_fallback(fallback.strategies, tool_call_id, e)
 
     def _report_error_to_stage(
         self,
         stage_wrapper: BaseStageWrapper | None,
         error: Exception,
+        error_reference: str,
     ) -> None:
         """Write an error into the stage.
 
@@ -261,7 +266,7 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
             return
 
         if stage_wrapper is not None:
-            stage_wrapper.add_exception(error)
+            stage_wrapper.add_exception(error, error_reference)
             return
 
         # Stage was suppressed, but an error occurred — open a stage on-the-fly,
@@ -271,7 +276,7 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
             stage_name=self.stage_name_component,
         )
         with on_the_fly_stage:
-            on_the_fly_stage.add_exception(error)
+            on_the_fly_stage.add_exception(error, error_reference)
 
     def enrich_openai_tool_schema(self, open_ai_tool: OpenAiToolConfig) -> OpenAiToolConfig:
         return open_ai_tool
@@ -296,6 +301,9 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
         self,
         tool_call_id: str,
         stage_wrapper: BaseStageWrapper | None,
+        error_reference: str,
+        # Positional-only: tool arguments share **kwargs and may use any of these names.
+        /,
         *args: Any,
         skip_parameters: bool = False,
         **kwargs: Any,
@@ -365,6 +373,7 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
                     tool_call_id=tool_call_id,
                     duration=format_duration(time.perf_counter() - start),
                     error=type(e).__name__,
+                    error_reference=error_reference,
                 ),
                 exc_info=True,
             )
