@@ -1,6 +1,7 @@
 # Design: Time Awareness
 
 - **Status:** Implemented
+- **Superseded in part by:** [User Time Zone](user_timezone.md) (the user's zone replaces the UTC defaults below)
 - **Dependencies:**
   - [Preview Feature Gating](preview_feature_gating.md)
 
