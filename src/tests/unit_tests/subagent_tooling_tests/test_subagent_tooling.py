@@ -15,7 +15,7 @@ from fastapi_injector import RequestScopeFactory
 from injector import Binder, Injector, ProviderOf, inject
 from pydantic import SecretStr, ValidationError
 
-from quickapp.common import StagedBaseTool
+from quickapp.common import ACCEPT_LANGUAGE, TIMEZONE_HEADER_VALUE, StagedBaseTool
 from quickapp.common.base_initializer import InitializerType, invoke_initializers
 from quickapp.common.exceptions import (
     InitializationException,
@@ -77,14 +77,23 @@ class _FakeOrchestrator:
     """Records the manifest the child scope resolved, and answers."""
 
     seen: list[ApplicationConfig] = []
+    seen_user_locale: list[tuple[str | None, str | None]] = []
 
     @inject
-    def __init__(self, config: ApplicationConfig, messages: MessagesMixin) -> None:
+    def __init__(
+        self,
+        config: ApplicationConfig,
+        messages: MessagesMixin,
+        accept_language: ACCEPT_LANGUAGE,
+        timezone_header_value: TIMEZONE_HEADER_VALUE,
+    ) -> None:
         self._config = config
         self._messages = messages
+        self._user_locale = (accept_language, timezone_header_value)
 
     async def invoke(self) -> None:
         type(self).seen.append(self._config)
+        type(self).seen_user_locale.append(self._user_locale)
         self._messages.append_message(
             Message(role=Role.ASSISTANT, content="42 sources, one answer.")
         )
@@ -535,6 +544,24 @@ async def test_spawn_runs_in_an_isolated_request_scope(monkeypatch):
         assert injector.get(_RequestContext) is parent_context
         assert parent_context.application_config is parent_config
         assert [m.content for m in parent_context.messages] == ["do the thing"]
+
+
+@pytest.mark.asyncio
+async def test_spawn_inherits_the_users_language_and_time_zone(monkeypatch):
+    monkeypatch.setenv("ENABLE_PREVIEW_FEATURES", "true")
+    _FakeOrchestrator.seen_user_locale = []
+
+    injector = _test_injector()
+    scope_factory = injector.get(RequestScopeFactory)
+
+    async with scope_factory.create_scope():
+        parent_context = await _enter_coordinator_scope(injector, _parent_config())
+        parent_context.accept_language = "de"
+        parent_context.timezone_header_value = "Europe/Berlin"
+
+        await injector.get(SubagentSpawner).spawn(RESEARCHER, "Find out who broke the build.")
+
+    assert _FakeOrchestrator.seen_user_locale == [("de", "Europe/Berlin")]
 
 
 @pytest.mark.asyncio
