@@ -8,7 +8,13 @@ from fastapi_injector import RequestScopeFactory
 from injector import ProviderOf, inject
 from pydantic import BaseModel, ConfigDict, Field
 
-from quickapp.common import DIAL_API_KEY, DIAL_BEARER, ForwardedHeaders
+from quickapp.common import (
+    ACCEPT_LANGUAGE,
+    DIAL_API_KEY,
+    DIAL_BEARER,
+    TIMEZONE_HEADER_VALUE,
+    ForwardedHeaders,
+)
 from quickapp.common.abstract.completion_runner import BaseCompletionRunner
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.completion_inputs import CompletionInputs
@@ -56,6 +62,8 @@ class SubagentSpawner:
         api_key: DIAL_API_KEY,
         bearer: DIAL_BEARER,
         forwarded_headers: ForwardedHeaders,
+        accept_language: ACCEPT_LANGUAGE,
+        timezone_header_value: TIMEZONE_HEADER_VALUE,
         config: SubagentsConfig,
         settings: SubagentSettings,
         semaphore: SpawnSemaphore,
@@ -68,6 +76,8 @@ class SubagentSpawner:
         self.__api_key = api_key
         self.__bearer = bearer
         self.__forwarded_headers = forwarded_headers
+        self.__accept_language = accept_language
+        self.__timezone_header_value = timezone_header_value
         self.__config = config
         self.__settings = settings
         self.__semaphore = semaphore
@@ -139,6 +149,9 @@ class SubagentSpawner:
                     messages=[Message(role=Role.USER, content=task)],
                     choice=choice,
                     forwarded_headers=self.__forwarded_headers,
+                    # The spoke serves the same user: same locale, same time zone.
+                    accept_language=self.__accept_language,
+                    timezone_header_value=self.__timezone_header_value,
                 )
             )
             if orchestrator is None:

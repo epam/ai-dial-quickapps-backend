@@ -466,8 +466,8 @@ subagent output sink.
    inside an `asyncio.Task`. The scope key is a `ContextVar` and
    `asyncio` copies context per task, so the child gets its own `_RequestContext`, `StateHolder`, tool
    instances, and `PerformanceTimer` — every `request_scope` binding — with no leakage in either direction.
-3. The spawner builds a `CompletionInputs` — `api_key`, `bearer`, and forwarded headers copied from the
-   parent; `application_config` set to the compiled manifest; the task as the sole user message; and a
+3. The spawner builds a `CompletionInputs` — `api_key`, `bearer`, forwarded headers, the user's
+   language and time zone copied from the parent; `application_config` set to the compiled manifest; the task as the sole user message; and a
    `Choice` over a `SubagentOutputSink` rather than the user's — the assignment that decides where
    everything the spoke writes ends up (see *How a spoke's output reaches the user*) — and hands it to
    `CompletionRunner`, the same request-scoped lifecycle the HTTP handler runs. No SDK `Request` is
