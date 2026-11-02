@@ -123,3 +123,29 @@ async def test_aclose_all_idempotent_when_no_sessions():
     registry = _MCPSessionManager(RequestAsyncCloseRegistry())
     # No sessions opened — teardown is a no-op and must not raise.
     await registry.aclose_all()
+
+
+@pytest.mark.asyncio
+async def test_in_flight_call_fails_fast_when_owner_dies():
+    """A call blocked in the SDK must surface the owner's error instead of hanging."""
+    registry = _MCPSessionManager(RequestAsyncCloseRegistry())
+    session = MagicMock()
+    failure = RuntimeError("transport dead")
+
+    @asynccontextmanager
+    async def opener():
+        try:
+            yield session
+        finally:
+            raise failure
+
+    await registry.get_session("k", opener)
+
+    async def hang() -> None:
+        await asyncio.Event().wait()
+
+    with pytest.raises(RuntimeError, match="transport dead"):
+        call = asyncio.create_task(registry.await_while_session_alive("k", hang()))
+        await asyncio.sleep(0.05)
+        await registry.aclose_all()
+        await call

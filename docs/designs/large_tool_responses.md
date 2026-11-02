@@ -139,8 +139,8 @@ flowchart TD
     Size -- no --> ReturnAsIs
     Size -- yes --> Upload[upload content to<br/>DIAL file storage]
     Upload -- failure --> Warn[log warning] --> ReturnAsIs
-    Upload -- success --> Build[build new ToolCallResult:<br/>short notice + file attachment<br/>+ state.offloaded_response]
-    Build --> ReturnNew([return new result])
+    Upload -- success --> Build[copy the result:<br/>short notice + file attachment<br/>+ state.offloaded_response]
+    Build --> ReturnNew([return the copy])
 ```
 
 **Textual steps:**
@@ -149,7 +149,7 @@ flowchart TD
 3. Size check (the canonical comparison unit is **bytes**; see _Threshold calibration_). The implementation compares `len(result.content.encode("utf-8")) < threshold`. If under threshold → return result unchanged. (A code-point pre-check is intentionally avoided: `len(result.content)` is only a lower bound on UTF-8 byte length, so it cannot safely short-circuit either direction without a separate byte confirmation.)
 4. Upload `result.content` to DIAL file storage via `AttachmentService`, path `files/{bucket}/offloaded-responses/{tool_name}-{iso8601_timestamp}.txt` (see note on extension below).
 5. On upload failure → log warning, return original result (**fail-open**).
-6. On success → return a new `ToolCallResult` with:
+6. On success → return a copy of the result (`result.model_copy(update=...)`). Every other field (`tool_call_id`, `usage`, `annotations`, `propagate_to_choice`) carries over unchanged, so the tool's usage still reaches the Usage Statistics stage. The copy changes:
    - `content` = short notice containing file URL + usage hint (`internal_file_read_lines` / `internal_file_search`)
    - `attachments` += an attachment pointing to the uploaded file (title includes tool name); attachment's media type preserves the original `result.content_type` when set, else `text/plain`
    - `state["offloaded_response"]` = `{file_url, original_size, content_type}` (metadata only)
@@ -251,9 +251,9 @@ sequenceDiagram
     AS->>DIAL: PUT files/{bucket}/offloaded-responses/...
     DIAL-->>AS: file_url
     AS-->>LRP: Attachment{url, type}
-    LRP->>LRP: build new ToolCallResult<br/>(short notice + attachment)
-    LRP-->>TE: new result
-    TE->>Hist: append(new result)
+    LRP->>LRP: copy the result<br/>(short notice + attachment)
+    LRP-->>TE: offloaded result
+    TE->>Hist: append(offloaded result)
 ```
 
 ### Read-back (read path)

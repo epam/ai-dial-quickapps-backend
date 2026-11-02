@@ -34,7 +34,7 @@ class _TimestampAnnotationTransformer(PreInvocationTransformer):
                     response_ts = ts.response_timestamp
                     assert response_ts is not None
                     annotation = (
-                        f"\n[Timestamp: {response_ts.strftime('%Y-%m-%d %H:%M:%S')}"
+                        f"\n[Timestamp: {response_ts.strftime('%Y-%m-%d %H:%M:%S%:z')}"
                         f" {ts.timezone_name or 'UTC'}]"
                     )
                     if not isinstance(msg.content, str):

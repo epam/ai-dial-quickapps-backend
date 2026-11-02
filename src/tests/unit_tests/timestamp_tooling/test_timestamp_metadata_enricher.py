@@ -6,7 +6,7 @@ from quickapp.common.message_metadata import (
     get_metadata_from_state,
     set_metadata_in_state,
 )
-from quickapp.common.time_provider import TimeProvider
+from quickapp.common.time_provider import TimeProvider, TimezoneLabel
 from quickapp.common.tool_call_result import ToolCallResult
 from quickapp.timestamp_tooling._timestamp_metadata_enricher import _TimestampMetadataEnricher
 
@@ -77,7 +77,7 @@ class TestTimestampMetadataEnricher:
         from zoneinfo import ZoneInfo
 
         enricher = _TimestampMetadataEnricher(
-            TimeProvider(tz=ZoneInfo("US/Eastern"), source=TimestampSource.REQUEST)
+            TimeProvider(tz=ZoneInfo("US/Eastern"), label=TimezoneLabel.USER)
         )
         result = ToolCallResult(content="data", content_type="text/plain")
 

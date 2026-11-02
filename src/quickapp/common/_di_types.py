@@ -16,6 +16,10 @@ CLIENT_CHANNEL_HEADER = "X-DIAL-CLIENT-CHANNEL-ID"
 ORCHESTRATOR_AZURE_CLIENT = Annotated[AsyncAzureOpenAI, "ORCHESTRATOR_AZURE_CLIENT"]
 DEPLOYMENT_AZURE_CLIENT = Annotated[AsyncAzureOpenAI, "DEPLOYMENT_AZURE_CLIENT"]
 ACCEPT_LANGUAGE = Annotated[str | None, "ACCEPT_LANGUAGE"]
+TIMEZONE_HEADER = "X-Timezone"
+# Raw, unvalidated value of the TIMEZONE_HEADER request header. Resolve it through
+# the timestamp feature, never use it as a zone directly.
+TIMEZONE_HEADER_VALUE = Annotated[str | None, "TIMEZONE_HEADER_VALUE"]
 # Raw request messages, as they arrived. Available to initializers, which run
 # before `_RequestContextSetup.setup_messages` populates `context.messages`.
 REQUEST_MESSAGES = Annotated[list[Message], "REQUEST_MESSAGES"]

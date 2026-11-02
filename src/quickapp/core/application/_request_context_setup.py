@@ -6,7 +6,12 @@ from aidial_sdk.deployment.configuration import ConfigurationRequest
 from injector import ProviderOf, inject
 from pydantic import SecretStr
 
-from quickapp.common._di_types import CLIENT_CHANNEL_HEADER, CLIENT_CHANNEL_ID, ForwardedHeaders
+from quickapp.common._di_types import (
+    CLIENT_CHANNEL_HEADER,
+    CLIENT_CHANNEL_ID,
+    TIMEZONE_HEADER,
+    ForwardedHeaders,
+)
 from quickapp.common.forwarded_headers import extract_x_headers_from_request
 from quickapp.common.tool_fallback.catch_all_scanner import log_customised_catch_all_strategies
 from quickapp.config.application import ApplicationConfig
@@ -68,6 +73,7 @@ class _RequestContextSetup:
             context.forwarded_headers = extract_x_headers_from_request(request)
             context.client_channel_id = _extract_client_channel_id(context.forwarded_headers)
             context.accept_language = request.headers.get(self.__proxy_settings.language_header)
+            context.timezone_header_value = request.headers.get(TIMEZONE_HEADER)
             if request.response_format:
                 context.response_format = request.response_format
             if request.tool_choice is not None:
