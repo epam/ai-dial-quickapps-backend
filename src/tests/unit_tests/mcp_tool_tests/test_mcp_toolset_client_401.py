@@ -1,5 +1,7 @@
 """Tests for 401 detection in _MCPToolsetClient, including ExceptionGroup wrapping."""
 
+import asyncio
+from contextlib import asynccontextmanager
 from unittest.mock import MagicMock, patch
 
 import httpx
@@ -162,3 +164,45 @@ async def test_sse_transport_401_raises_unauthorized():
         with pytest.raises(MCPUnauthorizedException):
             async with cm.open_init_session():
                 pass
+
+
+async def _call_on_live_session_that_dies(cm: _MCPToolsetClient, status_code: int):
+    """Open a session, then kill its owner with an HTTP error while a call is in flight."""
+    session = MagicMock()
+
+    @asynccontextmanager
+    async def fake_open(_timeout: float):
+        try:
+            yield session
+        finally:
+            raise ExceptionGroup(
+                "unhandled errors in a TaskGroup", [_make_http_status_error(status_code)]
+            )
+
+    async def hang(*_args, **_kwargs):
+        await asyncio.Event().wait()
+
+    session.call_tool = hang
+    cm._MCPToolsetClient__open_session = fake_open  # type: ignore[attr-defined]
+
+    call_task = asyncio.create_task(cm.call_mcp_tool("some_tool"))
+    await asyncio.sleep(0.05)
+    await cm._MCPToolsetClient__session_manager.aclose_all()  # type: ignore[attr-defined]
+    return await call_task
+
+
+@pytest.mark.asyncio
+async def test_call_mcp_tool_403_on_live_session_fails_fast():
+    """HTTP 403 kills the session owner and must not leave the tool call hung until timeout."""
+    cm = _make_toolset_client()
+    with pytest.raises(RuntimeError, match=r"HTTP 403") as exc_info:
+        await asyncio.wait_for(_call_on_live_session_that_dies(cm, 403), timeout=2)
+    assert "://" not in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_call_mcp_tool_401_on_live_session_stays_unauthorized():
+    """A 401 that arrives as the owner dying must still be MCPUnauthorizedException."""
+    cm = _make_toolset_client()
+    with pytest.raises(MCPUnauthorizedException):
+        await asyncio.wait_for(_call_on_live_session_that_dies(cm, 401), timeout=2)

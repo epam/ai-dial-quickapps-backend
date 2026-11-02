@@ -209,6 +209,53 @@ async def test_chat_request_reads_accept_language_from_custom_header(monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_chat_request_stores_raw_timezone_header():
+    setup, context = _make_setup()
+    request = _make_chat_request(headers={"X-Timezone": " Europe/Kyiv "})
+    with _PATCH_MODEL_VALIDATE:
+        await setup.setup_context(request)
+    assert context.timezone_header_value == " Europe/Kyiv "
+
+
+@pytest.mark.asyncio
+async def test_chat_request_sets_timezone_header_none_when_absent():
+    setup, context = _make_setup()
+    request = _make_chat_request(headers={})
+    with _PATCH_MODEL_VALIDATE:
+        await setup.setup_context(request)
+    assert context.timezone_header_value is None
+
+
+@pytest.mark.asyncio
+async def test_timezone_header_is_stored_before_transformers_run():
+    # The request-scoped TimeProvider is first resolved inside run_transformers,
+    # so the header must already be on the context by then.
+    context = _RequestContext()
+    context_provider = MagicMock()
+    context_provider.get.return_value = context
+    seen: list[str | None] = []
+
+    async def _capture(messages):
+        seen.append(context.timezone_header_value)
+        return messages
+
+    messages_setup = MagicMock()
+    messages_setup.extract_tool_calls = MagicMock(return_value=[])
+    messages_setup.run_transformers = AsyncMock(side_effect=_capture)
+    setup = _RequestContextSetup(
+        context_provider=context_provider,
+        config_resolver=MagicMock(),
+        messages_setup=messages_setup,
+        proxy_settings=ProxySettings(),
+    )
+    request = _make_chat_request(headers={"X-Timezone": "Europe/Kyiv"})
+    with _PATCH_MODEL_VALIDATE:
+        await setup.setup_context(request)
+    await setup.setup_messages([])
+    assert seen == ["Europe/Kyiv"]
+
+
+@pytest.mark.asyncio
 async def test_configuration_request_does_not_set_accept_language():
     setup, context = _make_setup()
     request = _make_config_request()

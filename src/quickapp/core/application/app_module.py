@@ -11,6 +11,7 @@ from quickapp.common import (
     DIAL_BEARER,
     REQUEST_MESSAGES,
     RESPONSE_FORMAT,
+    TIMEZONE_HEADER_VALUE,
     TOOL_CHOICE,
     ForwardedHeaders,
 )
@@ -103,6 +104,10 @@ class AppModule(Module):
     @provider
     def __provide_accept_language(self, context: _RequestContext) -> ACCEPT_LANGUAGE:
         return context.accept_language
+
+    @provider
+    def __provide_timezone_header_value(self, context: _RequestContext) -> TIMEZONE_HEADER_VALUE:
+        return context.timezone_header_value
 
     @provider
     def __provide_stage(self, choice: Choice) -> Stage:

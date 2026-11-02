@@ -1,7 +1,8 @@
 import functools
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Coroutine
 from contextlib import asynccontextmanager
 from datetime import timedelta
+from typing import TypeVar
 
 import httpx
 from injector import inject
@@ -36,6 +37,8 @@ from quickapp.shared.config_resolvers.tool_timeout_resolver import ToolTimeoutRe
 
 MAX_ITERATIONS = 1000
 
+_T = TypeVar("_T")
+
 # HTTP connect/write timeout for streamable HTTP; the SSE read timeout is resolved separately.
 _MCP_HTTP_TIMEOUT_SECONDS = 30.0
 
@@ -50,6 +53,27 @@ def _extract_http_401(eg: BaseExceptionGroup) -> httpx.HTTPStatusError | None:
             if nested is not None:
                 return nested
     return None
+
+
+def _flatten_exceptions(exc: BaseException) -> list[BaseException]:
+    if isinstance(exc, BaseExceptionGroup):
+        leaves: list[BaseException] = []
+        for sub in exc.exceptions:
+            leaves.extend(_flatten_exceptions(sub))
+        return leaves
+    return [exc]
+
+
+def _describe_transport_failure(exc: BaseException) -> str:
+    """User- and model-facing summary that keeps the HTTP status and drops the URL."""
+    parts: list[str] = []
+    for leaf in _flatten_exceptions(exc):
+        if isinstance(leaf, httpx.HTTPStatusError):
+            parts.append(f"HTTP {leaf.response.status_code}")
+        else:
+            text = str(leaf).strip()
+            parts.append(text or type(leaf).__name__)
+    return "; ".join(parts) if parts else type(exc).__name__
 
 
 @inject
@@ -240,6 +264,25 @@ class _MCPToolsetClient:
         result = await session.read_resource(_AnyUrl(uri))
         return result.contents
 
+    async def __await_live(self, call: Coroutine[object, object, _T]) -> _T:
+        """Run ``call`` on the live session, failing fast if the transport owner dies.
+
+        A 401 from the dead session stays ``MCPUnauthorizedException`` so interactive
+        login can still retry. Any other transport failure (including HTTP 403) becomes
+        a normal exception whose text includes the status and not the request URL.
+        """
+        try:
+            return await self.__session_manager.await_while_session_alive(self.__toolset_key, call)
+        except MCPUnauthorizedException:
+            raise
+        except BaseExceptionGroup as eg:
+            unauthorized = _extract_http_401(eg)
+            if unauthorized is not None:
+                raise MCPUnauthorizedException(
+                    toolset_name=resolve_localized(self.__toolset_info.name)
+                ) from unauthorized
+            raise RuntimeError(_describe_transport_failure(eg)) from eg
+
     async def read_mcp_resource(
         self, uri: str
     ) -> list[TextResourceContents | BlobResourceContents]:
@@ -248,7 +291,7 @@ class _MCPToolsetClient:
         session = await self.__session_manager.get_session(
             self.__toolset_key, functools.partial(self.__open_session, timeout)
         )
-        result = await session.read_resource(_AnyUrl(uri))
+        result = await self.__await_live(session.read_resource(_AnyUrl(uri)))
         return result.contents
 
     async def call_mcp_tool(self, tool_name: str, **kwargs) -> CallToolResult:
@@ -261,14 +304,18 @@ class _MCPToolsetClient:
             session = await self.__session_manager.get_session(
                 self.__toolset_key, functools.partial(self.__open_session, timeout)
             )
-            return await session.call_tool(
-                tool_name, kwargs, read_timeout_seconds=read_timeout_seconds
+            return await self.__await_live(
+                session.call_tool(tool_name, kwargs, read_timeout_seconds=read_timeout_seconds)
             )
         except MCPUnauthorizedException:
             raise
         except McpError as e:
             if getattr(e.error, "code", None) == MCP_TIMEOUT_CODE:
                 raise
-            raise RuntimeError(f"Error calling MCP tool '{tool_name}': {e}") from e
+            raise RuntimeError(
+                f"Error calling MCP tool '{tool_name}': {_describe_transport_failure(e)}"
+            ) from e
         except Exception as e:
-            raise RuntimeError(f"Error calling MCP tool '{tool_name}': {e}") from e
+            raise RuntimeError(
+                f"Error calling MCP tool '{tool_name}': {_describe_transport_failure(e)}"
+            ) from e
