@@ -1,3 +1,4 @@
+from quickapp.common.deferred_tool_types import DeferredToolCatalogEntry
 from quickapp.common.localized_string import resolve_localized
 from quickapp.common.staged_base_tool import StagedBaseTool
 from quickapp.config.tool_discovery import ToolDiscoveryConfig
@@ -17,7 +18,7 @@ class DeferredToolsAccumulator:
     """
 
     def __init__(self) -> None:
-        self._catalog: list[dict[str, str]] = []
+        self._catalog: list[DeferredToolCatalogEntry] = []
         self._definitions: dict[str, OpenAiToolConfigDict] = {}
         self._toolset_summaries: list[dict[str, str | int | None]] = []
 
@@ -49,7 +50,7 @@ class DeferredToolsAccumulator:
         )
         self._toolset_summaries.append(
             {
-                "name": resolve_localized(toolset.name),
+                "name": toolset_name,
                 "description": (
                     resolve_localized(toolset.description) if toolset.description else None
                 ),
@@ -62,7 +63,7 @@ class DeferredToolsAccumulator:
         return frozenset(self._definitions.keys())
 
     @property
-    def catalog(self) -> list[dict[str, str]]:
+    def catalog(self) -> list[DeferredToolCatalogEntry]:
         return list(self._catalog)
 
     @property

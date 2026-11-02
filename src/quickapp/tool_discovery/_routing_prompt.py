@@ -1,6 +1,5 @@
 import json
 import logging
-import re
 from collections.abc import Mapping, Sequence
 from typing import Literal
 
@@ -23,7 +22,6 @@ _USER_PROMPT = (
     "Request: {query}\n\n"
     'Answer with a JSON array like [{{"name": "name_a", "score": 0.9}}], or [] if none fits.'
 )
-_FENCE_PATTERN = re.compile(r"^```[a-zA-Z]*\s*|\s*```$")
 
 
 class ScoredName(BaseModel):
@@ -54,13 +52,13 @@ def build_user_prompt(query: str) -> str:
 def parse_selection(
     raw: str, known_names: set[str], *, limit: int, threshold: float
 ) -> list[ScoredName]:
-    payload = _FENCE_PATTERN.sub("", raw).strip()
-    start, end = payload.find("["), payload.rfind("]")
+    # find/rfind skip a surrounding Markdown fence and any chatter around the array
+    start, end = raw.find("["), raw.rfind("]")
     if start == -1 or end < start:
         logger.warning("Routing call returned no JSON array (length=%d)", len(raw))
         return []
     try:
-        items = json.loads(payload[start : end + 1])
+        items = json.loads(raw[start : end + 1])
     except json.JSONDecodeError:
         logger.warning("Routing call returned non-JSON response (length=%d)", len(raw))
         return []
@@ -81,8 +79,9 @@ def _read_item(item: object) -> tuple[str | None, float]:
     if isinstance(item, str):
         return item, 1.0
     if isinstance(item, dict) and isinstance(item.get("name"), str):
-        score = item.get("score", 1.0)
-        if isinstance(score, bool) or not isinstance(score, (int, float)):
+        try:
+            score = float(item.get("score", 1.0))
+        except (TypeError, ValueError):
             return item["name"], 1.0
-        return item["name"], min(max(float(score), 0.0), 1.0)
+        return item["name"], min(max(score, 0.0), 1.0)
     return None, 0.0
