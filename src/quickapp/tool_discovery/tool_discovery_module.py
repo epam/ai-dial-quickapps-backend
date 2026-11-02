@@ -1,16 +1,25 @@
 import logging
 
 from fastapi_injector import request_scope
-from injector import AssistedBuilder, Binder, Module, multiprovider
+from injector import AssistedBuilder, Binder, Module, multiprovider, provider
 
 from quickapp.common import StagedBaseTool
 from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
 from quickapp.config.application import ApplicationConfig
+from quickapp.config.tool_discovery import (
+    HierarchySearchStrategy,
+    PlainSearchStrategy,
+    WindowSearchStrategy,
+)
 from quickapp.tool_discovery._anonymous_agent import _AnonymousAgent
 from quickapp.tool_discovery._tool_configs import TOOL_SEARCH_TOOL_CONFIG
 from quickapp.tool_discovery._tool_search_hint_prompt_provider import _ToolSearchHintPromptProvider
 from quickapp.tool_discovery._tool_search_stage_wrapper import _ToolSearchStageWrapper
 from quickapp.tool_discovery._tool_search_tool import _ToolSearchTool
+from quickapp.tool_discovery.strategies._hierarchy import HierarchyStrategy
+from quickapp.tool_discovery.strategies._plain import PlainStrategy
+from quickapp.tool_discovery.strategies._strategy import ToolSearchStrategy
+from quickapp.tool_discovery.strategies._window import WindowStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +39,18 @@ class ToolDiscoveryModule(Module):
         return bool(
             config.orchestrator.tool_discovery and config.orchestrator.tool_discovery.enabled
         )
+
+    @provider
+    def _provide_search_strategy(
+        self, config: ApplicationConfig, agent: _AnonymousAgent
+    ) -> ToolSearchStrategy:
+        discovery = config.orchestrator.tool_discovery
+        settings = discovery.strategy if discovery else PlainSearchStrategy()
+        if isinstance(settings, WindowSearchStrategy):
+            return WindowStrategy(agent, settings)
+        if isinstance(settings, HierarchySearchStrategy):
+            return HierarchyStrategy(agent, settings)
+        return PlainStrategy(agent, settings)
 
     @multiprovider
     def _provide_tool_search_tools(
