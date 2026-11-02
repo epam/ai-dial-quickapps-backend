@@ -7,9 +7,9 @@ from quickapp.common import StagedBaseTool
 from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.tool_discovery import (
-    HierarchySearchStrategy,
-    PlainSearchStrategy,
-    WindowSearchStrategy,
+    HierarchySearchStrategyConfig,
+    PlainSearchStrategyConfig,
+    WindowSearchStrategyConfig,
 )
 from quickapp.tool_discovery._anonymous_agent import _AnonymousAgent
 from quickapp.tool_discovery._tool_configs import TOOL_SEARCH_TOOL_CONFIG
@@ -45,12 +45,12 @@ class ToolDiscoveryModule(Module):
         self, config: ApplicationConfig, agent: _AnonymousAgent
     ) -> ToolSearchStrategy:
         discovery = config.orchestrator.tool_discovery
-        settings = discovery.strategy if discovery else PlainSearchStrategy()
-        if isinstance(settings, WindowSearchStrategy):
-            return WindowStrategy(agent, settings)
-        if isinstance(settings, HierarchySearchStrategy):
-            return HierarchyStrategy(agent, settings)
-        return PlainStrategy(agent, settings)
+        strategy_config = discovery.strategy if discovery else PlainSearchStrategyConfig()
+        if isinstance(strategy_config, WindowSearchStrategyConfig):
+            return WindowStrategy(agent, strategy_config)
+        if isinstance(strategy_config, HierarchySearchStrategyConfig):
+            return HierarchyStrategy(agent, strategy_config)
+        return PlainStrategy(agent, strategy_config)
 
     @multiprovider
     def _provide_tool_search_tools(

@@ -8,7 +8,7 @@ from quickapp.config.tools.base import (
     OpenAiToolFunction,
     OpenAiToolFunctionParameters,
 )
-from quickapp.tool_discovery._anonymous_agent import _RoutingResult
+from quickapp.tool_discovery._anonymous_agent import RoutingResult
 from quickapp.tool_discovery._tool_search_tool import _ToolSearchTool
 
 
@@ -93,7 +93,7 @@ class TestEnrichOpenAiToolSchema:
 
 class TestRoutingUsage:
     @staticmethod
-    def _make_tool(routing: _RoutingResult) -> _ToolSearchTool:
+    def _make_tool(routing: RoutingResult) -> _ToolSearchTool:
         strategy = MagicMock()
         strategy.search = AsyncMock(return_value=routing)
         return _ToolSearchTool(
@@ -110,7 +110,7 @@ class TestRoutingUsage:
     @pytest.mark.asyncio
     async def test_result_carries_routing_call_usage(self):
         tool = self._make_tool(
-            _RoutingResult(
+            RoutingResult(
                 usage=ModelUsage(model="router-model", prompt_tokens=120, completion_tokens=8)
             )
         )
@@ -129,7 +129,7 @@ class TestRoutingUsage:
 
     @pytest.mark.asyncio
     async def test_result_has_no_usage_when_routing_reports_none(self):
-        tool = self._make_tool(_RoutingResult())
+        tool = self._make_tool(RoutingResult())
 
         result = await tool._run_in_stage_async(None, query="find a tool")
 
