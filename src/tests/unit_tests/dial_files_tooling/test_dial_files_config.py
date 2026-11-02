@@ -5,8 +5,41 @@ from quickapp.config.dial_files import (
     DialFilesConfig,
     ToolCallResultOffloadConfig,
     ToolCallResultOffloadSettings,
+    expand_enabled_tools,
 )
 from quickapp.config.tool_result_limit import ToolResultLimitSettings
+
+
+class TestExpandEnabledTools:
+    def test_all_is_every_tool(self):
+        assert expand_enabled_tools("all") == {
+            "list",
+            "read_lines",
+            "read_chars",
+            "search",
+            "find",
+            "write",
+            "edit",
+            "delete",
+            "copy",
+            "move",
+        }
+
+    def test_read_only_excludes_mutating_tools(self):
+        assert expand_enabled_tools("read_only") == {
+            "list",
+            "read_lines",
+            "read_chars",
+            "search",
+            "find",
+        }
+
+    def test_none_and_empty_list_are_empty(self):
+        assert expand_enabled_tools("none") == frozenset()
+        assert expand_enabled_tools([]) == frozenset()
+
+    def test_explicit_list_is_passed_through(self):
+        assert expand_enabled_tools(["write", "read_lines"]) == {"write", "read_lines"}
 
 
 class TestDialFilesConfig:
@@ -27,6 +60,14 @@ class TestDialFilesConfig:
     def test_read_chars_tool_name_accepted(self):
         cfg = DialFilesConfig(enabled_tools=["read_lines", "read_chars"])
         assert cfg.enabled_tools == ["read_lines", "read_chars"]
+
+    @pytest.mark.parametrize("preset", ["all", "read_only", "none"])
+    def test_presets_accepted(self, preset):
+        assert DialFilesConfig(enabled_tools=preset).enabled_tools == preset
+
+    def test_unknown_preset_rejected(self):
+        with pytest.raises(ValidationError):
+            DialFilesConfig(enabled_tools="write_only")
 
     def test_rejects_absolute_files_url(self):
         with pytest.raises(ValidationError, match="absolute"):

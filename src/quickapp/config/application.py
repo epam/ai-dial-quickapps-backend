@@ -218,7 +218,11 @@ class Features(BaseModel):
     )
     dial_files: DialFilesConfig | None = Field(
         default=None,
-        description="Built-in DIAL files tools (list / read / search / write / edit / delete / copy / move).",
+        description=(
+            "Built-in DIAL files tools (list / read / search / write / edit / delete / copy / move). "
+            "When omitted or null, the read-only tools (list, read_lines, read_chars, search, find) "
+            "are exposed. Use {\"enabled_tools\": \"none\"} to expose no file tools."
+        ),
     )
     web_fetch: WebFetchConfig | None = Field(
         default=None,

@@ -16,7 +16,7 @@ from quickapp.common.tool_names import (
     INTERNAL_SKILLS_READ_SKILL_TOOL_NAME,
 )
 from quickapp.config.application import ApplicationConfig
-from quickapp.config.dial_files import DialFilesConfig
+from quickapp.config.dial_files import DialFilesConfig, expand_enabled_tools
 from quickapp.config.tools.internal import InternalTool
 from quickapp.dial_files_tooling._copy_file_tool import _CopyFileTool
 from quickapp.dial_files_tooling._delete_file_tool import _DeleteFileTool
@@ -96,13 +96,18 @@ class DialFilesToolingModule(Module):
         }
     )
 
+    @staticmethod
+    def _effective_config(app_config: ApplicationConfig) -> DialFilesConfig:
+        """The app's `dial_files` block, or the read-only default when it is absent."""
+        cfg = app_config.features.dial_files if app_config.features else None
+        if cfg is None:
+            return DialFilesConfig(enabled_tools="read_only")
+        return cfg
+
     @request_scope
     @provider
     def _provide_dial_files_config(self, app_config: ApplicationConfig) -> DialFilesConfig:
-        cfg = app_config.features.dial_files if app_config.features else None
-        if cfg is None:
-            return DialFilesConfig()
-        return cfg
+        return self._effective_config(app_config)
 
     @multiprovider
     def _provide_dial_files_tools(
@@ -121,9 +126,7 @@ class DialFilesToolingModule(Module):
         global_transformers: list[ToolArgumentTransformer],
         path_transformer: _AppdataHomePathTransformer,
     ) -> list[StagedBaseTool]:
-        cfg = app_config.features.dial_files if app_config.features else None
-        if cfg is None:
-            return []
+        enabled_names = expand_enabled_tools(self._effective_config(app_config).enabled_tools)
 
         tools: list[tuple[AssistedBuilder[Any], InternalTool]] = [
             (list_builder, LIST_FILES_TOOL_CONFIG),
@@ -139,12 +142,10 @@ class DialFilesToolingModule(Module):
         ]
 
         def _is_enabled(config: InternalTool) -> bool:
-            if cfg.enabled_tools == "all":
-                return True
             short_name = config.open_ai_tool.function.name.removeprefix(
                 INTERNAL_FILE_TOOL_NAME_PREFIX
             )
-            return short_name in cfg.enabled_tools
+            return short_name in enabled_names
 
         # The new path transformer runs last so a file-reference already resolved to a
         # `files/...` URL by the global transformers is relativized too. Injected only
@@ -217,6 +218,4 @@ class DialFilesToolingModule(Module):
         ]
 
     def _missing_read_back_tools(self, cfg: DialFilesConfig) -> list[str]:
-        if cfg.enabled_tools == "all":
-            return []
-        return sorted(self._REQUIRED_READ_BACK_TOOLS - set(cfg.enabled_tools))
+        return sorted(self._REQUIRED_READ_BACK_TOOLS - expand_enabled_tools(cfg.enabled_tools))

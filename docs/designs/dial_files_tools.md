@@ -452,8 +452,8 @@ Uses the same private-SDK transport as `DialFileService.copy` (see Component 7.5
 
 - Binds `_FileStageWrapper`, `_ListFilesTool`, `_ReadFileLinesTool`, `_SearchInFileTool`, `_WriteFileTool`, `_EditFileTool`, `_DeleteFileTool`, `_CopyFileTool`, `_MoveFileTool` in `request_scope`.
 - Contributes all eight tools to the shared `list[StagedBaseTool]` multiprovider via its own `@multiprovider`-decorated provider method (same pattern as `InternalToolModule._provide_internal_tools`).
-- Tools are gated per app via `app_config.features.dial_files`: `enabled_tools="all"` returns every tool; a list returns only the matching subset.
-- Is **preview-feature-gated** via `@preview_module` — when `ENABLE_PREVIEW_FEATURES=false`, nothing is bound and the tools are invisible to the LLM.
+- Tools are gated per app via `app_config.features.dial_files`: `enabled_tools="all"` returns every tool, `"read_only"` the five non-mutating ones, `"none"` (or `[]`) nothing; a list returns only the matching subset. When the `dial_files` block is absent the module behaves as if `enabled_tools="read_only"`.
+- Is **generally available** (promoted from preview in 073a7517); only the nested `tool_call_result_offload` field is still preview-gated.
 
 **Owner:** `src/quickapp/dial_files_tooling/dial_files_tooling_module.py`
 
@@ -498,10 +498,11 @@ DialFilesToolName = Literal[
 ]
 
 class DialFilesConfig(BaseModel):
-    enabled_tools: Literal["all"] | list[DialFilesToolName] = Field(
+    enabled_tools: Literal["all", "read_only", "none"] | list[DialFilesToolName] = Field(
         default="all",
         description=(
-            "Which file tools to expose. Use 'all' for every tool, "
+            "Which file tools to expose. Use 'all' for every tool, 'read_only' for the "
+            "non-mutating ones, 'none' (or an empty list) for no tools, "
             "or a list to restrict (e.g. ['internal_file_read_lines', 'internal_file_search'])."
         ),
     )
@@ -533,18 +534,20 @@ A `pydantic.ValidationError` is raised on startup if any of these rules is viola
 class Features(BaseModel):
     timestamp: TimestampConfig | None = PreviewField(...)
     file_loading: FileLoadingConfig = Field(...)
-    dial_files: DialFilesConfig | None = PreviewField(  # type: ignore[assignment]
+    dial_files: DialFilesConfig | None = Field(
         default=None,
         description="Built-in DIAL files tools (list / read / search / write / edit / delete / copy / move).",
     )
 ```
 
-**Resolution in `DialFilesToolingModule`:** Reads `app_config.features.dial_files` and matches each tool's name against `DialFilesToolName`, returning the matching subset (or every tool when `enabled_tools == "all"`).
+**Resolution in `DialFilesToolingModule`:** `_effective_config` returns `app_config.features.dial_files`, or `DialFilesConfig(enabled_tools="read_only")` when the block is absent. `expand_enabled_tools` (in `config/dial_files.py`) turns `enabled_tools` (preset or list) into the set of short names, and each tool is exposed when its short name is in that set. The same function backs the offload read-back check, so presets need no special-casing there.
 
 **Design notes:**
 
-- **Default semantics.** `features.dial_files` defaults to `None` — file tools are off unless the app author explicitly opts in. Once enabled, `enabled_tools` defaults to `"all"`.
-- **Preview gating.** `dial_files` is a `PreviewField`. When `ENABLE_PREVIEW_FEATURES=false`, `nullify_preview_fields` clears it back to `None` and the module contributes nothing.
+- **Default semantics.** `features.dial_files` defaults to `None`, which means the **read-only** tools (`list`, `read_lines`, `read_chars`, `search`, `find`) are exposed. Mutating tools are opt-in. Once the block is present, `enabled_tools` defaults to `"all"`, so `"dial_files": {}` keeps exposing every tool (changing it would silently remove write tools from existing apps).
+- **Turning the tools off.** `null` can no longer be the off switch (Pydantic cannot tell it from an absent field). Use `"dial_files": {"enabled_tools": "none"}` (an empty list behaves the same).
+- **Offload is unchanged.** An absent block exposes the read-only tools but does not enable offload; offload still requires the explicit block.
+- **Preview gating.** `dial_files` itself is not a preview field. Only the nested `tool_call_result_offload` is.
 - **`agent_home_dir` repointing.** Operators can point the agent's home at a non-appdata bucket (e.g. `"files/org-shared-bucket/reports/"`) or at a subdirectory under appdata (e.g. `"files/{appdata}/workspace/"`). When the template omits `{appdata}`, read/search/list still work even if `my_appdata_home()` would have returned `None` — useful for app-style deployments where appdata isn't provisioned but a shared bucket is.
 - **Future knobs.** `DialFilesConfig` is the natural home for additions like `max_file_size_bytes`, allow/deny path prefixes, or a default `content_type` override. (The "per-app subdir under appdata" use case is now covered by `agent_home_dir`.)
 

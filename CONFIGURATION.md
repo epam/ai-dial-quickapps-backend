@@ -477,7 +477,7 @@ external-fetch overrides; stage display falls back to `info` unless `DEFAULT_STA
 | `external_url_fetch`     | No       | Object         | Per-app override for fetching external (non-DIAL) URLs. See [External URL fetch configuration](#external-url-fetch-configuration).                                           | `{}`                                   |
 | `tool_access_filter`     | No       | Object or null | Per-user tool access filtering: hide DIAL deployment, application and `dial-mcp` toolset tools the calling user cannot access. See [Tool access filter configuration](#tool-access-filter-configuration). | `null`                                 |
 | `stage_display`          | No       | Object         | Which tool-execution stages appear in the DIAL UI. See [Stage display configuration](#stage-display-configuration).                                                          | `{"level": "info"}`                    |
-| `dial_files`             | No       | Object or null | Built-in DIAL workspace file tools. `null` (default) disables them. See [DIAL files configuration](#dial-files-configuration).                                               | `null`                                 |
+| `dial_files`             | No       | Object or null | Built-in DIAL workspace file tools. `null` (default) exposes the read-only tools; use `{"enabled_tools": "none"}` to disable them. See [DIAL files configuration](#dial-files-configuration).                                               | `null`                                 |
 | `web_fetch`              | No       | Object or null | Built-in `internal_web_fetch` tool. See [Web fetch configuration](#web-fetch-configuration).                                                                                 | `null`                                 |
 | `representation_tooling` | No       | Object or null | Tools that control how the agent surfaces output (e.g. add attachment to the answer). See [Representation tooling](#representation-tooling-configuration).                   | `null`                                 |
 
@@ -623,12 +623,15 @@ Controls which tool-execution stages are surfaced in the DIAL UI. The deployment
 
 #### DIAL files configuration
 
-Opt in to the built-in workspace file tools (`internal_file_*`). Omit `dial_files` or set it to
-`null` to leave file tools off. Setting `"dial_files": {}` enables **all** tools with defaults.
+The built-in workspace file tools (`internal_file_*`) are on by default in **read-only** form: an app
+that omits `dial_files` (or sets it to `null`) gets `list`, `read_lines`, `read_chars`, `search` and
+`find`. The mutating tools (`write`, `edit`, `delete`, `copy`, `move`) are opt-in. Setting
+`"dial_files": {}` enables **all** tools with defaults. To turn file tools off, set
+`"dial_files": {"enabled_tools": "none"}`.
 
 | Field                      | Required | Type                         | Description                                                                                                                                 | Default Value |
 |----------------------------|----------|------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------|---------------|
-| `enabled_tools`            | No       | `"all"` or Array[String]     | Which tools to expose. Short names: `list`, `read_lines`, `read_chars`, `search`, `find`, `write`, `edit`, `delete`, `copy`, `move`.     | `"all"`       |
+| `enabled_tools`            | No       | `"all"`, `"read_only"`, `"none"` or Array[String] | Which tools to expose. `"all"` = every tool, `"read_only"` = `list`, `read_lines`, `read_chars`, `search`, `find`, `"none"` (or `[]`) = no file tools. A list restricts to the given short names: `list`, `read_lines`, `read_chars`, `search`, `find`, `write`, `edit`, `delete`, `copy`, `move`. | `"all"` when the block is present; `"read_only"` when `dial_files` is omitted |
 | `agent_home_dir`           | No       | String                       | Relative sub-directory under appdata used as the root for relative paths. Must end with `/`; no `files/…`, leading `/`, or `..`. Empty = appdata root. | `""`          |
 | `max_files_scanned`        | No       | Integer (`≥ 1`)              | Folder-mode `search` cap: max files downloaded/scanned per call before truncation.                                                          | `50`          |
 | `tool_call_result_offload` | No       | Object or null               | `[Preview]` Offload oversized tool responses to a DIAL file. See below. Requires `read_lines` and `search` in `enabled_tools`.                          | defaults (see below) |

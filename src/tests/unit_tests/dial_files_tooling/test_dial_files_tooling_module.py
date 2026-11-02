@@ -1,5 +1,7 @@
 from unittest.mock import MagicMock
 
+import pytest
+
 from quickapp.config.dial_files import DialFilesConfig
 from quickapp.dial_files_tooling.dial_files_tooling_module import DialFilesToolingModule
 
@@ -14,13 +16,70 @@ def _make_builders():
     return tuple(_builder() for _ in range(10))
 
 
-class TestDialFilesToolingModule:
-    def test_cfg_none_returns_empty(self):
-        module = DialFilesToolingModule()
+_TOOL_NAMES = (
+    "list",
+    "read_lines",
+    "read_chars",
+    "search",
+    "find",
+    "write",
+    "edit",
+    "delete",
+    "copy",
+    "move",
+)
+_READ_ONLY = {"list", "read_lines", "read_chars", "search", "find"}
+
+
+def _built_tool_names(dial_files: DialFilesConfig | None) -> set[str]:
+    app_config = MagicMock()
+    app_config.features.dial_files = dial_files
+    builders = _make_builders()
+    DialFilesToolingModule()._provide_dial_files_tools(app_config, *builders, [], MagicMock())
+    return {name for name, b in zip(_TOOL_NAMES, builders) if b.build.called}
+
+
+class TestDefaultToolResolution:
+    def test_absent_block_exposes_read_only_tools(self):
+        assert _built_tool_names(None) == _READ_ONLY
+
+    def test_absent_features_exposes_read_only_tools(self):
         app_config = MagicMock()
         app_config.features = None
-        result = module._provide_dial_files_tools(app_config, *_make_builders(), [], MagicMock())
-        assert result == []
+        result = DialFilesToolingModule()._provide_dial_files_tools(
+            app_config, *_make_builders(), [], MagicMock()
+        )
+        assert len(result) == 5
+
+    def test_empty_block_still_exposes_all_tools(self):
+        assert _built_tool_names(DialFilesConfig()) == set(_TOOL_NAMES)
+
+    def test_read_only_preset_exposes_read_only_tools(self):
+        assert _built_tool_names(DialFilesConfig(enabled_tools="read_only")) == _READ_ONLY
+
+    @pytest.mark.parametrize("disabled", ["none", []])
+    def test_none_and_empty_list_disable_the_defaults(self, disabled):
+        assert _built_tool_names(DialFilesConfig(enabled_tools=disabled)) == set()
+
+    def test_explicit_list_can_include_mutating_tools(self):
+        cfg = DialFilesConfig(enabled_tools=["read_lines", "write"])
+        assert _built_tool_names(cfg) == {"read_lines", "write"}
+
+    def test_dial_files_config_falls_back_to_read_only_default(self):
+        app_config = MagicMock()
+        app_config.features.dial_files = None
+        cfg = DialFilesToolingModule()._provide_dial_files_config(app_config)
+        assert cfg.enabled_tools == "read_only"
+        assert cfg.agent_home_dir == ""
+
+    def test_absent_block_keeps_offload_disabled(self):
+        app_config = MagicMock()
+        app_config.features.dial_files = None
+        offload = DialFilesToolingModule()._provide_offload_config(app_config)
+        assert offload.enabled is False
+
+
+class TestDialFilesToolingModule:
 
     def test_enabled_all_returns_all_tools(self):
         module = DialFilesToolingModule()

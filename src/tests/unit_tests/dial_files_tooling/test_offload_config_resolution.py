@@ -97,6 +97,16 @@ class TestOffloadConfigResolution:
         config = _resolve(_make_app_config(enabled_tools=["read_lines"]))
         assert config.enabled is False
 
+    def test_enabled_with_read_only_preset(self):
+        config = _resolve(_make_app_config(enabled_tools="read_only"))
+        assert config.enabled is True
+        assert config.missing_read_back_tools == ()
+
+    def test_disabled_with_none_preset(self):
+        config = _resolve(_make_app_config(enabled_tools="none"))
+        assert config.enabled is False
+        assert config.missing_read_back_tools == ("read_lines", "search")
+
 
 class TestOffloadInitializationExceptions:
     def test_no_exception_when_dial_files_absent(self):

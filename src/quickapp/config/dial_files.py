@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Literal, get_args
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -18,6 +18,24 @@ DialFilesToolName = Literal[
     "copy",
     "move",
 ]
+
+DialFilesToolPreset = Literal["all", "read_only", "none"]
+
+_ALL_TOOLS: frozenset[str] = frozenset(get_args(DialFilesToolName))
+_READ_ONLY_TOOLS: frozenset[str] = frozenset({"list", "read_lines", "read_chars", "search", "find"})
+
+
+def expand_enabled_tools(
+    enabled_tools: DialFilesToolPreset | list[DialFilesToolName],
+) -> frozenset[str]:
+    """Resolve an `enabled_tools` value (preset or explicit list) to short tool names."""
+    if enabled_tools == "all":
+        return _ALL_TOOLS
+    if enabled_tools == "read_only":
+        return _READ_ONLY_TOOLS
+    if enabled_tools == "none":
+        return frozenset()
+    return frozenset(enabled_tools)
 
 
 class ToolCallResultOffloadSettings(BaseSettings):
@@ -89,11 +107,14 @@ class ToolCallResultOffloadConfig(BaseModel):
 
 
 class DialFilesConfig(BaseModel):
-    enabled_tools: Literal["all"] | list[DialFilesToolName] = Field(
+    enabled_tools: DialFilesToolPreset | list[DialFilesToolName] = Field(
         default="all",
         description=(
-            "Which file tools to expose. Use 'all' for every tool, "
-            "or a list to restrict (e.g. ['read_lines', 'search'])."
+            "Which file tools to expose. Use 'all' for every tool, 'read_only' for the "
+            "non-mutating ones (list, read_lines, read_chars, search, find), 'none' (or an "
+            "empty list) to expose no file tools, or a list to restrict "
+            "(e.g. ['read_lines', 'search']). When the whole `dial_files` block is omitted, "
+            "'read_only' applies."
         ),
     )
     agent_home_dir: str = Field(
