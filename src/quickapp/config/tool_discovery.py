@@ -31,7 +31,7 @@ def _min_tools_for_deferral_field() -> FieldInfo:
     )
 
 
-class BaseSearchStrategyConfig(BaseModel):
+class _BaseSearchStrategy(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     top_k: int = Field(
@@ -45,13 +45,12 @@ class BaseSearchStrategyConfig(BaseModel):
         le=1.0,
         description=(
             "Minimum relevance score (0..1, reported by the routing model) for a tool to be "
-            "returned. Tools scored lower are dropped; the hierarchy strategy applies the same "
-            "threshold to toolsets in its first call."
+            "returned. Tools scored lower are dropped."
         ),
     )
 
 
-class PlainSearchStrategyConfig(BaseSearchStrategyConfig):
+class PlainSearchStrategy(_BaseSearchStrategy):
     type: Literal["plain"] = Field(
         default="plain",
         description=(
@@ -61,7 +60,7 @@ class PlainSearchStrategyConfig(BaseSearchStrategyConfig):
     )
 
 
-class WindowSearchStrategyConfig(BaseSearchStrategyConfig):
+class WindowSearchStrategy(_BaseSearchStrategy):
     type: Literal["window"] = Field(
         default="window",
         description=(
@@ -82,7 +81,7 @@ class WindowSearchStrategyConfig(BaseSearchStrategyConfig):
     )
 
 
-class HierarchySearchStrategyConfig(BaseSearchStrategyConfig):
+class HierarchySearchStrategy(_BaseSearchStrategy):
     type: Literal["hierarchy"] = Field(
         default="hierarchy",
         description=(
@@ -98,8 +97,8 @@ class HierarchySearchStrategyConfig(BaseSearchStrategyConfig):
     )
 
 
-SearchStrategyConfig = Annotated[
-    PlainSearchStrategyConfig | WindowSearchStrategyConfig | HierarchySearchStrategyConfig,
+SearchStrategy = Annotated[
+    PlainSearchStrategy | WindowSearchStrategy | HierarchySearchStrategy,
     Field(discriminator="type"),
 ]
 
@@ -119,7 +118,7 @@ class ToolDiscoveryConfig(BaseModel):
         ),
     )
     min_tools_for_deferral: int = _min_tools_for_deferral_field()  # type: ignore[assignment]
-    strategy: SearchStrategyConfig = Field(
-        default_factory=PlainSearchStrategyConfig,
+    strategy: SearchStrategy = Field(
+        default_factory=PlainSearchStrategy,
         description="How internal_tool_search finds tools in the deferred catalog: plain, window or hierarchy.",
     )

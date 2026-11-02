@@ -380,7 +380,7 @@ Search strategies (`tool_discovery.strategy`). All routing calls use `service_mo
 | `window`    | The catalog is split into windows searched in parallel, then one final call filters the union. Best recall on large catalogs; reads the whole catalog on every search. | `window_size_chars` (`40000`, window size in characters of rendered catalog text), `per_window_top_k` (`3`) |
 | `hierarchy` | First call picks toolsets from their descriptions, second picks tools among the chosen toolsets. Cheapest on large catalogs; recall is bounded by the toolset choice. | `toolset_top_k` (`3`) |
 
-Every strategy also accepts `top_k` (default `10`, maximum tools returned) and `score_threshold` (default `0.5`, tools scored lower are dropped; `hierarchy` also applies it to toolsets in its first call).
+Every strategy also accepts `top_k` (default `10`, maximum tools returned) and `score_threshold` (default `0.5`, tools scored lower are dropped).
 
 <details>
 <summary><b>Tool discovery configuration JSON sample</b></summary>
@@ -505,10 +505,7 @@ tool, transformers, and metadata enricher are then not registered at all.
 
 | Field                | Required | Type   | Description                                                                                                | Available Values | Default Value |
 |----------------------|----------|--------|----------------------------------------------------------------------------------------------------------------|------------------|---------------|
-| `injection_strategy` | No       | String | How the current timestamp reaches the model. `tool_call` injects a synthetic `current_timestamp` tool-call and result after the last user message. | `tool_call`      | `tool_call`   |
-
-Timestamps are shown in the user's time zone, taken from the `X-Timezone` request header that DIAL Chat
-sends (any client may send it). Without a valid `X-Timezone`, UTC is used; an invalid header is ignored. See [Time awareness](./docs/time_awareness.md#time-zone).
+| `injection_strategy` | No       | String | How the current timestamp reaches the model. `tool_call` injects a synthetic `current_timestamp` tool-call and result immediately before the last user message. | `tool_call`      | `tool_call`   |
 
 `tool_call` is the only strategy available today, so you can leave the field out — `{}` behaves
 exactly like `{"injection_strategy": "tool_call"}`. Other strategies may be added in the future.

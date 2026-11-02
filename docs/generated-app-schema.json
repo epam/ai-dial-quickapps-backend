@@ -2101,7 +2101,7 @@
       "title": "HardStopStrategyModel",
       "type": "object"
     },
-    "HierarchySearchStrategyConfig": {
+    "HierarchySearchStrategy": {
       "properties": {
         "top_k": {
           "default": 10,
@@ -2112,7 +2112,7 @@
         },
         "score_threshold": {
           "default": 0.5,
-          "description": "Minimum relevance score (0..1, reported by the routing model) for a tool to be returned. Tools scored lower are dropped; the hierarchy strategy applies the same threshold to toolsets in its first call.",
+          "description": "Minimum relevance score (0..1, reported by the routing model) for a tool to be returned. Tools scored lower are dropped.",
           "maximum": 1.0,
           "minimum": 0.0,
           "title": "Score Threshold",
@@ -2133,7 +2133,7 @@
           "type": "integer"
         }
       },
-      "title": "HierarchySearchStrategyConfig",
+      "title": "HierarchySearchStrategy",
       "type": "object"
     },
     "HookEvent": {
@@ -3005,7 +3005,7 @@
       "title": "ParameterDisplayConfig",
       "type": "object"
     },
-    "PlainSearchStrategyConfig": {
+    "PlainSearchStrategy": {
       "properties": {
         "top_k": {
           "default": 10,
@@ -3016,7 +3016,7 @@
         },
         "score_threshold": {
           "default": 0.5,
-          "description": "Minimum relevance score (0..1, reported by the routing model) for a tool to be returned. Tools scored lower are dropped; the hierarchy strategy applies the same threshold to toolsets in its first call.",
+          "description": "Minimum relevance score (0..1, reported by the routing model) for a tool to be returned. Tools scored lower are dropped.",
           "maximum": 1.0,
           "minimum": 0.0,
           "title": "Score Threshold",
@@ -3030,7 +3030,7 @@
           "type": "string"
         }
       },
-      "title": "PlainSearchStrategyConfig",
+      "title": "PlainSearchStrategy",
       "type": "object"
     },
     "PredefinedSystemPromptConfig": {
@@ -4040,21 +4040,21 @@
           "description": "How internal_tool_search finds tools in the deferred catalog: plain, window or hierarchy.",
           "discriminator": {
             "mapping": {
-              "hierarchy": "#/$defs/HierarchySearchStrategyConfig",
-              "plain": "#/$defs/PlainSearchStrategyConfig",
-              "window": "#/$defs/WindowSearchStrategyConfig"
+              "hierarchy": "#/$defs/HierarchySearchStrategy",
+              "plain": "#/$defs/PlainSearchStrategy",
+              "window": "#/$defs/WindowSearchStrategy"
             },
             "propertyName": "type"
           },
           "oneOf": [
             {
-              "$ref": "#/$defs/PlainSearchStrategyConfig"
+              "$ref": "#/$defs/PlainSearchStrategy"
             },
             {
-              "$ref": "#/$defs/WindowSearchStrategyConfig"
+              "$ref": "#/$defs/WindowSearchStrategy"
             },
             {
-              "$ref": "#/$defs/HierarchySearchStrategyConfig"
+              "$ref": "#/$defs/HierarchySearchStrategy"
             }
           ],
           "title": "Strategy"
@@ -4260,7 +4260,7 @@
       "title": "WebFetchConfig",
       "type": "object"
     },
-    "WindowSearchStrategyConfig": {
+    "WindowSearchStrategy": {
       "properties": {
         "top_k": {
           "default": 10,
@@ -4271,7 +4271,7 @@
         },
         "score_threshold": {
           "default": 0.5,
-          "description": "Minimum relevance score (0..1, reported by the routing model) for a tool to be returned. Tools scored lower are dropped; the hierarchy strategy applies the same threshold to toolsets in its first call.",
+          "description": "Minimum relevance score (0..1, reported by the routing model) for a tool to be returned. Tools scored lower are dropped.",
           "maximum": 1.0,
           "minimum": 0.0,
           "title": "Score Threshold",
@@ -4299,7 +4299,7 @@
           "type": "integer"
         }
       },
-      "title": "WindowSearchStrategyConfig",
+      "title": "WindowSearchStrategy",
       "type": "object"
     }
   },

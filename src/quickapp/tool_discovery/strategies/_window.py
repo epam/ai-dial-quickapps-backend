@@ -1,13 +1,13 @@
 import asyncio
 
 from quickapp.common.deferred_tool_types import DeferredToolCatalogEntry, DeferredToolsetSummary
-from quickapp.config.tool_discovery import WindowSearchStrategyConfig
-from quickapp.tool_discovery._anonymous_agent import RoutingResult
-from quickapp.tool_discovery._routing_prompt import render_catalog_line
-
-from ._strategy import BaseStrategy, sum_routing_usage
-
-_MAX_PARALLEL_WINDOW_CALLS = 8
+from quickapp.config.tool_discovery import WindowSearchStrategy
+from quickapp.tool_discovery._anonymous_agent import (
+    _AnonymousAgent,
+    _RoutingResult,
+    sum_routing_usage,
+)
+from quickapp.tool_discovery.strategies._selection import render_catalog_line
 
 
 def split_into_windows(
@@ -32,31 +32,53 @@ def split_into_windows(
     return windows
 
 
-class WindowStrategy(BaseStrategy[WindowSearchStrategyConfig]):
+class WindowStrategy:
     """Searches catalog windows in parallel, then filters the union of the candidates."""
+
+    def __init__(self, agent: _AnonymousAgent, settings: WindowSearchStrategy) -> None:
+        self.__agent = agent
+        self.__settings = settings
 
     async def search(
         self,
         query: str,
         catalog: list[DeferredToolCatalogEntry],
         toolset_summaries: list[DeferredToolsetSummary],
-    ) -> RoutingResult:
-        del toolset_summaries  # unused by this strategy
-        windows = split_into_windows(catalog, self._config.window_size_chars)
+    ) -> _RoutingResult:
+        settings = self.__settings
+        windows = split_into_windows(catalog, settings.window_size_chars)
         if len(windows) <= 1:
-            return await self._route_tools(query, catalog)
+            return await self.__agent.route(
+                query,
+                catalog,
+                kind="tool",
+                limit=settings.top_k,
+                threshold=settings.score_threshold,
+            )
 
-        semaphore = asyncio.Semaphore(_MAX_PARALLEL_WINDOW_CALLS)
-
-        async def search_window(window: list[DeferredToolCatalogEntry]) -> RoutingResult:
-            async with semaphore:
-                return await self._route_tools(query, window, limit=self._config.per_window_top_k)
-
-        window_results = await asyncio.gather(*(search_window(window) for window in windows))
+        window_results = await asyncio.gather(
+            *(
+                self.__agent.route(
+                    query,
+                    window,
+                    kind="tool",
+                    limit=settings.per_window_top_k,
+                    threshold=settings.score_threshold,
+                )
+                for window in windows
+            )
+        )
         candidate_names = list(dict.fromkeys(name for r in window_results for name in r.names))
+        window_usage = sum_routing_usage(*window_results)
         if not candidate_names:
-            return RoutingResult(usage=sum_routing_usage(*window_results))
+            return _RoutingResult(usage=window_usage)
 
         entries_by_name = {entry["name"]: entry for entry in catalog}
-        final = await self._route_tools(query, [entries_by_name[name] for name in candidate_names])
-        return final.with_usage(sum_routing_usage(*window_results, final))
+        final = await self.__agent.route(
+            query,
+            [entries_by_name[name] for name in candidate_names],
+            kind="tool",
+            limit=settings.top_k,
+            threshold=settings.score_threshold,
+        )
+        return final.with_usage(sum_routing_usage(_RoutingResult(usage=window_usage), final))

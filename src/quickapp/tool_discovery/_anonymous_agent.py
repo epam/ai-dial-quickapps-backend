@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from quickapp.common import DEPLOYMENT_AZURE_CLIENT
 from quickapp.common.deployment_usage import ModelUsage
 from quickapp.config.application import ApplicationConfig
-from quickapp.tool_discovery._routing_prompt import (
+from quickapp.tool_discovery.strategies._selection import (
     SelectionKind,
     build_system_prompt,
     build_user_prompt,
@@ -19,12 +19,24 @@ from quickapp.tool_discovery._routing_prompt import (
 logger = logging.getLogger(__name__)
 
 
-class RoutingResult(BaseModel):
+class _RoutingResult(BaseModel):
     names: list[str] = Field(default_factory=list)
     usage: ModelUsage | None = None
 
-    def with_usage(self, usage: ModelUsage | None) -> "RoutingResult":
-        return RoutingResult(names=self.names, usage=usage)
+    def with_usage(self, usage: ModelUsage | None) -> "_RoutingResult":
+        return _RoutingResult(names=self.names, usage=usage)
+
+
+def sum_routing_usage(*results: _RoutingResult) -> ModelUsage | None:
+    """Total the usage of several routing calls (all made against the same model)."""
+    usages = [r.usage for r in results if r.usage is not None]
+    if not usages:
+        return None
+    return ModelUsage(
+        model=usages[0].model,
+        prompt_tokens=sum(u.prompt_tokens for u in usages),
+        completion_tokens=sum(u.completion_tokens for u in usages),
+    )
 
 
 @inject
@@ -50,13 +62,13 @@ class _AnonymousAgent:
         query: str,
         catalog: Sequence[Mapping[str, object]],
         *,
-        kind: SelectionKind,
-        limit: int,
-        threshold: float,
-    ) -> RoutingResult:
+        kind: SelectionKind = "tool",
+        limit: int = 10,
+        threshold: float = 0.0,
+    ) -> _RoutingResult:
         """Return up to `limit` catalog names scoring at least `threshold`, best match first."""
         if not catalog:
-            return RoutingResult()
+            return _RoutingResult()
 
         discovery = self.__config.orchestrator.tool_discovery
         if discovery is None:
@@ -64,7 +76,7 @@ class _AnonymousAgent:
                 "Anonymous agent routing call invoked while tool_discovery is disabled — "
                 "returning no matches"
             )
-            return RoutingResult()
+            return _RoutingResult()
         service_model = (
             discovery.service_model or self.__config.orchestrator.deployment.deployment_id
         )
@@ -80,22 +92,21 @@ class _AnonymousAgent:
             )
         except openai.OpenAIError:
             logger.exception("Anonymous agent routing call failed")
-            return RoutingResult()
+            return _RoutingResult()
 
         usage = _to_model_usage(service_model, response.usage)
         raw = (response.choices[0].message.content or "").strip()
         known_names = {str(entry["name"]) for entry in catalog}
         picked = parse_selection(raw, known_names, limit=limit, threshold=threshold)
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(
-                "Routing call found %d of %d %ss (threshold=%s): %s",
-                len(picked),
-                len(catalog),
-                kind,
-                threshold,
-                ", ".join(f"{item.name}={item.score:.2f}" for item in picked) or "none",
-            )
-        return RoutingResult(names=[item.name for item in picked], usage=usage)
+        logger.debug(
+            "Routing call found %d of %d %ss (threshold=%s): %s",
+            len(picked),
+            len(catalog),
+            kind,
+            threshold,
+            ", ".join(f"{item.name}={item.score:.2f}" for item in picked) or "none",
+        )
+        return _RoutingResult(names=[item.name for item in picked], usage=usage)
 
 
 def _to_model_usage(model: str, usage: CompletionUsage | None) -> ModelUsage | None:
