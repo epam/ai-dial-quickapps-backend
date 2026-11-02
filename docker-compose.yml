@@ -20,11 +20,19 @@ services:
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: "admin"
       KC_BOOTSTRAP_ADMIN_PASSWORD: "admin"
+      KC_HEALTH_ENABLED: "true"
+      # Plain HTTP on the management port (9000) so the in-container healthcheck can reach it.
+      KC_HTTP_MANAGEMENT_SCHEME: "http"
     volumes:
       - ./docker_compose_files/keycloak/dial-dev-realm.json:/opt/keycloak/data/import/dial-dev-realm.json:ro
       # Leaf cert/key only — the CA private key stays out of the container.
       - ./docker_compose_files/keycloak/certs/keycloak.crt:/opt/keycloak/certs/keycloak.crt:ro
       - ./docker_compose_files/keycloak/certs/keycloak.key:/opt/keycloak/certs/keycloak.key:ro
+    # Official no-curl probe: https://www.keycloak.org/observability/health
+    healthcheck:
+      test: ["CMD", "bash", "-c", "{ printf 'HEAD /health/ready HTTP/1.0\\r\\n\\r\\n' >&0; grep 'HTTP/1.0 200'; } 0<>/dev/tcp/localhost/9000"]
+      interval: 5s
+      retries: 40
 
   themes:
     image: epam/ai-dial-chat-themes:0.10.0
@@ -36,9 +44,12 @@ services:
       - "3010:3000"
     image: epam/ai-dial-chat:development-0.x
     depends_on:
-      - themes
-      - core
-      - keycloak
+      themes:
+        condition: service_started
+      core:
+        condition: service_started
+      keycloak:
+        condition: service_healthy
     environment:
       NEXTAUTH_SECRET: "secret"
       # Without this, NextAuth infers the callback host from its internal port (3000) instead
@@ -67,9 +78,12 @@ services:
       - "3012:5000"
     restart: on-failure
     depends_on:
-      - themes
-      - core
-      - keycloak
+      themes:
+        condition: service_started
+      core:
+        condition: service_started
+      keycloak:
+        condition: service_healthy
     environment:
       AUTH_SESSION_SECRET: "48c69bd559cffffb2cbee3951430f324e0cd0c79fd8a83de0a991648cae706c8"
       AUTH_CALLBACK_BASE_URL: "http://localhost:3012"
@@ -102,9 +116,12 @@ services:
       - "4600:5000"
     restart: on-failure
     depends_on:
-      - themes
-      - core
-      - keycloak
+      themes:
+        condition: service_started
+      core:
+        condition: service_started
+      keycloak:
+        condition: service_healthy
     environment:
       # Must equal chat-new's AUTH_SESSION_SECRET: cookies are shared across localhost ports, so the
       # editor iframe reuses the chat session cookie and has to decrypt it.
@@ -276,7 +293,7 @@ services:
       themes:
         condition: service_started
       keycloak:
-        condition: service_started
+        condition: service_healthy
     environment:
       DIAL_ADMIN_API_URL: "http://admin-backend:8080/"
       NEXTAUTH_SECRET: "secret"
