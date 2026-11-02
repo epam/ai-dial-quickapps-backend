@@ -24,7 +24,7 @@ QuickApps never asks for it to be cached:
   prefixes that end at a breakpoint. Without one, a follow-up call can land on another upstream and miss the
   cache.
 
-This design marks up to three cache breakpoints: the system message, the last message and the last tool. The
+This design marks up to three cache breakpoints: the system message, the last message and the last function tool. The
 tools + system prompt part pays off from its 2nd use, by any conversation of the app. The history part pays off
 only in a turn that makes a 2nd model call: today the replayed history changes on every turn
 ([Known Issues](#known-issues)), so a turn with a single call writes the history at 1.25× and never reads it
@@ -85,7 +85,7 @@ prefix on the same upstream:
 | **A. Admin presets a request-level breakpoint in Core `defaults`** | Already possible with no QuickApps change, and it also caches the history. But the Bedrock adapter does not support it, and it applies to every caller of the deployment. It **composes** with this design: it takes the 1 slot we keep free. Our breakpoints use the default TTL, so the preset must too. |
 | **B. QuickApps sends a request-level breakpoint** | Same Bedrock gap. D's last-message breakpoint moves with the history the same way and works on every Claude adapter. |
 | **C. One explicit breakpoint on the system message** (the previous draft) | Superseded by D, which keeps it as the first priority. On its own it caches only tools + system. |
-| **D. Breakpoints on the system message, the last message and the last tool** | **Chosen.** All Claude adapters support message and tool breakpoints. In a local test (Claude Sonnet 5.5, 5 turns of exactly 2 calls each, ~6.7k-token system prompt, 8 tools) it cut the cost by 66%, against 55% for C. The history is rewritten on every turn ([Known Issues](#known-issues)), so the first call of a turn misses the history entry and only the 2nd call reads it. With 1 call per turn, D costs more than C. |
+| **D. Breakpoints on the system message, the last message and the last function tool** | **Chosen.** All Claude adapters support message and tool breakpoints. In a local test (Claude Sonnet 5.5, 5 turns of exactly 2 calls each, ~6.7k-token system prompt, 8 tools) it cut the cost by 66%, against 55% for C. The history is rewritten on every turn ([Known Issues](#known-issues)), so the first call of a turn misses the history entry and only the 2nd call reads it. With 1 call per turn, D costs more than C. |
 
 The system-message breakpoint also caches the tools, because providers cache in the order
 `tools → system → messages`. The last-tool breakpoint keeps the tools cached when only the system prompt
@@ -204,7 +204,7 @@ tools.
 
 ## Known Issues
 
-Documented in the "Prompt caching" section of `docs/agent.md`. Unless stated otherwise, the workaround is
+Documented in [docs/agent.md — Prompt caching](../agent.md#prompt-caching). Unless stated otherwise, the workaround is
 `PROMPT_CACHE_BREAKPOINTS_ENABLED=false`.
 
 - **No effect without `cacheSupported`** on the orchestrator deployment. Workaround: set the flag on Claude
