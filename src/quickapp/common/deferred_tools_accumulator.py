@@ -28,12 +28,10 @@ class DeferredToolsAccumulator:
             if isinstance(t.tool_config, BaseOpenAITool)
             and (name := t.tool_config.open_ai_tool.function.name)
         ]
-        toolset_name = resolve_localized(toolset.name)
         self._catalog.extend(
             {
                 "name": name,
                 "description": tool_config.open_ai_tool.function.description or "",
-                "toolset": toolset_name,
             }
             for _, tool_config, name in entries
         )

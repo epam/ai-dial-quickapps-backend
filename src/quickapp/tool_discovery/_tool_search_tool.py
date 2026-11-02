@@ -18,9 +18,9 @@ from quickapp.config.application import StageDisplayLevel
 from quickapp.config.tools.base import OpenAiToolConfig, OpenAiToolConfigDict
 from quickapp.config.tools.internal import InternalTool
 from quickapp.core.agent.lazy_loaded_tools_holder import LazyLoadedToolsHolder
+from quickapp.tool_discovery._anonymous_agent import _AnonymousAgent
 from quickapp.tool_discovery._tool_search_stage_wrapper import _ToolSearchStageWrapper
 from quickapp.tool_discovery._toolset_summary_format import format_toolset_summaries
-from quickapp.tool_discovery.strategies._strategy import ToolSearchStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ class _ToolSearchTool(StagedBaseTool):
         definitions: list[DeferredToolDefinition],
         toolset_summaries: list[DeferredToolsetSummary],
         lazy_holder: LazyLoadedToolsHolder,
-        strategy: ToolSearchStrategy,
+        anonymous_agent: _AnonymousAgent,
         stage_display_level: StageDisplayLevel = StageDisplayLevel.INFO,
         argument_transformers: list[ToolArgumentTransformer] | None = None,
         **kwargs: Any,
@@ -57,7 +57,7 @@ class _ToolSearchTool(StagedBaseTool):
             definition.name: definition.definition for definition in definitions
         }
         self.__lazy_holder = lazy_holder
-        self.__strategy = strategy
+        self.__anonymous_agent = anonymous_agent
 
     def enrich_openai_tool_schema(self, open_ai_tool: OpenAiToolConfig) -> OpenAiToolConfig:
         summaries = self.__toolset_summaries
@@ -90,16 +90,17 @@ class _ToolSearchTool(StagedBaseTool):
                 stage_wrapper.add_result(result)
             return result
 
-        routing = await self.__strategy.search(query, catalog, self.__toolset_summaries)
+        routing = await self.__anonymous_agent.route(query, catalog)
 
-        discovered: list[str] = []
+        discovered: list[dict[str, str]] = []
         new_definitions = []
         for name in routing.names:
             definition = self.__definitions_by_name.get(name)
             if definition is None:
                 logger.warning("tool_search matched unknown tool name %r — skipping", name)
                 continue
-            discovered.append(name)
+            description: str = definition.get("function", {}).get("description", "")
+            discovered.append({"name": name, "description": description})
             new_definitions.append(definition)
 
         if new_definitions:

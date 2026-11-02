@@ -31,7 +31,7 @@ def _make_tool_search_tool(toolset_summaries: list[dict[str, str | int | None]])
         definitions=[],
         toolset_summaries=toolset_summaries,
         lazy_holder=MagicMock(),
-        strategy=MagicMock(),
+        anonymous_agent=MagicMock(),
     )
 
 
@@ -94,8 +94,8 @@ class TestEnrichOpenAiToolSchema:
 class TestRoutingUsage:
     @staticmethod
     def _make_tool(routing: _RoutingResult) -> _ToolSearchTool:
-        strategy = MagicMock()
-        strategy.search = AsyncMock(return_value=routing)
+        anonymous_agent = MagicMock()
+        anonymous_agent.route = AsyncMock(return_value=routing)
         return _ToolSearchTool(
             stage_wrapper_builder=MagicMock(),
             tool_config=MagicMock(),
@@ -104,7 +104,7 @@ class TestRoutingUsage:
             definitions=[],
             toolset_summaries=[],
             lazy_holder=MagicMock(),
-            strategy=strategy,
+            anonymous_agent=anonymous_agent,
         )
 
     @pytest.mark.asyncio
