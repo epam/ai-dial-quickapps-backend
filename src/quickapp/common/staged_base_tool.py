@@ -27,9 +27,13 @@ from quickapp.config.application import StageDisplayLevel
 from quickapp.config.tools.base import BaseOpenAITool
 from quickapp.config.tools.base import BaseTool as _BaseToolConfig
 from quickapp.config.tools.base import OpenAiToolConfig
-from quickapp.config.tools.tool_fallback import RetryStrategyModel
+from quickapp.config.tools.tool_fallback import RetryStrategyModel, ToolFallbackStrategyModel
 
-from .exceptions import InvalidToolCallParameterException, ToolTimeoutError
+from .exceptions import (
+    FallbackAgentStopException,
+    InvalidToolCallParameterException,
+    ToolTimeoutError,
+)
 from .perf_timer.perf_timer import PerformanceTimer
 from .perf_timer.tool_milestones import bind_tool_period, unbind_tool_period
 from .tool_call_result import ToolCallResult
@@ -227,7 +231,7 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
             )
         except InvalidToolCallParameterException as e:
             self._report_error_to_stage(stage_wrapper, e, error_reference)
-            return FallbackProcessor.process_fallback(
+            return self.__process_fallback(
                 [
                     RetryStrategyModel(
                         instructions=f"Parameter {e.parameter_name} is invalid, try to call the tool again with fixed exception: {e.message}"
@@ -235,6 +239,7 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
                 ],
                 tool_call_id,
                 e,
+                error_reference,
             )
         except Exception as e:
             fallback = self._tool_config.fallback_configuration
@@ -243,7 +248,20 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
             else:
                 error_to_show = Exception("An error occurred while executing the tool.")
             self._report_error_to_stage(stage_wrapper, error_to_show, error_reference)
-            return FallbackProcessor.process_fallback(fallback.strategies, tool_call_id, e)
+            return self.__process_fallback(fallback.strategies, tool_call_id, e, error_reference)
+
+    @staticmethod
+    def __process_fallback(
+        strategies: list[ToolFallbackStrategyModel],
+        tool_call_id: str,
+        error: Exception,
+        error_reference: str,
+    ) -> ToolCallResult:
+        try:
+            return FallbackProcessor.process_fallback(strategies, tool_call_id, error)
+        except FallbackAgentStopException as stop:
+            stop.error_reference = error_reference
+            raise
 
     def _report_error_to_stage(
         self,
