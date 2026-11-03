@@ -8,52 +8,50 @@ logger = logging.getLogger(__name__)
 
 _CACHE_BREAKPOINT = "cache_breakpoint"
 
-# Anthropic allows 4 breakpoints per request; one slot stays free for a request-level
-# breakpoint an admin may preset through Core `defaults`, which QuickApps cannot see.
-_MAX_BREAKPOINTS = 3
-
 
 class _PromptCacheBreakpoints:
     """Marks the system message, the last message and the last function tool with
-    ``custom_fields.cache_breakpoint``, in that order, while slots remain. Marked items are
-    replaced by copies; client breakpoints are counted, not removed.
+    ``custom_fields.cache_breakpoint``. Marked items are replaced by copies.
     """
 
     def apply(self, messages: list[dict[str, Any]], tools: list[OpenAiToolConfigDict]) -> None:
-        free = _MAX_BREAKPOINTS - sum(1 for item in [*messages, *tools] if _has_breakpoint(item))
         placed: list[str] = []
-        for label, items, index in _targets(messages, tools):
-            if len(placed) >= free:
-                break
-            if _has_breakpoint(items[index]):
-                continue
-            item = items[index]
-            items[index] = {
-                **item,
-                CUSTOM_FIELDS: {**(item.get(CUSTOM_FIELDS) or {}), _CACHE_BREAKPOINT: {}},
-            }
-            placed.append(label)
+        for i in _message_indexes_to_mark(messages):
+            messages[i] = _copy_with_breakpoint(messages[i])
+            placed.append(f"messages[{i}]")
+        if (tool_index := _last_function_tool(tools)) is not None:
+            tools[tool_index] = _copy_with_breakpoint(tools[tool_index])
+            placed.append(f"tools[{tool_index}]")
         logger.debug("Prompt cache breakpoints placed on %s", placed or "nothing")
 
 
-def _targets(
-    messages: list[dict[str, Any]], tools: list[OpenAiToolConfigDict]
-) -> list[tuple[str, list[dict[str, Any]], int]]:
-    has_system = bool(messages) and messages[0].get("role") == "system"
-    targets: list[tuple[str, list[dict[str, Any]], int]] = []
-    if has_system:
-        targets.append(("messages[0]", messages, 0))
-    if len(messages) > (1 if has_system else 0):
-        targets.append(("messages[-1]", messages, len(messages) - 1))
+def _message_indexes_to_mark(messages: list[dict[str, Any]]) -> list[int]:
+    """Indexes of the system message (when it opens the list) and of the last message.
+
+    [system, user, assistant, user] -> [0, 3]
+    [user, assistant, user]         -> [2]   no system message
+    [system]                        -> [0]   the system message is also the last one
+    """
+    last = len(messages) - 1
+    starts_with_system = messages[0].get("role") == "system"
+    if starts_with_system and last > 0:
+        return [0, last]
+    return [last]
+
+
+def _last_function_tool(tools: list[OpenAiToolConfigDict]) -> int | None:
     # Static tools have no ``custom_fields`` in the SDK schema; adapters would reject one.
-    last_function = next(
-        (i for i in reversed(range(len(tools))) if tools[i].get("type") == "function"), None
-    )
-    if last_function is not None:
-        targets.append((f"tools[{last_function}]", tools, last_function))
-    return targets
+    functions = [i for i, tool in enumerate(tools) if tool.get("type") == "function"]
+    return functions[-1] if functions else None
 
 
-def _has_breakpoint(item: dict[str, Any]) -> bool:
-    custom_fields = item.get(CUSTOM_FIELDS)
-    return isinstance(custom_fields, dict) and _CACHE_BREAKPOINT in custom_fields
+def _copy_with_breakpoint(item: dict[str, Any]) -> dict[str, Any]:
+    """Returns a copy of a message or tool with ``cache_breakpoint`` added to its
+    ``custom_fields``. ``item`` itself is not changed, because it is shared across
+    orchestrator iterations.
+
+    {"role": "user", "content": "Hi"} ->
+    {"role": "user", "content": "Hi", "custom_fields": {"cache_breakpoint": {}}}
+    """
+    custom_fields = {**(item.get(CUSTOM_FIELDS) or {}), _CACHE_BREAKPOINT: {}}
+    return {**item, CUSTOM_FIELDS: custom_fields}

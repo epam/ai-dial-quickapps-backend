@@ -84,11 +84,15 @@ class _ChatCompletionConfigBuilder:
     def _place_cache_breakpoints(
         self, prepared_messages: list[dict[str, Any]], all_tools: list[OpenAiToolConfigDict]
     ) -> None:
-        if (
+        if self._cache_breakpoints_enabled():
+            self.__prompt_cache_breakpoints.apply(prepared_messages, all_tools)
+
+    def _cache_breakpoints_enabled(self) -> bool:
+        """Prompt caching is enabled, and the orchestrator deployment supports it."""
+        return (
             self.__agent_settings.prompt_cache_breakpoints_enabled
             and self.__capabilities.supports_cache_breakpoints
-        ):
-            self.__prompt_cache_breakpoints.apply(prepared_messages, all_tools)
+        )
 
     def _merge_tools(self) -> list[OpenAiToolConfigDict]:
         eager_names: set[str] = {t.get("function", {}).get("name", "") for t in self.__tools}
