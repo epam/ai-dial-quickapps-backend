@@ -72,9 +72,14 @@ prefix on the same upstream:
   ([Known Issues](#known-issues)). Verified by the local Claude Sonnet 5.5 run in
   [Alternatives](#alternatives-considered) row D.
 - **G2.** On any other deployment QuickApps adds no `cache_breakpoint`.
-- **G3.** QuickApps never adds a breakpoint that takes the request past 4 (the Anthropic limit), counting
-  client breakpoints and a possible Core-default request-level one.
+- **G3.** QuickApps places at most 3 breakpoints, so a request never goes past 4 (the Anthropic limit), counting
+  a possible Core-default request-level one.
 - **G4.** An operator can switch the feature off without changing the model configuration.
+
+**Assumption.** QuickApps is the only source of `cache_breakpoint`s. Clients do not send them, so breakpoints
+appear only on our 3 targets, at most 3 per request. That leaves one of Claude's 4 slots free for a Core-default
+request-level breakpoint without counting at runtime. If clients start sending breakpoints, the slot budget must
+come back.
 
 ---
 
@@ -118,7 +123,7 @@ upstream that holds the entry.
 **Trigger:** Any request to an OpenAI, Gemini, or not-configured Claude deployment, or to any deployment while
 `PROMPT_CACHE_BREAKPOINTS_ENABLED=false`.
 **Behavior:** QuickApps adds no breakpoint. Automatic caching works as today.
-**Outcome:** The outbound payload carries only the client's own `cache_breakpoint`s, if any.
+**Outcome:** The outbound payload carries no `cache_breakpoint`.
 
 ### UC-4: `tool_search` loads a deferred tool
 
@@ -136,14 +141,7 @@ history up to the previous turn's last breakpoint.
 **Outcome:** Tools + system prompt are read. The history is written again once per turn, and read back only if
 the turn makes a 2nd call.
 
-### UC-6: The client sends its own breakpoints
-
-**Trigger:** An API client sends a request with breakpoints on 2 messages, one of them the last message.
-**Behavior:** 3 − 2 = 1 free slot. QuickApps places its breakpoint on the system message (priority 1) and
-stops. The last message already carries the client's breakpoint, so nothing is lost there.
-**Outcome:** The request carries 3 breakpoints, and 1 slot stays free for a Core-default request-level one.
-
-### UC-7: The deployment ships static tools
+### UC-6: The deployment ships static tools
 
 **Trigger:** The orchestrator deployment has `defaults.tools`, so the tools block ends with `static_function`
 tools.
@@ -173,15 +171,12 @@ tools.
 - **What:** A new `_PromptCacheBreakpoints` in `core/agent/_prompt_cache_breakpoints.py`, injected into
   `_ChatCompletionConfigBuilder`. `build()` calls `apply(prepared_messages, all_tools)` after
   `_prepare_messages` and `_merge_tools`.
-- **Owner:** the config builder. The slot budget (G3) has to be counted on the final outbound payload, which
-  includes client tools, lazily-loaded tools and every transformer's output. The builder is the only place
-  that sees all of it, and it already shapes the payload by capability (`_drop_unsupported_reasoning_effort`).
-- **Semantics:**
-  1. Count the breakpoints the client sent on outbound messages and tools. Their `custom_fields` survive
-     `_ScrubExtraFieldsTransformer`, because `custom_fields` is a declared SDK field.
-  2. Free slots = 3 − that count. One of the 4 slots is reserved for a possible Core-default request-level
-     breakpoint, which QuickApps cannot see.
-  3. Fill the free slots in priority order, skipping a target that already carries a client breakpoint:
+- **Owner:** the config builder. The targets are found on the final outbound payload, which includes client
+  tools, lazily-loaded tools and every transformer's output. The builder is the only place that sees all of
+  it, and it already shapes the payload by capability (`_drop_unsupported_reasoning_effort`).
+- **Semantics:** mark each target below. There are 3, so 1 of the 4 slots stays free for a possible
+  Core-default request-level breakpoint, which QuickApps cannot see (G3, [Assumption](#design-goals)).
+  The order is the priority used when choosing them:
 
      | Priority | Target | Caches | Reused by |
      |---|---|---|---|
@@ -193,9 +188,6 @@ tools.
     across the iterations of a request, so they are never mutated.
   - Static tools (`defaults.tools`, appended after the function tools) are never marked: the SDK's
     `StaticTool` has no `custom_fields`, so SDK-based adapters would reject the request with `400`.
-  - Client breakpoints are counted, not inspected: a client TTL is ignored, and ours always use the default.
-  - A client breakpoint on the system message never reaches the builder: `_AddSystemPromptTransformer` always
-    builds a new system `Message`.
 - **Value:** `{}`, i.e. the provider's default TTL (5 minutes).
 - **Logging:** DEBUG, with the positions only.
 - **Change:** a new class, bound as a singleton in `AgentModule`, and one call in `build()`.
@@ -295,12 +287,8 @@ Documented in [docs/agent.md — Prompt caching](../agent.md#prompt-caching). Un
   resource-card order on every deployment, so it belongs in its own change.
 - **`prompt_cache_breakpoint` on content parts.** No adapter reads it. Revisit once the OpenAI adapter maps
   it to GPT-5.6+ explicit breakpoints.
-- **Keeping the client's system-message breakpoint in the `ALLOW_OVERRIDE_SYSTEM_MESSAGE` path** (issue
-  item 4). `_AddSystemPromptTransformer` rebuilds the system message from its text and drops the client's
-  breakpoint, as today. While the feature is active, ours sits at the same position, so nothing is lost.
-  While it is inactive because the deployment has no `cacheSupported`, the client's breakpoint would not cache
-  anything either. With `PROMPT_CACHE_BREAKPOINTS_ENABLED=false` on a `cacheSupported` deployment, it would
-  have cached; that loss is accepted, as today.
+- **Breakpoints sent by the client** (issue item 4). QuickApps assumes it is the only source of breakpoints
+  ([Assumption](#design-goals)), so it does not count or keep client ones.
 - **A 1-hour TTL.** The 2× write pays off only when the same prefix is reused 5–60 minutes apart. Turn the
   feature on with the default first and measure.
 - **A per-breakpoint switch** (for example, option C: system and last tool only). The last-message breakpoint

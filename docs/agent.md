@@ -175,8 +175,7 @@ by every hit).
   `true`). `autoCachingSupported` alone does not turn it on: Core and the adapter already handle automatic
   caching.
 - **Slots:** Claude allows 4 breakpoints per request, and one is kept free for a request-level breakpoint an admin
-  may preset in Core `defaults`. Breakpoints the client sent are kept and use slots first; ours fill the rest in
-  priority order.
+  may preset in Core `defaults`. QuickApps places at most 3 and assumes clients send none.
 
 ### Known issues
 
