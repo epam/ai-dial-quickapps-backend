@@ -100,7 +100,7 @@ def _extract_from_httpx(e: httpx.HTTPError) -> ErrorDetails:
         return ErrorDetails()
     try:
         parsed = e.response.json()
-    except ValueError:  # JSONDecodeError and UnicodeDecodeError
+    except (ValueError, httpx.ResponseNotRead):  # bad JSON, or a streamed body never read
         parsed = None
     return _details_from_body(e.response.status_code, _unwrap_error_body(parsed))
 
