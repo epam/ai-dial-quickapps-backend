@@ -82,6 +82,9 @@ class BaseStageWrapper(ABC):
 
     def add_exception(self, exception: Exception, error_reference: str) -> None:
         debug_info = self._build_debug_info_from_exception(exception)
+        # A closing code fence must end its line, or the reference lands inside the block.
+        if not debug_info.endswith(("\n", "\r")):
+            debug_info += "\n"
         debug_info += f"> ##### Error reference:\n{error_reference}\n"
         self.append_stage_content(debug_info)
 
