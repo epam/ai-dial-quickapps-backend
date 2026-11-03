@@ -19,7 +19,7 @@ DialFilesToolName = Literal[
     "move",
 ]
 
-DialFilesToolPreset = Literal["all", "read_only", "none"]
+DialFilesToolPreset = Literal["all", "read_only"]
 
 _ALL_TOOLS: frozenset[str] = frozenset(get_args(DialFilesToolName))
 _READ_ONLY_TOOLS: frozenset[str] = frozenset({"list", "read_lines", "read_chars", "search", "find"})
@@ -33,8 +33,6 @@ def expand_enabled_tools(
         return _ALL_TOOLS
     if enabled_tools == "read_only":
         return _READ_ONLY_TOOLS
-    if enabled_tools == "none":
-        return frozenset()
     return frozenset(enabled_tools)
 
 
@@ -111,10 +109,9 @@ class DialFilesConfig(BaseModel):
         default="all",
         description=(
             "Which file tools to expose. Use 'all' for every tool, 'read_only' for the "
-            "non-mutating ones (list, read_lines, read_chars, search, find), 'none' (or an "
-            "empty list) to expose no file tools, or a list to restrict "
-            "(e.g. ['read_lines', 'search']). When the whole `dial_files` block is omitted, "
-            "'read_only' applies."
+            "non-mutating ones (list, read_lines, read_chars, search, find), or a list to "
+            "restrict (e.g. ['read_lines', 'search']). When the whole `dial_files` block is "
+            "omitted, 'read_only' applies."
         ),
     )
     agent_home_dir: str = Field(

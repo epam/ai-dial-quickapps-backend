@@ -191,7 +191,7 @@ sequenceDiagram
 
 **Status:** Implemented outside folder context (see `dial_files_tools.md`).
 
-**What:** `DialFilesConfig.enabled_tools` accepts the `"read_only"` and `"none"` presets alongside `"all"` and explicit tool lists. An absent `dial_files` block behaves as `"read_only"`.
+**What:** `DialFilesConfig.enabled_tools` accepts the `"read_only"` preset alongside `"all"` and explicit tool lists. An absent `dial_files` block behaves as `"read_only"`.
 
 **Note:** Folder expansion does **not** require `features.dial_files` regardless of preset design.
 

@@ -1,7 +1,5 @@
 from unittest.mock import MagicMock
 
-import pytest
-
 from quickapp.config.dial_files import DialFilesConfig
 from quickapp.dial_files_tooling.dial_files_tooling_module import DialFilesToolingModule
 
@@ -56,10 +54,6 @@ class TestDefaultToolResolution:
 
     def test_read_only_preset_exposes_read_only_tools(self):
         assert _built_tool_names(DialFilesConfig(enabled_tools="read_only")) == _READ_ONLY
-
-    @pytest.mark.parametrize("disabled", ["none", []])
-    def test_none_and_empty_list_disable_the_defaults(self, disabled):
-        assert _built_tool_names(DialFilesConfig(enabled_tools=disabled)) == set()
 
     def test_explicit_list_can_include_mutating_tools(self):
         cfg = DialFilesConfig(enabled_tools=["read_lines", "write"])

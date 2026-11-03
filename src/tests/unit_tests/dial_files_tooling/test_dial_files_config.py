@@ -34,10 +34,6 @@ class TestExpandEnabledTools:
             "find",
         }
 
-    def test_none_and_empty_list_are_empty(self):
-        assert expand_enabled_tools("none") == frozenset()
-        assert expand_enabled_tools([]) == frozenset()
-
     def test_explicit_list_is_passed_through(self):
         assert expand_enabled_tools(["write", "read_lines"]) == {"write", "read_lines"}
 
@@ -61,13 +57,14 @@ class TestDialFilesConfig:
         cfg = DialFilesConfig(enabled_tools=["read_lines", "read_chars"])
         assert cfg.enabled_tools == ["read_lines", "read_chars"]
 
-    @pytest.mark.parametrize("preset", ["all", "read_only", "none"])
+    @pytest.mark.parametrize("preset", ["all", "read_only"])
     def test_presets_accepted(self, preset):
         assert DialFilesConfig(enabled_tools=preset).enabled_tools == preset
 
-    def test_unknown_preset_rejected(self):
+    @pytest.mark.parametrize("preset", ["write_only", "none"])
+    def test_unknown_preset_rejected(self, preset):
         with pytest.raises(ValidationError):
-            DialFilesConfig(enabled_tools="write_only")
+            DialFilesConfig(enabled_tools=preset)
 
     def test_rejects_absolute_files_url(self):
         with pytest.raises(ValidationError, match="absolute"):

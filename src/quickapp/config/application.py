@@ -221,7 +221,7 @@ class Features(BaseModel):
         description=(
             "Built-in DIAL files tools (list / read / search / write / edit / delete / copy / move). "
             "When omitted or null, the read-only tools (list, read_lines, read_chars, search, find) "
-            "are exposed. Use {\"enabled_tools\": \"none\"} to expose no file tools."
+            "are exposed."
         ),
     )
     web_fetch: WebFetchConfig | None = Field(

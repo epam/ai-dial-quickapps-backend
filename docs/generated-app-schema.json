@@ -1446,8 +1446,7 @@
             {
               "enum": [
                 "all",
-                "read_only",
-                "none"
+                "read_only"
               ],
               "type": "string"
             },
@@ -1471,7 +1470,7 @@
             }
           ],
           "default": "all",
-          "description": "Which file tools to expose. Use 'all' for every tool, 'read_only' for the non-mutating ones (list, read_lines, read_chars, search, find), 'none' (or an empty list) to expose no file tools, or a list to restrict (e.g. ['read_lines', 'search']). When the whole `dial_files` block is omitted, 'read_only' applies.",
+          "description": "Which file tools to expose. Use 'all' for every tool, 'read_only' for the non-mutating ones (list, read_lines, read_chars, search, find), or a list to restrict (e.g. ['read_lines', 'search']). When the whole `dial_files` block is omitted, 'read_only' applies.",
           "title": "Enabled Tools"
         },
         "agent_home_dir": {
@@ -1838,7 +1837,7 @@
             }
           ],
           "default": null,
-          "description": "Built-in DIAL files tools (list / read / search / write / edit / delete / copy / move). When omitted or null, the read-only tools (list, read_lines, read_chars, search, find) are exposed. Use {\"enabled_tools\": \"none\"} to expose no file tools."
+          "description": "Built-in DIAL files tools (list / read / search / write / edit / delete / copy / move). When omitted or null, the read-only tools (list, read_lines, read_chars, search, find) are exposed."
         },
         "web_fetch": {
           "anyOf": [
