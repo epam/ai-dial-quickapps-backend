@@ -11,13 +11,14 @@ from injector import AssistedBuilder
 from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.chat_completion_stream.adopted_tool_stage import AdoptedToolStage
+from quickapp.common.exceptions import FallbackAgentStopException
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
 from quickapp.config.application import StageDisplayLevel
 from quickapp.config.tools.base import AttachmentConfig
 from quickapp.config.tools.display.tool import ToolDisplayConfig, ToolStageConfig
 from quickapp.config.tools.tool import AnyTool
-from quickapp.config.tools.tool_fallback import ToolFallbackConfig
+from quickapp.config.tools.tool_fallback import HardStopStrategyModel, ToolFallbackConfig
 
 
 class CustomTestStagedBaseTool(StagedBaseTool):
@@ -527,6 +528,26 @@ async def test_error_reference_is_logged_and_shown_in_stage(mock_stage_wrapper_f
     error_reference = stage.add_exception.call_args.args[1]
     assert re.fullmatch(r"[0-9a-f]{8}", error_reference)
     assert f"error_reference={error_reference}" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_stop_fallback_carries_the_stage_error_reference(mock_stage_wrapper_factory):
+    tool_config = _make_tool_config()
+    tool_config.fallback_configuration = ToolFallbackConfig(
+        display_error_in_stage=True, strategies=[HardStopStrategyModel()]
+    )
+    tool = FailingTestTool(
+        stage_wrapper_builder=mock_stage_wrapper_factory,
+        tool_config=tool_config,
+        perf_timer=Mock(),
+        error=RuntimeError("boom"),
+    )
+
+    with pytest.raises(FallbackAgentStopException) as excinfo:
+        await tool.arun("call-id")
+
+    stage = mock_stage_wrapper_factory.build.return_value
+    assert excinfo.value.error_reference == stage.add_exception.call_args.args[1]
 
 
 @pytest.mark.asyncio
