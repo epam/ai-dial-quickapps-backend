@@ -100,7 +100,7 @@ def _extract_from_httpx(e: httpx.HTTPError) -> ErrorDetails:
         return ErrorDetails()
     try:
         parsed = e.response.json()
-    except Exception:
+    except ValueError:  # JSONDecodeError and UnicodeDecodeError
         parsed = None
     return _details_from_body(e.response.status_code, _unwrap_error_body(parsed))
 
