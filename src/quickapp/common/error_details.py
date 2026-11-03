@@ -1,4 +1,4 @@
-"""Normalized upstream error details, shared by the top-level resolver and tool stages."""
+"""Upstream error details, error references and shared error wording for the resolver and tool stages."""
 
 import logging
 import uuid

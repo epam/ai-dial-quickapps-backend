@@ -42,7 +42,7 @@ def _outgoing_status_code(resolved: ResolvedError) -> int:
 
 
 def _error_reference_for(e: Exception) -> str:
-    # A stop fallback already showed a reference in the tool stage; one failure, one reference.
+    # A stop fallback already showed this reference in the tool stage; reuse it.
     if isinstance(e, FallbackAgentStopException) and e.error_reference:
         return e.error_reference
     return new_error_reference()
