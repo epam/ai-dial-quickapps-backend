@@ -1,6 +1,5 @@
 import logging
 import time
-import uuid
 from collections import Counter
 
 from aidial_sdk.chat_completion import ChatCompletion, Request, Response
@@ -10,6 +9,7 @@ from injector import Injector, inject
 
 from quickapp.common import InitializerType, StagedBaseTool
 from quickapp.common.base_initializer import invoke_initializers
+from quickapp.common.error_details import new_error_reference
 from quickapp.common.exceptions import ConfigResolutionException
 from quickapp.common.lifecycle_logging import format_duration, format_event
 from quickapp.common.model_hidden_tool import ModelHiddenTool
@@ -103,7 +103,7 @@ class _QuickAppCompletion(ChatCompletion):
                 # (or an SSE error chunk once the choice has opened the stream).
                 failed = True
                 outcome = "failed"
-                error_reference = uuid.uuid4().hex[:8]
+                error_reference = new_error_reference()
                 self.__handle_exception(e, error_reference)
             finally:
                 timer_service.stop_period(self.__timer_period_name)

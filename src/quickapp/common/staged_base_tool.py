@@ -1,7 +1,6 @@
 import logging
 import sys
 import time
-import uuid
 from abc import ABC, abstractmethod
 from typing import Any, ClassVar
 
@@ -16,6 +15,7 @@ from quickapp.common.chat_completion_stream.argument_stream_presentation import 
     ArgumentStreamMode,
     ArgumentStreamPresentation,
 )
+from quickapp.common.error_details import new_error_reference
 from quickapp.common.lifecycle_logging import format_duration, format_event
 from quickapp.common.parameter_stage_format import resolve_tool_stage_display_name
 from quickapp.common.payload_logging import log_payload
@@ -215,8 +215,7 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
     ) -> ToolCallResult:
         # The failure WARNING is written by _run_in_stage_report_success; here we only
         # translate it into stage UI and a fallback result (hands-onward layer).
-        # Same format as the top-level error reference: logged and shown in the stage.
-        error_reference = uuid.uuid4().hex[:8]
+        error_reference = new_error_reference()
         try:
             return await self._run_in_stage_report_success(
                 tool_call_id,

@@ -1,6 +1,7 @@
 """Normalized upstream error details, shared by the top-level resolver and tool stages."""
 
 import logging
+import uuid
 from typing import Any
 
 import httpx
@@ -20,6 +21,11 @@ _DISPLAY_MESSAGE_MAX_LEN = 500
 
 # Retryable-classified: carries the cause only; the retry sentence is appended.
 MSG_AI_MODEL_RATE_LIMITED = "The request was rate-limited by the AI model service."
+
+
+def new_error_reference() -> str:
+    """Short opaque id shown to the user and written to the failure log line."""
+    return uuid.uuid4().hex[:8]
 
 
 class ErrorDetails(BaseModel):
