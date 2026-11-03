@@ -228,3 +228,52 @@ class TestToolsetSummaries:
             {"name": "toolset_a", "description": "Does A", "tool_count": 1},
             {"name": "toolset_b", "description": None, "tool_count": 2},
         ]
+
+
+class TestRegistrationIdempotency:
+    """Unscoped providers re-register the same toolset several times per request."""
+
+    def test_registering_same_toolset_twice_does_not_duplicate_entries(self):
+        context = DeferredToolsAccumulator()
+        toolset = RestApiToolSet(name="location", description="Locations", tools=[])
+        tools = [_make_staged_tool(_make_rest_api_tool_with_const_param("tool_a"))]
+
+        context.register_deferred_tools(toolset, tools)
+        catalog = context.catalog
+        summaries = context.toolset_summaries
+        names = context.deferred_names
+
+        context.register_deferred_tools(toolset, tools)
+
+        assert context.catalog == catalog
+        assert context.toolset_summaries == summaries
+        assert context.deferred_names == names
+
+    def test_interleaved_re_registration_keeps_order_and_no_duplicates(self):
+        context = DeferredToolsAccumulator()
+        toolset_a = RestApiToolSet(name="toolset_a", tools=[])
+        toolset_b = RestApiToolSet(name="toolset_b", tools=[])
+        tools_a = [_make_staged_tool(_make_rest_api_tool_with_const_param("tool_a"))]
+        tools_b = [_make_staged_tool(_make_rest_api_tool_with_const_param("tool_b"))]
+
+        for _ in range(3):
+            context.register_deferred_tools(toolset_a, tools_a)
+            context.register_deferred_tools(toolset_b, tools_b)
+
+        assert [e["name"] for e in context.catalog] == ["tool_a", "tool_b"]
+        assert [s["name"] for s in context.toolset_summaries] == ["toolset_a", "toolset_b"]
+
+    def test_same_name_toolsets_with_different_tools_are_both_registered(self):
+        context = DeferredToolsAccumulator()
+        first = RestApiToolSet(name="shared", description="First", tools=[])
+        second = RestApiToolSet(name="shared", description="Second", tools=[])
+
+        context.register_deferred_tools(
+            first, [_make_staged_tool(_make_rest_api_tool_with_const_param("tool_a"))]
+        )
+        context.register_deferred_tools(
+            second, [_make_staged_tool(_make_rest_api_tool_with_const_param("tool_b"))]
+        )
+
+        assert [e["name"] for e in context.catalog] == ["tool_a", "tool_b"]
+        assert [s["description"] for s in context.toolset_summaries] == ["First", "Second"]
