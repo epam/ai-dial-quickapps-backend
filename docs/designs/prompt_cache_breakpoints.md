@@ -143,10 +143,11 @@ the turn makes a 2nd call.
 
 ### UC-6: The deployment ships static tools
 
-**Trigger:** The orchestrator deployment has `defaults.tools`, so the tools block ends with `static_function`
+**Trigger:** The orchestrator deployment has `defaults.tools`, so the tools block includes `static_function`
 tools.
-**Behavior:** The last-tool breakpoint skips them and lands on the last `function` tool.
-**Outcome:** The request is accepted, and the tools up to the last function tool are cached.
+**Behavior:** They sort to the start of the block. The last-tool breakpoint never marks them and lands on the
+last `function` tool.
+**Outcome:** The request is accepted, and the whole tools block is cached.
 
 ---
 
@@ -186,11 +187,27 @@ tools.
 
   - A marked item is replaced by a copy with `custom_fields.cache_breakpoint = {}`. Tool dicts are shared
     across the iterations of a request, so they are never mutated.
-  - Static tools (`defaults.tools`, appended after the function tools) are never marked: the SDK's
+  - Static tools (`defaults.tools`, sorted before the function tools) are never marked: the SDK's
     `StaticTool` has no `custom_fields`, so SDK-based adapters would reject the request with `400`.
 - **Value:** `{}`, i.e. the provider's default TTL (5 minutes).
 - **Logging:** DEBUG, with the positions only.
 - **Change:** a new class, bound as a singleton in `AgentModule`, and one call in `build()`.
+
+### 3. Stable prefix order
+
+- **What:** MCP and `dial-app` toolsets load in parallel and publish in completion order, so anything they
+  publish is sorted before it reaches the prompt.
+- **Semantics:**
+  - Tools block: `_ChatCompletionConfigBuilder._merge_tools` sorts all tools by name, on every deployment.
+    `autoCachingSupported` deployments need a stable order too. Static tools have no function name, so they
+    sort first and keep their relative order.
+  - MCP resources: `_MCPResourceCardProvider` and `_MCPEagerResourceTransformer` sort by toolset name where
+    they add resources to the prompt.
+  - Deferred tools: `DeferredToolsAccumulator` sorts `catalog` and `toolset_summaries` on read.
+  - The rest of the prefix is already deterministic: the configured prompt parts, skills (config order,
+    predefined sorted, picks in chip order) and the timestamp, which is a synthetic tool-call pair rather than
+    part of the system prompt.
+- **Change:** one sort in `_merge_tools`, one in each MCP resource consumer, and sorted reads in the accumulator.
 
 ---
 
@@ -221,18 +238,6 @@ Documented in [docs/agent.md — Prompt caching](../agent.md#prompt-caching). Un
   - skills picked from a message. `_InvokedSkillsContext` has `order = -10`, so picks come first in
     `<available_skills>`. The pick turn misses, the conversation stops sharing the app's entry (UC-2), and
     each eviction by the `max_skills` cap misses again.
-- **The prefix can change with 2 or more MCP or `dial-app` toolsets.** They load in parallel, and each one
-  publishes its results as soon as its server answers, so the order follows the completion order and can
-  differ on every request:
-  - `_MCPToolInitializer.initialize`: the tool list, the MCP resource cards and the tool-search hint in the
-    system prompt, and the `tool_search` description;
-  - `_DialAppResolver.resolve`: `resolved_mcp_toolsets` (the MCP toolset list above) and
-    `resolved_deployment_tools` (the tools block).
-
-  A request whose order differs misses and writes tools, system prompt and history again. The rest of the
-  prefix is already deterministic: the configured prompt parts, the static tools, skills (config order,
-  predefined sorted, picks in chip order) and the timestamp, which is a synthetic tool-call pair rather than
-  part of the system prompt. Workaround: none. Possible fix in [Out of Scope](#out-of-scope).
 - **Load concentration.** On a multi-upstream deployment with only `cacheSupported`, every conversation of an
   app has the same routing key. Core sends them all to the upstream that holds the entry while it lives, and
   falls back only when that upstream is unavailable. Watch rate limits on that upstream.
@@ -281,10 +286,6 @@ Documented in [docs/agent.md — Prompt caching](../agent.md#prompt-caching). Un
   not visible in its logs; the adapters return `cached_tokens` and `cache_write_tokens`. Logging those counts
   on "Model call completed" is a separate, small change. Until then, check hits in the provider's usage
   reports.
-- **Publishing MCP and `dial-app` toolsets in config order** ([Known Issues](#known-issues)). Possible fix:
-  each toolset buffers what it adds, and `initialize` / `resolve` apply the buffers after `gather`, in config
-  order, with the interactive-login retry applied together with the first pass. It changes tool and
-  resource-card order on every deployment, so it belongs in its own change.
 - **`prompt_cache_breakpoint` on content parts.** No adapter reads it. Revisit once the OpenAI adapter maps
   it to GPT-5.6+ explicit breakpoints.
 - **Breakpoints sent by the client** (issue item 4). QuickApps assumes it is the only source of breakpoints
@@ -336,6 +337,7 @@ None.
 ### Non-breaking changes
 
 - Apps on a deployment with `cacheSupported` start sending the breakpoints.
+- The model sees tools in name order on every deployment, instead of config order.
 - **Operator note:** Claude bills a 1.25× write the first time a prefix is seen in each 5-minute window, and
   0.1× (0.05× on Opus/Sonnet 5.5) for each reuse.
   - Tools + system prompt: shared by every conversation of the app, so steady traffic pays less.
@@ -350,7 +352,9 @@ None.
 | `OrchestratorCapabilities` | + `supports_cache_breakpoints` |
 | `AgentSettings` | + `prompt_cache_breakpoints_enabled` (`PROMPT_CACHE_BREAKPOINTS_ENABLED`, default `true`) |
 | `core/agent/_prompt_cache_breakpoints.py` | New `_PromptCacheBreakpoints` |
-| `_ChatCompletionConfigBuilder` | Places the breakpoints |
+| `_ChatCompletionConfigBuilder` | Places the breakpoints, sorts the merged tools by name |
+| `DeferredToolsAccumulator` | Sorted reads of `catalog` and `toolset_summaries` |
+| `_MCPResourceCardProvider`, `_MCPEagerResourceTransformer` | Sort resources by toolset name before adding them to the prompt |
 | `CONFIGURATION.md` | + `PROMPT_CACHE_BREAKPOINTS_ENABLED` row (L1) |
 | `docs/agent.md` | + "Prompt caching" section with Known issues (L2) |
 | `docs/README.md` | + capability-map row (Stable) linking L1 and L2 |

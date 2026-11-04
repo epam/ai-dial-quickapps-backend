@@ -53,8 +53,8 @@ def _system_and_user() -> list[Message]:
     return [Message(role=Role.SYSTEM, content="prompt"), Message(role=Role.USER, content="hi")]
 
 
-def test_build_merges_lazy_tools_after_eager_tools():
-    """Discovered (lazy) tools are appended to the eager tools in the outgoing payload."""
+def test_build_merges_lazy_and_eager_tools_sorted_by_name():
+    """Discovered (lazy) tools join the eager tools in the outgoing payload, sorted by name."""
     lazy_holder = LazyLoadedToolsHolder()
     lazy_holder.add([_make_tool_dict("discovered_tool")])
     builder = _make_builder([_make_tool_dict("eager_tool")], lazy_holder)
@@ -62,7 +62,7 @@ def test_build_merges_lazy_tools_after_eager_tools():
     payload = builder.build([Message(role=Role.USER, content="hi")])
 
     names = [t["function"]["name"] for t in payload["tools"]]
-    assert names == ["eager_tool", "discovered_tool"]
+    assert names == ["discovered_tool", "eager_tool"]
 
 
 def test_build_dedupes_lazy_tools_against_eager_names():
@@ -74,7 +74,7 @@ def test_build_dedupes_lazy_tools_against_eager_names():
     payload = builder.build([Message(role=Role.USER, content="hi")])
 
     names = [t["function"]["name"] for t in payload["tools"]]
-    assert names == ["shared_name", "discovered_tool"]
+    assert names == ["discovered_tool", "shared_name"]
 
 
 def test_build_with_no_lazy_tools_returns_eager_tools_only():
@@ -84,6 +84,37 @@ def test_build_with_no_lazy_tools_returns_eager_tools_only():
     payload = builder.build([Message(role=Role.USER, content="hi")])
 
     assert [t["function"]["name"] for t in payload["tools"]] == ["eager_tool"]
+
+
+@pytest.mark.parametrize("order", [("a", "b", "c"), ("c", "b", "a"), ("b", "c", "a")])
+def test_build_tool_order_does_not_depend_on_input_order(order: tuple[str, str, str]):
+    """Toolsets publish in completion order; the payload order must not follow it."""
+    builder = _make_builder([_make_tool_dict(name) for name in order])
+
+    payload = builder.build([Message(role=Role.USER, content="hi")])
+
+    assert [t["function"]["name"] for t in payload["tools"]] == ["a", "b", "c"]
+
+
+def test_build_does_not_reorder_injected_tools():
+    tools = [_make_tool_dict("b"), _make_tool_dict("a")]
+
+    _make_builder(tools).build([Message(role=Role.USER, content="hi")])
+
+    assert [t["function"]["name"] for t in tools] == ["b", "a"]
+
+
+def test_static_tools_sort_first_and_breakpoint_lands_on_last_function_tool():
+    static = {"type": "static_function", "static_function": {"name": "s"}}
+    builder = _make_builder([_make_tool_dict("b"), static, _make_tool_dict("a")], cache=True)
+
+    payload = builder.build(_system_and_user())
+
+    assert payload["tools"][0] == static
+    assert payload["tools"][1]["function"]["name"] == "a"
+    assert "custom_fields" not in payload["tools"][1]
+    assert payload["tools"][2]["function"]["name"] == "b"
+    assert payload["tools"][2]["custom_fields"] == {"cache_breakpoint": {}}
 
 
 def test_promote_orchestrator_state_to_top_level():

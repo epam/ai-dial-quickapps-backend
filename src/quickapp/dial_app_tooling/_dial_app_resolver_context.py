@@ -17,8 +17,7 @@ class _DialAppResolverContext:
 
     @property
     def resolved_deployment_tools(self) -> list[DialDeploymentTool]:
-        # Sorted: deployments resolve in parallel, in completion order.
-        return sorted(self._resolved_deployment_tools, key=lambda t: t.open_ai_tool.function.name)
+        return self._resolved_deployment_tools
 
     @property
     def exceptions(self) -> list[InitializationException]:

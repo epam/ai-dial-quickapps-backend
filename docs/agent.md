@@ -196,9 +196,6 @@ by every hit).
 - **One miss when only the system prompt changes:** an inbound system message with
   `ALLOW_OVERRIDE_SYSTEM_MESSAGE=true`, skills picked from a message, or an edited prompt or skill. The tools
   are still read from the cache through the last-tool breakpoint.
-- **A miss when toolsets answer in a different order.** With 2 or more MCP or `dial-app` toolsets, they load
-  in parallel and publish their tools, MCP resource cards and tool-search summaries in completion order, so
-  the prefix can differ between requests. No workaround.
 - **Load concentration.** On a multi-upstream deployment with only `cacheSupported`, every conversation of an
   app shares one routing key, so Core sends them all to the upstream that holds the entry and falls back only
   when it is unavailable. Watch that upstream's rate limits. Workaround: `PROMPT_CACHE_BREAKPOINTS_ENABLED=false`.
@@ -265,7 +262,7 @@ This runs in the completion-initializer phase **before** message preprocessing a
 1. **App-configured tools** — OpenAI-function schemas from resolved `StagedBaseTool` instances (REST, deployment, MCP, internal).
 2. **Static tools** — serialized `StaticTool` dicts from `provide_static_tools`, which reads `_OrchestratorStaticToolsContext.static_tools`.
 
-`AssistantInvoker` receives this merged list via DI and sends it unchanged on every orchestrator iteration as `tools` in the streaming `chat.completions.create` payload. Static tools are **not** registered in the tool executor; if the model invokes them, handling stays on the deployment side.
+`_ChatCompletionConfigBuilder` receives this merged list via DI, adds any tools loaded by `tool_search`, sorts them by name (static tools first) so the prompt-cache prefix stays stable, and sends the result on every orchestrator iteration as `tools` in the streaming `chat.completions.create` payload. Static tools are **not** registered in the tool executor; if the model invokes them, handling stays on the deployment side.
 
 ### Deployment tools
 

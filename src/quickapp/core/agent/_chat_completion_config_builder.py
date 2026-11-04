@@ -101,7 +101,11 @@ class _ChatCompletionConfigBuilder:
             for t in self.__lazy_loaded_tools_holder.get_all()
             if t.get("function", {}).get("name", "") not in eager_names
         ]
-        return self.__tools + lazy_tools
+        # Sorted: toolsets may load in parallel, in completion order; a stable order keeps the
+        # prompt-cache prefix byte-stable across requests.
+        return sorted(
+            self.__tools + lazy_tools, key=lambda t: t.get("function", {}).get("name", "")
+        )
 
     def _apply_response_format(self, payload: dict[str, Any]) -> None:
         if not self.__response_format:

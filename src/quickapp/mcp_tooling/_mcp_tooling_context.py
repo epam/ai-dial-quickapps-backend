@@ -1,4 +1,3 @@
-from quickapp.common import StagedBaseTool
 from quickapp.common.deferred_tools_accumulator import DeferredToolsAccumulator
 from quickapp.common.tooling_context_base import ToolingContextBase
 from quickapp.mcp_tooling._mcp_eager_resource import MCPEagerResource
@@ -33,19 +32,13 @@ class _MCPToolingContext(ToolingContextBase, DeferredToolsAccumulator):
         with self._lock:
             self._clients[toolset_name] = client
 
-    # Toolsets load in parallel and publish in completion order; sort so the
-    # prompt-cache prefix stays byte-stable across requests.
-    @property
-    def tools(self) -> list[StagedBaseTool]:
-        return sorted(self._tools, key=lambda t: t.openai_function_name() or "")
-
     @property
     def resource_metas(self) -> list[MCPResourceMeta]:
-        return sorted(self._resource_metas, key=lambda m: m.toolset_name)
+        return self._resource_metas
 
     @property
     def eager_resources(self) -> list[MCPEagerResource]:
-        return sorted(self._eager_resources, key=lambda r: r.toolset_name)
+        return self._eager_resources
 
     @property
     def server_capabilities(self) -> list[MCPServerCapabilities]:
