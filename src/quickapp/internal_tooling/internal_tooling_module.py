@@ -57,6 +57,21 @@ class InternalToolModule(Module):
         py_builder: AssistedBuilder[_PyInterpreterTool],
         deferred_context: _InternalDeferredToolsContext,
     ) -> list[StagedBaseTool]:
+        # Unscoped multiprovider: Injector re-runs it on every `list[StagedBaseTool]` injection
+        # (several times per model call). Build once per request so tools stay stable and the
+        # deferred registry is populated exactly once.
+        if deferred_context.built_tools is None:
+            deferred_context.built_tools = self._build_internal_tools(
+                app_config, py_builder, deferred_context
+            )
+        return list(deferred_context.built_tools)
+
+    @staticmethod
+    def _build_internal_tools(
+        app_config: ApplicationConfig,
+        py_builder: AssistedBuilder[_PyInterpreterTool],
+        deferred_context: _InternalDeferredToolsContext,
+    ) -> list[StagedBaseTool]:
         tools: list[StagedBaseTool] = []
 
         for tool_set in app_config.tool_sets:

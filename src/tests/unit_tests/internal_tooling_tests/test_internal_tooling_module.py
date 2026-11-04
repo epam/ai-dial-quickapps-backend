@@ -44,6 +44,13 @@ def _make_py_builder(tool_config: InternalTool) -> MagicMock:
     return staged_tool, builder
 
 
+def _make_deferred_context() -> _InternalDeferredToolsContext:
+    """Real context (it memoizes built tools) with the registration method spied on."""
+    context = _InternalDeferredToolsContext()
+    context.register_deferred_tools = MagicMock()  # type: ignore[method-assign]
+    return context
+
+
 class TestProvideInternalTools:
     def test_registers_deferred_toolset_with_deferred_context(self):
         tool_config = _make_internal_tool_config()
@@ -51,7 +58,7 @@ class TestProvideInternalTools:
         discovery_cfg = ToolDiscoveryConfig(enabled=True, min_tools_for_deferral=1)
         app_config = _make_app_config(toolset, discovery_cfg)
         staged_tool, py_builder = _make_py_builder(tool_config)
-        deferred_context = MagicMock(spec=_InternalDeferredToolsContext)
+        deferred_context = _make_deferred_context()
 
         module = InternalToolModule()
         result = module._provide_internal_tools(app_config, py_builder, deferred_context)
@@ -65,7 +72,7 @@ class TestProvideInternalTools:
         discovery_cfg = ToolDiscoveryConfig(enabled=True, min_tools_for_deferral=5)
         app_config = _make_app_config(toolset, discovery_cfg)
         staged_tool, py_builder = _make_py_builder(tool_config)
-        deferred_context = MagicMock(spec=_InternalDeferredToolsContext)
+        deferred_context = _make_deferred_context()
 
         module = InternalToolModule()
         result = module._provide_internal_tools(app_config, py_builder, deferred_context)
@@ -78,10 +85,28 @@ class TestProvideInternalTools:
         toolset = InternalToolSet(name="internal", deferred=True, tools=[tool_config])
         app_config = _make_app_config(toolset, discovery_cfg=None)
         staged_tool, py_builder = _make_py_builder(tool_config)
-        deferred_context = MagicMock(spec=_InternalDeferredToolsContext)
+        deferred_context = _make_deferred_context()
 
         module = InternalToolModule()
         result = module._provide_internal_tools(app_config, py_builder, deferred_context)
 
         assert result == [staged_tool]
         deferred_context.register_deferred_tools.assert_not_called()
+
+    def test_repeated_resolution_builds_tools_and_registers_once(self):
+        tool_config = _make_internal_tool_config()
+        toolset = InternalToolSet(name="internal", deferred=True, tools=[tool_config])
+        discovery_cfg = ToolDiscoveryConfig(enabled=True, min_tools_for_deferral=1)
+        app_config = _make_app_config(toolset, discovery_cfg)
+        staged_tool, py_builder = _make_py_builder(tool_config)
+        deferred_context = _make_deferred_context()
+
+        module = InternalToolModule()
+        results = [
+            module._provide_internal_tools(app_config, py_builder, deferred_context)
+            for _ in range(3)
+        ]
+
+        assert all(result == [staged_tool] for result in results)
+        py_builder.build.assert_called_once()
+        deferred_context.register_deferred_tools.assert_called_once_with(toolset, [staged_tool])
