@@ -31,6 +31,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | Integration tests (all models, local) | `make integration_test_all` | Sequential run over `INTEGRATION_TEST_MODELS` in Makefile |
 | Integration tests (CI) | `make integration_test_ci MODEL=<model>` | Used by the manual **Integration Tests** GitHub Actions workflow |
 | E2E tests | `make e2e_test` | |
+| Projects Core-path suite (opt-in) | `make projects_core_path_test MODEL=<model>` | Needs a Core with resource dependencies; never in `test` / CI integration targets. Setup: `src/tests/integration_tests/test_projects_core_path.py` |
 | Dump app schema | `make dump_app_schema` | |
 
 > **Note:** `PYDANTIC_V2=True` is enforced by the Makefile (aidial-sdk requirement) — do not override it.

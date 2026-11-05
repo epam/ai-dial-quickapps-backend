@@ -177,7 +177,8 @@ asyncio_default_fixture_loop_scope = "session"
 addopts = "-ra"
 markers = [
     "integration: integration tests, that require LLM calls and cached LLM Tool calls (deselect with '-m \"not integration\"')",
-    "e2e: e2e tests, that require LLM calls without using cached responses (deselect with '-m \"not e2e\"')"
+    "e2e: e2e tests, that require LLM calls without using cached responses (deselect with '-m \"not e2e\"')",
+    "projects_core_path: projects through DIAL Core with the per-request key; opt-in (PROJECTS_CORE_PATH=true, make projects_core_path_test)"
 ]
 
 [tool.pytest_env]
