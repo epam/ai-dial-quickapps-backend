@@ -243,3 +243,21 @@ async def test_upload_output_bytes_in_project_rejects_names_leaving_artifacts(fi
         await svc.upload_output_bytes(data=b"x", content_type="text/plain", filename=filename)
 
     file_service.write_bytes.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_upload_output_bytes_in_project_requires_the_artifacts_folder():
+    # Defence in depth: a name that composes to a project URL outside artifacts/ is refused
+    # even when it is a URL of the project.
+    project = MagicMock(spec=ProjectContext)
+    project.artifacts_root = _ARTIFACTS
+    project.contains.return_value = True
+    project.is_read_only.return_value = True
+    file_service = _make_file_service()
+    svc = _make_service(_make_mock_dial_client(), project=project, file_service=file_service)
+
+    with pytest.raises(ValueError, match="Invalid output file name"):
+        await svc.upload_output_bytes(data=b"x", content_type="text/plain", filename="x.txt")
+
+    project.is_read_only.assert_called_once_with(f"{_ARTIFACTS}x.txt")
+    file_service.write_bytes.assert_not_awaited()
