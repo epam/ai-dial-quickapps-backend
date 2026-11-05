@@ -10,11 +10,14 @@ from quickapp.common import RESPONSE_FORMAT, ForwardedHeaders
 from quickapp.common.abstract.base_transformer import PreInvocationTransformer
 from quickapp.common.dial_request_fields import CUSTOM_FIELDS, EXTRA_BODY, to_custom_fields_payload
 from quickapp.common.payload_logging import log_payload, payloads_enabled, summarize_roles
-from quickapp.common.presentation_settings import PresentationSettings
 from quickapp.config.application import ApplicationConfig
 from quickapp.core.agent._tool_choice_holder import _ToolChoiceHolder
 from quickapp.core.agent.lazy_loaded_tools_holder import LazyLoadedToolsHolder
-from quickapp.core.agent.models import STATE_KEY_ORCHESTRATOR, OpenAiToolConfigDict
+from quickapp.core.agent.models import (
+    STATE_KEY_CONTEXT_USAGE,
+    STATE_KEY_ORCHESTRATOR,
+    OpenAiToolConfigDict,
+)
 from quickapp.core.agent.orchestrator_capabilities import OrchestratorCapabilities
 
 logger = logging.getLogger(__name__)
@@ -31,7 +34,6 @@ class _ChatCompletionConfigBuilder:
         response_format: RESPONSE_FORMAT,
         tool_choice_holder: _ToolChoiceHolder,
         pre_invocation_transformers: list[PreInvocationTransformer],
-        presentation_settings: PresentationSettings,
         forwarded_headers: ForwardedHeaders,
         lazy_loaded_tools_holder: LazyLoadedToolsHolder,
         capabilities: OrchestratorCapabilities,
@@ -41,7 +43,6 @@ class _ChatCompletionConfigBuilder:
         self.__response_format = response_format
         self.__tool_choice_holder = tool_choice_holder
         self.__pre_invocation_transformers = pre_invocation_transformers
-        self.__presentation_settings = presentation_settings
         self.__forwarded_headers = forwarded_headers
         self.__lazy_loaded_tools_holder = lazy_loaded_tools_holder
         self.__capabilities: OrchestratorCapabilities = capabilities
@@ -64,8 +65,8 @@ class _ChatCompletionConfigBuilder:
         self._apply_response_format(payload)
         self._apply_tool_choice(payload)
 
-        if self.__presentation_settings.show_usage_statistics:
-            payload["stream_options"] = {"include_usage": True}
+        # Always request usage: the last call's token counts feed the context usage state.
+        payload["stream_options"] = {"include_usage": True}
 
         if self.__forwarded_headers:
             payload["extra_headers"] = self.__forwarded_headers
@@ -180,9 +181,20 @@ class _ChatCompletionConfigBuilder:
         result: list[dict[str, Any]] = []
         for message in transformed_messages:
             msg_dict = message.model_dump(exclude_none=True, mode="json")
+            self._strip_client_state(msg_dict)
             self._promote_orchestrator_state_to_top_level(msg_dict)
             result.append(msg_dict)
         return result
+
+    @staticmethod
+    def _strip_client_state(msg_dict: dict[str, Any]) -> None:
+        """Remove client-facing state keys from earlier turns; never forward them to the model."""
+        custom = msg_dict.get("custom_content")
+        if not isinstance(custom, dict):
+            return
+        state = custom.get("state")
+        if isinstance(state, dict):
+            state.pop(STATE_KEY_CONTEXT_USAGE, None)
 
     @staticmethod
     def _promote_orchestrator_state_to_top_level(msg_dict: dict[str, Any]) -> None:
@@ -191,7 +203,9 @@ class _ChatCompletionConfigBuilder:
         if not isinstance(custom, dict):
             return
         state = custom.get("state")
-        if not isinstance(state, dict) or STATE_KEY_ORCHESTRATOR not in state:
+        if not isinstance(state, dict):
+            return
+        if STATE_KEY_ORCHESTRATOR not in state:
             return
         orch = state.pop(STATE_KEY_ORCHESTRATOR, None)
         if isinstance(orch, dict):

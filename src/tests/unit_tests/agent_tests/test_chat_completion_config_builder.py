@@ -3,10 +3,12 @@ from unittest.mock import MagicMock
 
 from aidial_client.types.deployment import Features
 from aidial_sdk.chat_completion import Message, Role
+from aidial_sdk.chat_completion.request import CustomContent
 
 from quickapp.core.agent._chat_completion_config_builder import _ChatCompletionConfigBuilder
 from quickapp.core.agent._tool_choice_holder import _ToolChoiceHolder
 from quickapp.core.agent.lazy_loaded_tools_holder import LazyLoadedToolsHolder
+from quickapp.core.agent.models import STATE_KEY_CONTEXT_USAGE
 from quickapp.core.agent.models import STATE_KEY_ORCHESTRATOR as ORCH
 from quickapp.core.agent.orchestrator_capabilities import OrchestratorCapabilities
 
@@ -30,7 +32,6 @@ def _make_builder(
         response_format=None,
         tool_choice_holder=_ToolChoiceHolder(tool_choice=None),
         pre_invocation_transformers=[],
-        presentation_settings=MagicMock(show_usage_statistics=False),
         forwarded_headers=None,
         lazy_loaded_tools_holder=lazy_holder or LazyLoadedToolsHolder(),
         capabilities=OrchestratorCapabilities(
@@ -73,6 +74,35 @@ def test_build_with_no_lazy_tools_returns_eager_tools_only():
     payload = builder.build([Message(role=Role.USER, content="hi")])
 
     assert [t["function"]["name"] for t in payload["tools"]] == ["eager_tool"]
+
+
+def test_build_always_requests_usage():
+    builder = _make_builder()
+
+    payload = builder.build([Message(role=Role.USER, content="hi")])
+
+    assert payload["stream_options"] == {"include_usage": True}
+
+
+def test_context_usage_state_is_not_forwarded_to_model():
+    """Client-facing context_usage from earlier turns is stripped before calling the model."""
+    builder = _make_builder()
+    history = Message(
+        role=Role.ASSISTANT,
+        content="ok",
+        custom_content=CustomContent(
+            state={
+                STATE_KEY_CONTEXT_USAGE: {"prompt_tokens": 1, "completion_tokens": 2},
+                ORCH: {"claude_message_content": "some content"},
+            }
+        ),
+    )
+
+    payload = builder.build([Message(role=Role.USER, content="hi"), history])
+
+    state = payload["messages"][1]["custom_content"]["state"]
+    assert STATE_KEY_CONTEXT_USAGE not in state
+    assert state == {"claude_message_content": "some content"}
 
 
 def test_promote_orchestrator_state_to_top_level():

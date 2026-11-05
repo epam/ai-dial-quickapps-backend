@@ -24,7 +24,7 @@ from quickapp.common.chat_completion_stream.handler import (
     ChatCompletionStreamHandler,
     ChatStreamConfig,
 )
-from quickapp.common.chat_completion_stream.stream_result import ChatStreamAccumulator
+from quickapp.common.chat_completion_stream.stream_result import ChatStreamAccumulator, Usage
 from quickapp.common.chat_completion_stream.tool_call import AccumulatedToolCall
 from quickapp.common.exceptions import OrchestratorExceedMaxIterationsException
 from quickapp.common.lifecycle_logging import format_duration, format_event
@@ -39,7 +39,12 @@ from quickapp.common.url_sanitization import sanitize_url
 from quickapp.config.application import ApplicationConfig
 from quickapp.core.agent._suppressed_attachment_registry import SuppressedAttachmentRegistry
 from quickapp.core.agent.assistant_invoker import AssistantInvoker
-from quickapp.core.agent.models import STATE_KEY_ORCHESTRATOR, TOOL_EXECUTION_HISTORY
+from quickapp.core.agent.models import (
+    STATE_KEY_CONTEXT_USAGE,
+    STATE_KEY_ORCHESTRATOR,
+    TOOL_EXECUTION_HISTORY,
+    ContextUsage,
+)
 from quickapp.core.agent.tool_executor import ToolExecutor
 from quickapp.usage_statistics.usage_statistics_service import UsageStatisticsService
 
@@ -97,6 +102,7 @@ class Orchestrator:
         self.__orchestrator_deployment_name = app_config.orchestrator.deployment.deployment_id
         self.__propagate_orchestrator_stages: bool = app_config.orchestrator.propagate_stages
         self.__usage_statistics_list: list[DeploymentUsage] = []
+        self.__last_context_usage: ContextUsage | None = None
         self.__perf_timer: PerformanceTimer = perf_timer
         self.__period_name = "orchestrator_invocation"
         self.__deferred_stage_close_registry: DeferredStageCloseRegistry = (
@@ -150,6 +156,11 @@ class Orchestrator:
                         tool_execution_history = policy.apply(tool_execution_history)
                 self.__state_holder.add_state(TOOL_EXECUTION_HISTORY, tool_execution_history)
 
+            if self.__last_context_usage is not None:
+                self.__state_holder.add_state(
+                    STATE_KEY_CONTEXT_USAGE, self.__last_context_usage.model_dump()
+                )
+
             self.__choice.set_state(self.__state_holder.get_state())
             if self.__usage_statistics_list and self.__SHOW_USAGE_STATISTICS:
                 await self.__usage_statistics_service.process_usage_statistics(
@@ -181,6 +192,22 @@ class Orchestrator:
                 logger.warning(
                     "Completion hook runner %s failed", type(runner).__name__, exc_info=True
                 )
+
+    def _record_usage(self, usage: Usage | None) -> None:
+        if not usage:
+            return
+        # Last call wins: context size is what the model saw on its final call.
+        self.__last_context_usage = ContextUsage(
+            prompt_tokens=usage.prompt_tokens, completion_tokens=usage.completion_tokens
+        )
+        if self.__SHOW_USAGE_STATISTICS:
+            self.__usage_statistics_list.append(
+                DeploymentUsage(
+                    model_name=self.__orchestrator_deployment_name,
+                    prompt_tokens=usage.prompt_tokens,
+                    completion_tokens=usage.completion_tokens,
+                )
+            )
 
     async def _run_iteration(self) -> bool:
         """Run a single orchestrator iteration. Returns True if the loop should continue."""
@@ -235,14 +262,7 @@ class Orchestrator:
             )
         )
 
-        if stream_result.usage and self.__SHOW_USAGE_STATISTICS:
-            self.__usage_statistics_list.append(
-                DeploymentUsage(
-                    model_name=self.__orchestrator_deployment_name,
-                    prompt_tokens=stream_result.usage.prompt_tokens,
-                    completion_tokens=stream_result.usage.completion_tokens,
-                )
-            )
+        self._record_usage(usage)
         self.__perf_timer.add_milestone(period, "assistant_response_received")
         _log_messages("Message from agent", self.__messages_context.messages)
 

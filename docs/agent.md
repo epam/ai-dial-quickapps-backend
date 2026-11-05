@@ -195,6 +195,15 @@ calls or the maximum iteration limit is reached.
 <!-- DIAGRAM: Agent loop flowchart showing the iterative flow: Increment Counter -> Check Max -> Call LLM -> Process Response -> Tool Calls? -> Yes: Execute Tools -> Record Results -> Continue Loop / No: Derive History -> Finalize -->
 ![Agent Loop](content/svg/agent_loop.svg)
 
+### Context Usage
+
+The orchestrator reports how much context it consumed in the final assistant message of each turn, under
+`custom_content.state.context_usage`: `{"prompt_tokens": N, "completion_tokens": M}` taken from the **last**
+orchestrator LLM call (tool and sub-agent usage is excluded). Context size is `prompt_tokens + completion_tokens`;
+the window size is not sent, clients derive percentages from the model metadata. The key is omitted when the
+provider returns no usage, and it is independent of `SHOW_USAGE_STATISTICS`. It is stripped from history before
+messages are forwarded to the model. Design: [`designs/context_window_usage.md`](designs/context_window_usage.md).
+
 ---
 
 ## Orchestrator Static Tools

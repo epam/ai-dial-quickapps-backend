@@ -23,7 +23,11 @@ from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
 from quickapp.common.tool_names import INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
 from quickapp.core.agent import Orchestrator
 from quickapp.core.agent._suppressed_attachment_registry import SuppressedAttachmentRegistry
-from quickapp.core.agent.models import STATE_KEY_ORCHESTRATOR, TOOL_EXECUTION_HISTORY
+from quickapp.core.agent.models import (
+    STATE_KEY_CONTEXT_USAGE,
+    STATE_KEY_ORCHESTRATOR,
+    TOOL_EXECUTION_HISTORY,
+)
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_history_policy import (
     _GetContentHistoryPolicy,
 )
@@ -124,8 +128,10 @@ async def test_invoke_no_tool_calls_processes_usage_and_sets_state():
 
     await orchestrator.invoke()
 
-    # No tool calls and no stream state: nothing to add (no tool_execution_history, no orchestrator state)
-    state_holder.add_state.assert_not_called()
+    # No tool calls and no stream state: only the context usage of the (single) call is added
+    state_holder.add_state.assert_called_once_with(
+        STATE_KEY_CONTEXT_USAGE, {"prompt_tokens": 5, "completion_tokens": 7}
+    )
 
     # choice.set_state should be called with the state from state_holder
     assert choice.set_state_calls == [initial_state]
@@ -384,9 +390,8 @@ async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messa
     assert len(choice.add_attachment_kwargs) == 1
     assert choice.add_attachment_kwargs[0] == attach.model_dump()
 
-    # state_holder.add_state called once in finally with tool_execution_history (no stream state in mocks)
-    state_holder.add_state.assert_called_once()
-    key, value = state_holder.add_state.call_args[0]
+    # tool_execution_history is persisted exactly once in finally (no stream state in mocks)
+    key, value = _single_add_state_call(state_holder, TOOL_EXECUTION_HISTORY)
     assert key == TOOL_EXECUTION_HISTORY
     assert isinstance(value, list)
     # New format stores messages directly: ASSISTANT + TOOL = 2 messages
@@ -551,6 +556,12 @@ async def test_invoke_tool_calls_returns_no_results_raises_runtime_error():
     tool_executor.execute.assert_awaited_once()
 
 
+def _single_add_state_call(state_holder: Mock, key: str) -> tuple:
+    calls = [c.args for c in state_holder.add_state.call_args_list if c.args[0] == key]
+    assert len(calls) == 1
+    return calls[0]
+
+
 def _mock_tool_executor(*, execute=None):
     m = Mock()
     if execute is not None:
@@ -575,6 +586,7 @@ def _make_orchestrator(
     assistant_invoker_provider: object | None = None,
     tool_names: frozenset[str] = frozenset(),
     suppressed_attachment_registry: SuppressedAttachmentRegistry | None = None,
+    state_holder: object | None = None,
 ) -> Orchestrator:
     messages_context = Mock()
     messages_context.append_message = Mock(side_effect=lambda msg: messages_list.append(msg))
@@ -584,7 +596,7 @@ def _make_orchestrator(
         presentation_settings=SimpleNamespace(show_usage_statistics=False),
         messages_context=messages_context,
         choice=choice or Mock(add_attachment=Mock(), set_state=Mock()),
-        state_holder=Mock(get_state=Mock(return_value={}), add_state=Mock()),
+        state_holder=state_holder or Mock(get_state=Mock(return_value={}), add_state=Mock()),
         usage_statistics_service=Mock(process_usage_statistics=AsyncMock()),
         tool_executor=tool_executor or _mock_tool_executor(),
         assistant_invoker_provider=assistant_invoker_provider or Mock(),
@@ -607,6 +619,84 @@ def _make_orchestrator(
         ),
         completion_hook_runners=[],
     )
+
+
+def _stream_result(*, tool_calls: list, usage: object | None) -> SimpleNamespace:
+    return SimpleNamespace(
+        content="response",
+        attachments=[],
+        tool_calls=tool_calls,
+        usage=usage,
+        state=None,
+        adopted_tool_stages={},
+        close_remaining_adopted_tool_stages=Mock(),
+    )
+
+
+class TestContextUsageState:
+    @pytest.mark.asyncio
+    async def test_last_orchestrator_call_usage_wins(self):
+        tool_result = Mock(
+            usage=None,
+            propagate_to_choice=[],
+            attachments=None,
+            annotations=None,
+            to_tool_message=Mock(
+                return_value=Message(role=Role.TOOL, content="r", tool_call_id="1")
+            ),
+        )
+        stream_handler = Mock()
+        stream_handler.process_stream = AsyncMock(
+            side_effect=[
+                _stream_result(
+                    tool_calls=[_make_accumulated_tool_call("1", "tool_a")],
+                    usage=SimpleNamespace(prompt_tokens=100, completion_tokens=10),
+                ),
+                _stream_result(
+                    tool_calls=[], usage=SimpleNamespace(prompt_tokens=250, completion_tokens=20)
+                ),
+            ]
+        )
+        state_holder = Mock(get_state=Mock(return_value={}), add_state=Mock())
+        orchestrator = _make_orchestrator(
+            [],
+            choice=SpyChoice(),
+            state_holder=state_holder,
+            stream_handler=stream_handler,
+            tool_executor=_mock_tool_executor(execute=AsyncMock(return_value=[tool_result])),
+            assistant_invoker_provider=Mock(
+                get=Mock(return_value=Mock(invoke=AsyncMock(return_value="stream")))
+            ),
+        )
+
+        await orchestrator.invoke()
+
+        context_usage_calls = [
+            c for c in state_holder.add_state.call_args_list if c.args[0] == STATE_KEY_CONTEXT_USAGE
+        ]
+        assert len(context_usage_calls) == 1
+        assert context_usage_calls[0].args[1] == {"prompt_tokens": 250, "completion_tokens": 20}
+
+    @pytest.mark.asyncio
+    async def test_no_usage_means_no_context_usage_key(self):
+        stream_handler = Mock()
+        stream_handler.process_stream = AsyncMock(
+            return_value=_stream_result(tool_calls=[], usage=None)
+        )
+        state_holder = Mock(get_state=Mock(return_value={}), add_state=Mock())
+        orchestrator = _make_orchestrator(
+            [],
+            choice=SpyChoice(),
+            state_holder=state_holder,
+            stream_handler=stream_handler,
+            assistant_invoker_provider=Mock(
+                get=Mock(return_value=Mock(invoke=AsyncMock(return_value="stream")))
+            ),
+        )
+
+        await orchestrator.invoke()
+
+        state_holder.add_state.assert_not_called()
 
 
 class TestBuildToolExecutionHistory:
@@ -942,8 +1032,7 @@ async def test_invoke_terminal_flow_strips_get_content_attachments_in_saved_hist
 
     await orchestrator.invoke()
 
-    state_holder.add_state.assert_called_once()
-    key, value = state_holder.add_state.call_args[0]
+    key, value = _single_add_state_call(state_holder, TOOL_EXECUTION_HISTORY)
     assert key == TOOL_EXECUTION_HISTORY
     assert isinstance(value, list)
     tool_entry = value[1]
@@ -1057,8 +1146,7 @@ async def test_invoke_interrupted_flow_keeps_get_content_attachments_in_saved_hi
     with pytest.raises(RuntimeError, match="interrupted"):
         await orchestrator.invoke()
 
-    state_holder.add_state.assert_called_once()
-    key, value = state_holder.add_state.call_args[0]
+    key, value = _single_add_state_call(state_holder, TOOL_EXECUTION_HISTORY)
     assert key == TOOL_EXECUTION_HISTORY
     assert isinstance(value, list)
     tool_entry = value[1]

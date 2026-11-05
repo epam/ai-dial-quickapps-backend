@@ -36,6 +36,7 @@ See [Feature Lifecycle](../README.md#feature-lifecycle) in the root README.
 | Capability | Configure (L1) | Behaviour (L2) | Design (L3, optional) |
 |------------|----------------|----------------|------------------------|
 | Orchestrator / agent loop | [CONFIGURATION — Orchestrator](../CONFIGURATION.md#orchestrator-configuration) | [agent.md](./agent.md) | — |
+| Context window usage (`state.context_usage`) | — | [agent.md](./agent.md#context-usage) | [context_window_usage.md](./designs/context_window_usage.md) |
 | Attachment strategy (`lazy_on_demand`) | [CONFIGURATION — Attachment strategy](../CONFIGURATION.md#attachment-strategy-configuration) | [agent.md](./agent.md#orchestrator-attachment-strategies) | [pass_attachments_to_orchestrator.md](./designs/pass_attachments_to_orchestrator.md) |
 | Tool sets (REST, MCP, DIAL, internal) | [CONFIGURATION — Tool sets](../CONFIGURATION.md#tool-sets-configuration) | [agent.md](./agent.md) | — |
 | Tool fallbacks | [CONFIGURATION — Tool Fallback](../CONFIGURATION.md#tool-fallback-configuration) | — | [fallback_strategies_refactor.md](./designs/fallback_strategies_refactor.md) |
