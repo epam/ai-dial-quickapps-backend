@@ -1,6 +1,6 @@
 # Design: Projects support
 
-- **Status:** Draft
+- **Status:** Approved
 - **Issue:** [I#656](https://github.com/epam/ai-dial-quickapps-backend/issues/656)
 - **Dependencies:**
   - Core [I#1930](https://github.com/epam/ai-dial-core/issues/1930) (app resource dependencies), see
@@ -100,24 +100,27 @@ flowchart LR
 | D6 | Large-result offloads and promoted external URLs stay in appdata. | Offloads are internal context. Promoted URLs feed deployments and the interpreter, which can't read `projects/` URLs (C4). |
 | D7 | Permissions come from Core (#1930 resource dependencies). QuickApps never grants itself anything. Phase 1 = static dependencies with admin consent. | The header carries no permission. Core forwards it but grants nothing from it. |
 | D8 | `projects/` URLs are recognised only when the request has a project, and only under **that** project's root. Any other `projects/…` string behaves as today. | Keeps non-project chats unchanged (`projects/notes.md` stays a valid relative path). Also narrows the phase-1 grant, which opens all of the user's projects, to the current one on QuickApps' side. |
-| D9 | No access → hard fail (UC-4). Environments whose Core lacks C1 keep `ENABLE_PREVIEW_FEATURES=false` (owner: the deployment's config). | A degraded mode would answer without the project and hide the missing grant. |
+| D9 | No access → hard fail (UC-4). Projects stay on the shared `ENABLE_PREVIEW_FEATURES` flag; no project-only switch. Environments whose Core lacks C1 keep the flag off (owner: the deployment's config). | A degraded mode would answer without the project and hide the missing grant. Accepted cost: the flag off also disables the other preview features there (tool-result offload, MCP per-tool config). |
 
 ### Gating
 
 | Change | Gated by |
 |---|---|
-| `ProjectModule` (context, prompt section, preflight) | module filter (`@preview_module`) |
+| `PROJECT_CONTEXT` | `None` when `ENABLE_PREVIEW_FEATURES` is off |
+| `ProjectModule` (prompt section, preflight) | module filter (`@preview_module`) |
 | `projects/` routing in `DialFileService` / `DialDownloader`, `projects/` in the path transformer, `reject_absolute_path`, `web_fetch`, `classify_url`, home = `artifacts/`, output root | `PROJECT_CONTEXT is not None` and the URL is under its root |
 | File-tool 403 → non-retryable permission error | ungated (a secondary fix, see [Secondary Fixes](#secondary-fixes)) |
 | `x-project-id` stripped from REST API tool calls | ungated (the header only exists in project chats) |
+| `x-project-id` to nested apps and MCP | unchanged: the existing `X-*` catch-all, raw header value |
 
 ### Project context (PR1)
 
 - **What:** `ProjectContext` (frozen model): canonical project URL, plus `instructions_url`, `context_root`,
   `artifacts_root`. Rejects empty, `.`, `..` and `files` segments.
-- **Owner:** `ProjectModule` (`shared/project/`, `@preview_module`) binds the request-scoped `PROJECT_CONTEXT` from
-  `ForwardedHeaders`. `HomePathModule` binds the `None` default, so consumers always have the key. `injector` keeps the
-  last binding, so `ProjectModule` is registered **after** `HomePathModule` in `shared_module` (asserted by a test).
+- **Owner:** `ProjectContext` and the `PROJECT_CONTEXT` key live in `common/project_context.py`, so `common/` code
+  (`classify_url`) can use them. `AppModule` provides `PROJECT_CONTEXT` from the request context, the same way as
+  `CLIENT_CHANNEL_ID` and `TIMEZONE_HEADER_VALUE`. It is `None` when the preview flag is off. `ProjectModule`
+  (`@preview_module`) holds only the prompt provider and the preflight (PR2).
 - **Semantics:** no header, a malformed header, or the flag off → `None` → every consumer behaves as today.
 
 ### Project storage (PR1)
@@ -145,7 +148,15 @@ flowchart LR
 
 - **Home:** `HomePathResolver` returns `artifacts_root` when a project is present, and appdata otherwise. URLs under the
   current project's root are accepted as absolute next to `files/` in the path transformer, `reject_absolute_path`,
-  `web_fetch` and `classify_url` (D8).
+  `web_fetch` and `classify_url` (D8). `classify_url` stays a pure function with a new optional `project` argument;
+  its callers inject `PROJECT_CONTEXT`. A current-project URL is `UrlScheme.DIAL`:
+
+  | Call site | Current-project URL |
+  |---|---|
+  | file tools, `web_fetch`, file loader | v2 through `DialFileService` (PR1) |
+  | `dial_file_promoter.py` (DIAL branch) | v2 metadata (PR3) |
+  | `_attachment_resolver.py` | passes through (PR3) |
+  | `input_file_handler.py` (interpreter input) | fast tool error: "project files can't be passed to the interpreter yet" (PR3) |
 - **Read-only files:** for a project URL outside `artifacts/`, `reject_absolute_path` says "read-only project file; write
   under the working folder with a relative path" instead of the generic message (D4, UC-5).
 - **Prompt:** a `PromptPartProvider` adds sections after the app's own system prompt:
@@ -153,13 +164,14 @@ flowchart LR
   | Section | Content | Defaults and limits |
   |---|---|---|
   | Project instructions | `PROJECT.md` body, frontmatter stripped | missing or empty → no section; malformed frontmatter → the whole file is the body; capped at 32 000 characters with a truncation note; framed as user context: the app's system prompt wins on conflict |
-  | Project files | the working folder first ("holds files from earlier chats"), then `context/` files by full path, read-only | only when the app has file tools (`features.dial_files`); recursive, capped at 100 entries with "and N more" |
+  | Project files | the working folder **named** (not listed; "holds files from earlier chats"), then `context/` files by full path, read-only | only when the app has file tools (`features.dial_files`); recursive, capped at 100 entries with "and N more" |
 
 - **Appdata in a project:** not the home; reachable only by full URL.
 
 ### Access preflight (PR2)
 
-- Before the first LLM call, one `GET /v2/metadata/projects/{b}/{p}` with the per-request key.
+- A `CompletionInitializer` bound in `ProjectModule`, ordered before `_DialAppResolver` (−100), so UC-4 fails before any
+  MCP connect or skill fetch: one `GET /v2/metadata/projects/{b}/{p}` with the per-request key.
 - The error goes out as an aidial-sdk `HTTPException` (status, code and `display_message` pass through the existing
   resolver unchanged):
 
@@ -171,7 +183,7 @@ flowchart LR
 
 ### Downstream propagation (PR3)
 
-- Forward `x-project-id` explicitly to nested DIAL apps and MCP toolsets, not through the `X-*` catch-all.
+- Nested DIAL apps and MCP toolsets keep receiving `x-project-id` through the existing `X-*` catch-all (raw value).
 - Strip it from REST API tool calls (`rest_api_tooling/_rest_api_tool.py`): it carries the user's bucket and project
   name to external hosts. The orchestrator model call goes through Core and keeps it.
 - Nested apps declare and get their own grants (#1930 resolves dependencies at every hop of a chain).
@@ -186,9 +198,9 @@ flowchart LR
 
   | Caller | Root |
   |---|---|
-  | MCP tool files (`_mcp_tool.py` → `upload_attachment_to_core`) | home root: `artifacts/` in a project, appdata otherwise |
-  | REST response files (`_rest_api_tool.py`) | home root |
-  | Interpreter charts (`_publish_to_bucket`, folded into `AttachmentService`) | home root |
+  | MCP tool files (`_mcp_tool.py` → `upload_attachment_to_core`) | output root: `artifacts/` in a project, the appdata root otherwise (as today) |
+  | REST response files (`_rest_api_tool.py`) | output root |
+  | Interpreter charts (`_publish_to_bucket`, folded into `AttachmentService`) | output root |
   | Offloads (`_offload_processor.py`) | appdata (D6) |
   | Promoted external URLs (`dial_file_promoter.py`) | appdata (D6) |
 
@@ -263,7 +275,7 @@ Paths in a project `projects/{b}/My%20Project`:
 |---|---|
 | `notes.md` | `projects/{b}/My%20Project/files/artifacts/notes.md` |
 | `projects/{b}/My%20Project/files/context/tickets.csv` | read ✅, write ❌ ("read-only project file") |
-| `projects/{b}/Other/files/x.md` (another project) | not a project URL here: v1 path, as today |
+| `projects/{b}/Other/files/x.md` (another project) | not a project URL: home-relative, as today, so it resolves under `artifacts/` (read → 404) |
 | `files/{bucket}/appdata/…/x.md` (app context) | unchanged, v1 |
 
 ---
@@ -274,7 +286,7 @@ Paths in a project `projects/{b}/My%20Project`:
 |---|---|
 | L0 `docs/README.md` | Preview row "Projects" |
 | L1 `CONFIGURATION.md` | The `resourceDependencies` declaration admins add for project access |
-| L2 `docs/projects.md` (new) | How projects work, plus `### Known issues`: shared projects end in UC-4; the phase-1 grant opens all of the user's projects; project files can't go to deployments or the interpreter; MCP `dial_url` grants on `projects/` are unverified |
+| L2 `docs/projects.md` (new) | How projects work, plus `### Known issues`: shared projects end in UC-4; the phase-1 grant opens all of the user's projects; project files can't go to deployments or the interpreter; MCP `dial_url` grants on `projects/` are unverified; after a project rename, files attached in earlier turns keep the old URL and return 404; the system-prompt cache is one entry per project, rewritten when `PROJECT.md` or `context/` changes. Troubleshooting row: 403 `project_access_denied` → an admin approves the app's resource dependencies |
 
 ---
 
@@ -287,16 +299,15 @@ None for non-project chats. Project behaviour is preview-gated and triggered onl
 ### Non-breaking changes
 
 - File tools report Core 403 as a non-retryable permission error, in every chat ([Secondary Fixes](#secondary-fixes)).
-- `x-project-id` is forwarded explicitly to nested apps and MCP (already forwarded today by the `X-*` catch-all) and no
-  longer sent to REST API tools.
+- `x-project-id` is no longer sent to REST API tools.
 
 ## Delivery
 
 | PR | Scope | Depends on | Merge-safe without Core |
 |---|---|---|---|
-| 1 | `ProjectContext`, `ProjectModule`, v2 client, `DialFileService` / `DialDownloader` routing, write flows | — | yes (no header → no-op) |
+| 1 | `ProjectContext` / `PROJECT_CONTEXT`, v2 client, `DialFileService` / `DialDownloader` routing, write flows | — | yes (no header → no-op) |
 | 2 | Home = `artifacts/`, prompt section, read-only message, preflight, 403 secondary fix, L0–L2 docs | PR1 | yes, with preview off where Core lacks C1 (D9) |
-| 3 | Explicit header forwarding, REST strip, attachment resolver, remaining `files/` assumptions | PR2 | yes |
+| 3 | REST header strip, attachment resolver, interpreter input error, remaining `files/` assumptions | PR2 | yes |
 | 4 | Split upload roots; user outputs into `artifacts/` | PR2 | yes, useful after C1 |
 | 5 | Core-path integration suite (per-request key) in CI | PR1–4, C1 released | n/a |
 
@@ -304,11 +315,11 @@ None for non-project chats. Project behaviour is preview-gated and triggered onl
 
 | Component | Change |
 |---|---|
-| `shared/project/` (new) | `ProjectContext`, `ProjectModule` (`@preview_module`), project prompt provider, access preflight |
-| `shared/home_path/` | `PROJECT_CONTEXT` default `None`; home = `artifacts/` in a project |
-| `dial_core_services/` | `_project_files.py` (v2 client, write flows, `ProjectWriteConflictException`); current-project routing in `DialFileService`, `DialDownloader`; `AttachmentService` split into home-rooted and appdata-rooted uploads |
+| `common/project_context.py` (new), `core/application/` (`AppModule`, request context) | `ProjectContext`, `PROJECT_CONTEXT` |
+| `shared/project/` (new, PR2) | `ProjectModule` (`@preview_module`): project prompt provider, access preflight |
+| `shared/home_path/` | home = `artifacts/` in a project |
+| `dial_core_services/` | `_project_files.py` (v2 client); write flows in `DialFileService`; `ProjectWriteConflictException`, `PartialMoveException` in `exceptions.py`; current-project routing in `DialFileService`, `DialDownloader`; `AttachmentService` split into home-rooted and appdata-rooted uploads |
 | `dial_files_tooling/` (`_base_file_tool.py`, `_utils.py`, `_path_argument_transformer.py`), `web_tooling/`, `common/url_classification.py` | current-project URLs as absolute; read-only message; `DialFilePermissionException` on 403 |
-| `core/application/_exception_message_resolver.py` | nothing new: the preflight raises aidial-sdk `HTTPException` |
-| `common/forwarded_headers.py`, `rest_api_tooling/`, `dial_deployment_tooling/_attachment_resolver.py`, `mcp_tooling/`, `dial_core_services/dial_file_promoter.py` | explicit `x-project-id` forwarding; REST strip; project URLs pass through |
+| `rest_api_tooling/`, `dial_deployment_tooling/_attachment_resolver.py`, `dial_core_services/dial_file_promoter.py`, `internal_tooling/…/input_file_handler.py` | REST strip; project URLs pass through; interpreter input error |
 | `internal_tooling/py_interpreter_tooling/handlers/display_content_processor.py` | `_publish_to_bucket` folded into `AttachmentService` |
 | `docs/README.md`, `CONFIGURATION.md`, `docs/projects.md` | L0–L2 |
