@@ -262,7 +262,7 @@ This runs in the completion-initializer phase **before** message preprocessing a
 1. **App-configured tools** — OpenAI-function schemas from resolved `StagedBaseTool` instances (REST, deployment, MCP, internal).
 2. **Static tools** — serialized `StaticTool` dicts from `provide_static_tools`, which reads `_OrchestratorStaticToolsContext.static_tools`.
 
-`_ChatCompletionConfigBuilder` receives this merged list via DI, adds any tools loaded by `tool_search`, sorts them by name (static tools first) so the prompt-cache prefix stays stable, and sends the result on every orchestrator iteration as `tools` in the streaming `chat.completions.create` payload. Static tools are **not** registered in the tool executor; if the model invokes them, handling stays on the deployment side.
+`_ChatCompletionConfigBuilder` receives this merged list via DI, sorts it by name (static tools first) so the prompt-cache prefix stays stable, appends any tools loaded by `tool_search` in discovery order, and sends the result on every orchestrator iteration as `tools` in the streaming `chat.completions.create` payload. Static tools are **not** registered in the tool executor; if the model invokes them, handling stays on the deployment side.
 
 ### Deployment tools
 

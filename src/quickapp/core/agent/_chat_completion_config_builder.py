@@ -102,10 +102,10 @@ class _ChatCompletionConfigBuilder:
             if t.get("function", {}).get("name", "") not in eager_names
         ]
         # Sorted: toolsets may load in parallel, in completion order; a stable order keeps the
-        # prompt-cache prefix byte-stable across requests.
-        return sorted(
-            self.__tools + lazy_tools, key=lambda t: t.get("function", {}).get("name", "")
-        )
+        # prompt-cache prefix byte-stable across requests. Discovered tools stay after the
+        # eager ones, in discovery order, so a discovery only changes the end of the tools block.
+        eager_tools = sorted(self.__tools, key=lambda t: t.get("function", {}).get("name", ""))
+        return eager_tools + lazy_tools
 
     def _apply_response_format(self, payload: dict[str, Any]) -> None:
         if not self.__response_format:

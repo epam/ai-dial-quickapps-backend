@@ -128,8 +128,8 @@ upstream that holds the entry.
 ### UC-4: `tool_search` loads a deferred tool
 
 **Trigger:** The model loads a deferred tool mid-turn.
-**Behavior:** The tools block changes, so the next call misses and writes a new entry for the new tool set.
-The next turn starts with the eager tools only and reads the first entry again.
+**Behavior:** The new tool is appended, so only the end of the tools block changes. The next call misses and
+writes a new entry for the new tool set. The next turn starts with the eager tools only and reads the first entry again.
 **Outcome:** One cache write for each distinct tool set.
 
 ### UC-5: The next turn of the conversation
@@ -198,9 +198,10 @@ last `function` tool.
 - **What:** MCP and `dial-app` toolsets load in parallel and publish in completion order, so anything they
   publish is sorted before it reaches the prompt.
 - **Semantics:**
-  - Tools block: `_ChatCompletionConfigBuilder._merge_tools` sorts all tools by name, on every deployment.
+  - Tools block: `_ChatCompletionConfigBuilder._merge_tools` sorts the eager tools by name, on every deployment.
     `autoCachingSupported` deployments need a stable order too. Static tools have no function name, so they
-    sort first and keep their relative order.
+    sort first and keep their relative order. Tools loaded by `tool_search` follow the eager ones, in discovery
+    order, so a discovery only changes the end of the block.
   - MCP resources: `_MCPResourceCardProvider` and `_MCPEagerResourceTransformer` sort by toolset name where
     they add resources to the prompt.
   - Deferred tools: `DeferredToolsAccumulator` sorts `catalog` and `toolset_summaries` on read.
@@ -352,7 +353,7 @@ None.
 | `OrchestratorCapabilities` | + `supports_cache_breakpoints` |
 | `AgentSettings` | + `prompt_cache_breakpoints_enabled` (`PROMPT_CACHE_BREAKPOINTS_ENABLED`, default `true`) |
 | `core/agent/_prompt_cache_breakpoints.py` | New `_PromptCacheBreakpoints` |
-| `_ChatCompletionConfigBuilder` | Places the breakpoints, sorts the merged tools by name |
+| `_ChatCompletionConfigBuilder` | Places the breakpoints, sorts the eager tools by name |
 | `DeferredToolsAccumulator` | Sorted reads of `catalog` and `toolset_summaries` |
 | `_MCPResourceCardProvider`, `_MCPEagerResourceTransformer` | Sort resources by toolset name before adding them to the prompt |
 | `CONFIGURATION.md` | + `PROMPT_CACHE_BREAKPOINTS_ENABLED` row (L1) |

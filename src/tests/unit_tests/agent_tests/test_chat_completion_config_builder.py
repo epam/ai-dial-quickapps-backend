@@ -53,16 +53,16 @@ def _system_and_user() -> list[Message]:
     return [Message(role=Role.SYSTEM, content="prompt"), Message(role=Role.USER, content="hi")]
 
 
-def test_build_merges_lazy_and_eager_tools_sorted_by_name():
-    """Discovered (lazy) tools join the eager tools in the outgoing payload, sorted by name."""
+def test_build_appends_lazy_tools_after_sorted_eager_tools():
+    """Eager tools are sorted by name; discovered (lazy) tools follow in discovery order."""
     lazy_holder = LazyLoadedToolsHolder()
-    lazy_holder.add([_make_tool_dict("discovered_tool")])
-    builder = _make_builder([_make_tool_dict("eager_tool")], lazy_holder)
+    lazy_holder.add([_make_tool_dict("c"), _make_tool_dict("a")])
+    builder = _make_builder([_make_tool_dict("z"), _make_tool_dict("b")], lazy_holder)
 
     payload = builder.build([Message(role=Role.USER, content="hi")])
 
     names = [t["function"]["name"] for t in payload["tools"]]
-    assert names == ["discovered_tool", "eager_tool"]
+    assert names == ["b", "z", "c", "a"]
 
 
 def test_build_dedupes_lazy_tools_against_eager_names():
@@ -74,7 +74,7 @@ def test_build_dedupes_lazy_tools_against_eager_names():
     payload = builder.build([Message(role=Role.USER, content="hi")])
 
     names = [t["function"]["name"] for t in payload["tools"]]
-    assert names == ["discovered_tool", "shared_name"]
+    assert names == ["shared_name", "discovered_tool"]
 
 
 def test_build_with_no_lazy_tools_returns_eager_tools_only():
@@ -115,6 +115,19 @@ def test_static_tools_sort_first_and_breakpoint_lands_on_last_function_tool():
     assert "custom_fields" not in payload["tools"][1]
     assert payload["tools"][2]["function"]["name"] == "b"
     assert payload["tools"][2]["custom_fields"] == {"cache_breakpoint": {}}
+
+
+def test_breakpoint_lands_on_last_discovered_tool():
+    lazy_holder = LazyLoadedToolsHolder()
+    lazy_holder.add([_make_tool_dict("a")])
+    builder = _make_builder([_make_tool_dict("b")], lazy_holder, cache=True)
+
+    payload = builder.build(_system_and_user())
+
+    assert payload["tools"][0]["function"]["name"] == "b"
+    assert "custom_fields" not in payload["tools"][0]
+    assert payload["tools"][1]["function"]["name"] == "a"
+    assert payload["tools"][1]["custom_fields"] == {"cache_breakpoint": {}}
 
 
 def test_promote_orchestrator_state_to_top_level():
