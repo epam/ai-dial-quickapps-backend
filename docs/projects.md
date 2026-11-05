@@ -77,3 +77,15 @@ denied; the app has no permission for it"). It goes through the tool's fallback 
 | The agent can't find the context files | The app has no DIAL files tool that lists or reads files (`features.dial_files.enabled_tools`) |
 | Initialization issues: "PROJECT.md could not be loaded" | `PROJECT.md` is over the file-loading size limit, or Core returned an error for it (WARNING log) |
 | Something else fails only in project chats (shared projects, deployments, attachments after a rename, ...) | Check [Known issues](#known-issues) |
+
+### Testing
+
+| Suite | Runs | Covers |
+|---|---|---|
+| `src/tests/integration_tests/test_projects.py` | with the other integration tests (`make integration_test MODEL=...`): in-process, static key; skipped when Core has no v2 project API | instructions, `context/` read, a file written in chat 1 found in chat 2 under `artifacts/`, no header, an MCP file output in `artifacts/` |
+| `src/tests/integration_tests/test_projects_core_path.py` | opt-in: `make projects_core_path_test MODEL=...` (sets `PROJECTS_CORE_PATH=true`); skipped without the Core URL and user/admin credentials | the same through Core with a user token and the per-request key, plus a nested app, and 403 `project_access_denied` after the admin consent is revoked |
+
+The Core-path suite needs a Core with resource dependencies ([#1930](https://github.com/epam/ai-dial-core/issues/1930))
+and `projects` as a declarable target, a QuickApps instance registered in it with `ENABLE_PREVIEW_FEATURES=true`, and
+an admin who can consent. The suite registers its two apps with the `projects/{current-user}/` READ + WRITE
+dependencies and grants the consent itself. Setup and the `PROJECTS_CORE_*` variables: the module docstring.
