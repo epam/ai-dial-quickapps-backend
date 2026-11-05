@@ -5,7 +5,7 @@ from aidial_client._exception import DialException, EtagMismatchError
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.tool_call_result import ToolCallResult
-from quickapp.dial_files_tooling._base_file_tool import _DialFileTool
+from quickapp.dial_files_tooling._base_file_tool import PROJECT_WRITE_ERRORS, _DialFileTool
 from quickapp.dial_files_tooling._utils import reject_absolute_path
 
 
@@ -50,6 +50,8 @@ class _EditFileTool(_DialFileTool):
             raise InvalidToolCallParameterException(
                 "path", "file changed concurrently; re-read and retry"
             ) from e
+        except PROJECT_WRITE_ERRORS as e:
+            raise self._tool_error(e) from e
         except DialException as e:
             self._check_permission_denied(e, display_path)
             raise

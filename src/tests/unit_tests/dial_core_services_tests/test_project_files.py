@@ -1,5 +1,8 @@
 """``ProjectFilesClient`` against a real AsyncDial; HTTP is intercepted by pytest-httpx."""
 
+from unittest.mock import AsyncMock, patch
+
+import httpx
 import pytest
 from aidial_client import AsyncDial
 from aidial_client._exception import DialException, EtagMismatchError, ResourceNotFoundError
@@ -155,3 +158,40 @@ async def test_unsafe_paths_never_reach_core(httpx_mock, url) -> None:
 
     assert excinfo.value.status_code == 400
     assert httpx_mock.get_requests() == []
+
+
+@pytest.mark.asyncio
+async def test_file_etag_of_an_empty_file_comes_from_the_416(httpx_mock) -> None:
+    httpx_mock.add_response(
+        method="GET",
+        url=f"{BASE_URL}/v2/{FILE_URL}",
+        status_code=416,
+        headers={"etag": "empty-file-etag"},
+    )
+
+    assert await _client().file_etag(FILE_URL) == "empty-file-etag"
+
+
+@pytest.mark.asyncio
+async def test_a_conditional_put_is_not_resent_after_a_timeout(httpx_mock) -> None:
+    httpx_mock.add_exception(httpx.ReadTimeout("timed out"), method="PUT")
+    client = ProjectFilesClient(AsyncDial(base_url=BASE_URL, api_key="key", max_retries=2))
+
+    with pytest.raises(DialException) as excinfo:
+        await client.put(FILE_URL, b"x", "text/plain", if_match="project-etag")
+
+    assert excinfo.value.status_code == 408
+    assert len(httpx_mock.get_requests()) == 1
+
+
+@pytest.mark.parametrize(
+    ("if_match", "expected_retries"), [("project-etag", 0), ("", 0), (None, 3)]
+)
+@pytest.mark.asyncio
+async def test_only_conditional_puts_disable_the_client_retries(if_match, expected_retries) -> None:
+    client = ProjectFilesClient(AsyncDial(base_url=BASE_URL, api_key="key", max_retries=3))
+    with patch.object(client._http, "request", new=AsyncMock()) as request:
+        await client.put(FILE_URL, b"x", "text/plain", if_match=if_match)
+
+    options = request.await_args.kwargs["options"]
+    assert options.get_max_retries(3) == expected_retries

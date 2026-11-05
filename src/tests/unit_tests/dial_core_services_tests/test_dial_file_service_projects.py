@@ -11,6 +11,7 @@ from quickapp.dial_core_services._project_files import ProjectFilesClient, Proje
 from quickapp.dial_core_services.dial_file_service import DialFileService, _project_write_backoff
 from quickapp.dial_core_services.exceptions import (
     PartialMoveException,
+    ProjectFileOperationException,
     ProjectFileTooLargeException,
     ProjectWriteConflictException,
     SameSourceAndDestinationException,
@@ -315,6 +316,29 @@ class TestCopyAndMove:
 
 
 class TestReviewFixes:
+    @pytest.mark.parametrize(
+        "source, destination",
+        [
+            ("projects/b/p/files/context/", "projects/b/p/files/artifacts/context/"),
+            ("files/bucket/folder/", "projects/b/p/files/artifacts/folder/"),
+        ],
+    )
+    @pytest.mark.parametrize("operation", ["copy", "move"])
+    @pytest.mark.asyncio
+    async def test_a_folder_source_is_refused_before_any_download(
+        self, source, destination, operation
+    ):
+        dial_client = _make_dial_client()
+        project_files = _make_project_files()
+        svc = _make_service(project_files, dial_client=dial_client)
+
+        with pytest.raises(ProjectFileOperationException, match="folders in a project"):
+            await getattr(svc, operation)(source, destination, overwrite=True)
+        project_files.download.assert_not_awaited()
+        dial_client.files.download.assert_not_awaited()
+        project_files.put.assert_not_awaited()
+        project_files.delete.assert_not_awaited()
+
     @pytest.mark.parametrize(
         "source, destination",
         [
