@@ -7,6 +7,7 @@ from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
 
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import InvalidToolCallParameterException
+from quickapp.common.project_context import ProjectContext
 from quickapp.core.agent import OrchestratorCapabilities
 from quickapp.dial_core_services.dial_file_promoter import DialFilePromoter
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._attachment_acceptance import (
@@ -46,6 +47,7 @@ def _file_meta(url: str, name: str, content_type: str) -> SimpleNamespace:
 def _materializer(
     promoter: DialFilePromoter | None = None,
     dial_url: str = "https://dial.local",
+    project: ProjectContext | None = None,
 ) -> _AttachmentMaterializer:
     settings = MagicMock(spec=DialSettings)
     settings.url = dial_url
@@ -55,6 +57,7 @@ def _materializer(
     return _AttachmentMaterializer(
         dial_promoter=promoter,
         dial_settings=settings,
+        project=project,
     )
 
 
@@ -350,6 +353,39 @@ class TestExternalUrlPromotion:
         assert result[2].custom_content is not None
         assert result[2].custom_content.attachments is not None
         assert result[2].custom_content.attachments[0].url == "files/bucket/a.pdf"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "projects/b/P/files/context/a.pdf",
+            "https://dial.local/v1/projects/b/P/files/context/a.pdf",
+        ],
+    )
+    async def test_project_attachment_injected_in_relative_form(self, url: str):
+        materializer = _materializer(project=ProjectContext(url="projects/b/P"))
+        injector = _injector(["application/pdf"], materializer=materializer)
+        messages = [_user_msg("latest", [_attachment("a.pdf", url, "application/pdf")])]
+
+        result = await injector.transform(messages)
+
+        assert len(result) == 3
+        assert result[2].custom_content is not None
+        assert result[2].custom_content.attachments is not None
+        assert result[2].custom_content.attachments[0].url == "projects/b/P/files/context/a.pdf"
+
+    @pytest.mark.asyncio
+    async def test_absolute_project_url_without_project_passes_unchanged(self):
+        """Outside a project a host-matched absolute URL stays DIAL and unchanged, as before."""
+        url = "https://dial.local/v1/projects/b/P/files/context/a.pdf"
+        injector = _injector(["application/pdf"])
+        messages = [_user_msg("latest", [_attachment("a.pdf", url, "application/pdf")])]
+
+        result = await injector.transform(messages)
+
+        assert result[2].custom_content is not None
+        assert result[2].custom_content.attachments is not None
+        assert result[2].custom_content.attachments[0].url == url
 
     @pytest.mark.asyncio
     async def test_unsupported_scheme_attachment_skipped(self):

@@ -24,7 +24,7 @@ def _make_filter(
         deployment=MagicMock(id="orch", input_attachment_types=patterns),
     )
     acceptance = _AttachmentAcceptance(caps, accepted_types=app_accepted_types)
-    keep_policy = _GetContentKeepPolicy(attachment_acceptance=acceptance)
+    keep_policy = _GetContentKeepPolicy(attachment_acceptance=acceptance, project=None)
     return _AttachmentFilter(tool_attachment_keep_policies=[keep_policy])
 
 

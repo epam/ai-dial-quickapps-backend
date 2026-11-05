@@ -1,7 +1,8 @@
 """Lazy-load a single attachment by url for the current turn.
 
 External ``http(s)`` urls are promoted to a durable DIAL file via
-``_AttachmentMaterializer``; DIAL ``files/`` urls pass through; schemeless references
+``_AttachmentMaterializer``; DIAL ``files/`` urls (and, in a project chat, files of the
+request's project) pass through; schemeless references
 (the agent-home-relative convention spoken by the file tools, e.g.
 ``reports/img.png``) are resolved under the agent home via ``HomePathResolver``.
 Authorization of the underlying fetch is enforced upstream — DIAL Core gates
@@ -118,7 +119,9 @@ class _GetContentTool(StagedBaseTool):
             logger.debug("get_content tool rejected: empty attachment_url")
             return self._error_result("Missing or empty attachment_url.")
 
-        normalized_url = normalize_attachment_url_argument(str(attachment_url))
+        normalized_url = self.__materializer.to_relative(
+            normalize_attachment_url_argument(str(attachment_url))
+        )
         try:
             resolved = await self._resolve_attachment(normalized_url)
             self._ensure_mime_accepted(resolved)
@@ -146,8 +149,8 @@ class _GetContentTool(StagedBaseTool):
                 logger.debug("get_content tool rejected: external promotion failed (%s)", exc)
                 raise
         if scheme == UrlScheme.DIAL:
-            if not normalized_url.startswith("files/"):
-                logger.debug("get_content tool rejected: URL does not start with files/")
+            if not self.__materializer.is_storage_path(normalized_url):
+                logger.debug("get_content tool rejected: URL is not a relative storage path")
                 raise InvalidToolCallParameterException(
                     "attachment_url", _UNSUPPORTED_REFERENCE_MESSAGE
                 )
@@ -190,7 +193,7 @@ class _GetContentTool(StagedBaseTool):
         return _ResolvedAttachment(url=attachment_file_url, mime=mime, title=title)
 
     def _resolve_dial(self, normalized_url: str) -> _ResolvedAttachment:
-        """Resolve display metadata for a DIAL ``files/`` url. Honors an explicit
+        """Resolve display metadata for a DIAL storage url. Honors an explicit
         type/title when the url matches a user attachment; otherwise infers from the
         filename. (A matching admin context carries no explicit type/title, so it
         yields the same inference as the fallback.)

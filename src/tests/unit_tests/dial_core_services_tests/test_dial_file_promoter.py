@@ -5,6 +5,8 @@ import pytest
 
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import InvalidToolCallParameterException
+from quickapp.common.project_context import ProjectContext
+from quickapp.dial_core_services._project_files import ProjectFilesClient
 from quickapp.dial_core_services.attachment_service import AttachmentService
 from quickapp.dial_core_services.dial_file_promoter import DialFilePromoter
 from quickapp.shared.external_fetch.external_url_fetcher import (
@@ -34,6 +36,8 @@ def _make_promoter(
     files_get_metadata: AsyncMock | None = None,
     fetcher: MagicMock | None = None,
     attachments: MagicMock | None = None,
+    project_files: MagicMock | None = None,
+    project: ProjectContext | None = None,
 ) -> DialFilePromoter:
     dial_client = MagicMock()
     dial_client.files.get_metadata = files_get_metadata or AsyncMock(return_value=_make_metadata())
@@ -42,6 +46,8 @@ def _make_promoter(
         external_fetcher=fetcher or MagicMock(spec=ExternalUrlFetcher),
         attachment_service=attachments or MagicMock(spec=AttachmentService),
         dial_settings=_settings(),
+        project_files=project_files or MagicMock(spec=ProjectFilesClient),
+        project=project,
     )
 
 
@@ -58,6 +64,55 @@ async def test_dial_branch_reads_metadata_no_upload():
     assert result is metadata
     get_metadata.assert_awaited_once_with("files/bucket/y.pdf")
     attachments.upload_appdata_bytes.assert_not_awaited()
+
+
+_PROJECT = ProjectContext(url="projects/bucket/My%20Project")
+
+
+class TestProjectDialBranch:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "projects/bucket/My%20Project/files/context/a.pdf",
+            "https://dial.example.com/v1/projects/bucket/My%20Project/files/context/a.pdf",
+        ],
+    )
+    async def test_current_project_url_reads_v2_metadata(self, url: str):
+        project_files = MagicMock(spec=ProjectFilesClient)
+        project_files.file_metadata = AsyncMock(return_value=_make_metadata(name="a.pdf"))
+        get_metadata = AsyncMock()
+
+        promoter = _make_promoter(
+            files_get_metadata=get_metadata, project_files=project_files, project=_PROJECT
+        )
+        result = await promoter.promote(url)
+
+        assert result.name == "a.pdf"
+        project_files.file_metadata.assert_awaited_once_with(
+            "projects/bucket/My%20Project/files/context/a.pdf"
+        )
+        get_metadata.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_files_url_in_project_keeps_v1(self):
+        project_files = MagicMock(spec=ProjectFilesClient)
+        project_files.file_metadata = AsyncMock()
+        get_metadata = AsyncMock(return_value=_make_metadata())
+
+        promoter = _make_promoter(
+            files_get_metadata=get_metadata, project_files=project_files, project=_PROJECT
+        )
+        await promoter.promote("files/bucket/y.pdf")
+
+        get_metadata.assert_awaited_once_with("files/bucket/y.pdf")
+        project_files.file_metadata.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_project_url_without_project_is_unsupported(self):
+        promoter = _make_promoter()
+        with pytest.raises(InvalidToolCallParameterException):
+            await promoter.promote("projects/bucket/My%20Project/files/context/a.pdf")
 
 
 @pytest.mark.asyncio
