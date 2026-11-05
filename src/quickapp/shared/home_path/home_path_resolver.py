@@ -1,7 +1,11 @@
 from injector import inject
 
 from quickapp.common.exceptions import InvalidToolCallParameterException
-from quickapp.common.project_context import PROJECT_CONTEXT, canonical_resource_url
+from quickapp.common.project_context import (
+    PROJECT_CONTEXT,
+    canonical_resource_url,
+    has_unsafe_segments,
+)
 from quickapp.config.dial_files import DialFilesConfig
 from quickapp.dial_core_services.dial_file_service import DialFileService
 
@@ -78,6 +82,13 @@ class HomePathResolver:
             if self._project.contains(path):
                 return canonical_resource_url(path)
             _validate_relative_path(path)
+            # Canonicalizing decodes each segment, so check the decoded form first:
+            # `%2e%2e` or an encoded `/` would otherwise turn into a real `..` or `/`.
+            if has_unsafe_segments(path):
+                raise InvalidToolCallParameterException(
+                    "path",
+                    "path must not contain '.', '..' or empty segments, or an encoded '/'",
+                )
             # Canonical, like the URLs Core lists, so prefix math against listings works.
             return canonical_resource_url(f"{await self.resolve_home_dir()}{path}")
         _validate_relative_path(path)

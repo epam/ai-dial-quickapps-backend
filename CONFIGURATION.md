@@ -1776,10 +1776,15 @@ approves them (DIAL Core [#1930](https://github.com/epam/ai-dial-core/issues/193
 
 ```json
 "resourceDependencies": [
-  { "kind": "...", "linkId": "project-read",  "target": { "path": "projects/{current-user}/" }, "access": "READ",  "required": true },
-  { "kind": "...", "linkId": "project-write", "target": { "path": "projects/{current-user}/" }, "access": "WRITE", "required": true }
+  { "kind": "...", "linkId": "project-read",  "target": { "path": "projects/{current-user}/" }, "access": ["READ"],  "required": false },
+  { "kind": "...", "linkId": "project-write", "target": { "path": "projects/{current-user}/" }, "access": ["WRITE"], "required": false }
 ]
 ```
+
+Core checks the dependencies on every call to the app. Without the user's consent, `"required": true` makes Core reject
+every call to the app with 403 "Required resource dependencies are not accessible", even outside projects; with
+`"required": false` the app keeps working and only project chats end with `project_access_denied`. With consent both
+behave the same. Use `true` only for apps that make no sense outside a project.
 
 - `projects/{current-user}/` covers all of the requesting user's own projects. QuickApps itself touches only the
   project in the header.

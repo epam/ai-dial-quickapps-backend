@@ -174,6 +174,13 @@ class TestProjectHome:
     async def test_display_path_keeps_other_project_files(self):
         assert await _resolver(project=_PROJECT).to_display_path(_CONTEXT_FILE) == _CONTEXT_FILE
 
+    @pytest.mark.parametrize("path", ["%2e%2e/PROJECT.md", ".%2e/x", "a%2F..%2Fb", "a//b"])
+    @pytest.mark.asyncio
+    async def test_unsafe_relative_path_is_rejected_before_decoding(self, path):
+        with pytest.raises(InvalidToolCallParameterException) as excinfo:
+            await _resolver(project=_PROJECT).resolve_appdata_url(path)
+        assert excinfo.value.parameter_name == "path"
+
     def test_is_absolute(self):
         resolver = _resolver(project=_PROJECT)
         assert resolver.is_absolute("files/appbucket/x.md")
