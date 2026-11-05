@@ -102,3 +102,14 @@ async def test_multiple_resources_joined_with_double_newline():
     assert "\n\n" in result
     assert "--- Resource: A (ts1) ---" in result
     assert "--- Resource: B (ts2) ---" in result
+
+
+@pytest.mark.asyncio
+async def test_cards_follow_toolset_name_order_not_publish_order():
+    metas = [
+        _meta(name="B", uri="urn://b", toolset="ts2"),
+        _meta(name="A", uri="urn://a", toolset="ts1"),
+    ]
+    result = await _MCPResourceCardProvider(_context(metas)).get_prompt_part()
+
+    assert result.index("Resource: A") < result.index("Resource: B")
