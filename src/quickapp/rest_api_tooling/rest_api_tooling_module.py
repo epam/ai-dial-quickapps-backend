@@ -46,22 +46,6 @@ class RestApiToolingModule(Module):
         accept_language: ACCEPT_LANGUAGE,
         deferred_context: _RestApiDeferredToolsContext,
     ) -> list[StagedBaseTool]:
-        # Unscoped multiprovider: Injector re-runs it on every `list[StagedBaseTool]` injection
-        # (several times per model call). Build once per request so tools stay stable and the
-        # deferred registry is populated exactly once.
-        if deferred_context.built_tools is None:
-            deferred_context.built_tools = self.__build_rest_api_tools(
-                app_config, tool_builder, accept_language, deferred_context
-            )
-        return list(deferred_context.built_tools)
-
-    def __build_rest_api_tools(
-        self,
-        app_config: ApplicationConfig,
-        tool_builder: ClassAssistedBuilder[_RestApiTool],
-        accept_language: ACCEPT_LANGUAGE,
-        deferred_context: _RestApiDeferredToolsContext,
-    ) -> list[StagedBaseTool]:
         result: list[StagedBaseTool] = []
         for toolset_info in app_config.tool_sets:
             if isinstance(toolset_info, RestApiToolSet) and toolset_info.enabled:

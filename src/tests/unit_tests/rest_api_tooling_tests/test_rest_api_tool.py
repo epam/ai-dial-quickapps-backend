@@ -450,48 +450,16 @@ def test_openai_tools_names():
     assert response.status_code == 200
 
 
-def test_stage_names_include_toolset_and_tool_name():
-    rest_api_toolset = RestApiToolSet(
-        name="Notion",
-        tools=[
-            _make_rest_api_tool("https://example.com/a", ToolEndpointInfoMethodType.get, name="a"),
-            _make_rest_api_tool("https://example.com/b", ToolEndpointInfoMethodType.get, name="b"),
-        ],
-    )
-
-    def configure(binder: Binder):
-        binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
-        binder.bind(DialSettings, DialSettings(url="https://core"))
-        binder.bind(DIAL_BEARER, to=InstanceProvider(SecretStr("some_token")))
-        binder.bind(DIAL_API_KEY, SecretStr("some_api_key"))
-        binder.bind(AsyncDial, to=InstanceProvider(MagicMock(spec=AsyncDial)))
-        binder.bind(StageDisplayLevel, to=InstanceProvider(StageDisplayLevel.INFO))
-        binder.bind(ForwardedHeaders, to=InstanceProvider(None))
-        binder.bind(ACCEPT_LANGUAGE, to=InstanceProvider(None))
-        binder.multibind(list[ToolArgumentTransformer], to=[])
-
-    app = create_test_app([RestApiToolingModule, configure])
-
-    @app.get("/")
-    async def get_method(tools: list[StagedBaseTool] = Injected(list[StagedBaseTool])):
-        assert [t.stage_name_component for t in tools] == ["Notion: a", "Notion: b"]
-        return {}
-
-    response = TestClient(app).get("/")
-    assert response.status_code == 200
-
-
-def test_repeated_tool_resolution_registers_deferred_toolset_once():
-    """Regression (#707): `list[StagedBaseTool]` is resolved many times per request; the tools
-    must be built, and the deferred toolset registered, exactly once."""
-    rest_api_toolset = RestApiToolSet(
+def test_repeated_tool_resolution_does_not_grow_deferred_registry():
+    """Regression (#707): `list[StagedBaseTool]` re-runs per injection; registration is idempotent."""
+    toolset = RestApiToolSet(
         name="Notion",
         deferred=True,
         tools=[
-            _make_rest_api_tool("https://example.com/a", ToolEndpointInfoMethodType.get, name="a"),
+            _make_rest_api_tool("https://example.com/a", ToolEndpointInfoMethodType.get, name="a")
         ],
     )
-    app_config = create_app_configuration([rest_api_toolset])
+    app_config = create_app_configuration([toolset])
     app_config.orchestrator.tool_discovery = ToolDiscoveryConfig(
         enabled=True, min_tools_for_deferral=1
     )
@@ -517,10 +485,40 @@ def test_repeated_tool_resolution_registers_deferred_toolset_once():
         summaries: list[DeferredToolsetSummary] = Injected(list[DeferredToolsetSummary]),
         catalog: list[DeferredToolCatalogEntry] = Injected(list[DeferredToolCatalogEntry]),
     ):
-        assert len(first) == 1
-        assert first[0] is second[0] is third[0]
+        assert len(first) == len(second) == len(third) == 1
+        assert first[0] is not second[0]  # tools stay per-injection, never shared
         assert len(summaries) == 1
         assert len(catalog) == 1
+        return {}
+
+    assert TestClient(app).get("/").status_code == 200
+
+
+def test_stage_names_include_toolset_and_tool_name():
+    rest_api_toolset = RestApiToolSet(
+        name="Notion",
+        tools=[
+            _make_rest_api_tool("https://example.com/a", ToolEndpointInfoMethodType.get, name="a"),
+            _make_rest_api_tool("https://example.com/b", ToolEndpointInfoMethodType.get, name="b"),
+        ],
+    )
+
+    def configure(binder: Binder):
+        binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
+        binder.bind(DialSettings, DialSettings(url="https://core"))
+        binder.bind(DIAL_BEARER, to=InstanceProvider(SecretStr("some_token")))
+        binder.bind(DIAL_API_KEY, SecretStr("some_api_key"))
+        binder.bind(AsyncDial, to=InstanceProvider(MagicMock(spec=AsyncDial)))
+        binder.bind(StageDisplayLevel, to=InstanceProvider(StageDisplayLevel.INFO))
+        binder.bind(ForwardedHeaders, to=InstanceProvider(None))
+        binder.bind(ACCEPT_LANGUAGE, to=InstanceProvider(None))
+        binder.multibind(list[ToolArgumentTransformer], to=[])
+
+    app = create_test_app([RestApiToolingModule, configure])
+
+    @app.get("/")
+    async def get_method(tools: list[StagedBaseTool] = Injected(list[StagedBaseTool])):
+        assert [t.stage_name_component for t in tools] == ["Notion: a", "Notion: b"]
         return {}
 
     response = TestClient(app).get("/")
