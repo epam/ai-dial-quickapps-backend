@@ -111,7 +111,7 @@ class DialFilesConfig(BaseModel):
             "Which file tools to expose. Use 'all' for every tool, 'read_only' for the "
             "non-mutating ones (list, read_lines, read_chars, search, find), or a list to "
             "restrict (e.g. ['read_lines', 'search']). When the whole `dial_files` block is "
-            "omitted, 'read_only' applies."
+            "omitted, 'all' applies."
         ),
     )
     agent_home_dir: str = Field(

@@ -98,10 +98,10 @@ class DialFilesToolingModule(Module):
 
     @staticmethod
     def _effective_config(app_config: ApplicationConfig) -> DialFilesConfig:
-        """The app's `dial_files` block, or the read-only default when it is absent."""
+        """The app's `dial_files` block, or the all-tools default when it is absent."""
         cfg = app_config.features.dial_files if app_config.features else None
         if cfg is None:
-            return DialFilesConfig(enabled_tools="read_only")
+            return DialFilesConfig()
         return cfg
 
     @request_scope

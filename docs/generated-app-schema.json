@@ -1470,7 +1470,7 @@
             }
           ],
           "default": "all",
-          "description": "Which file tools to expose. Use 'all' for every tool, 'read_only' for the non-mutating ones (list, read_lines, read_chars, search, find), or a list to restrict (e.g. ['read_lines', 'search']). When the whole `dial_files` block is omitted, 'read_only' applies.",
+          "description": "Which file tools to expose. Use 'all' for every tool, 'read_only' for the non-mutating ones (list, read_lines, read_chars, search, find), or a list to restrict (e.g. ['read_lines', 'search']). When the whole `dial_files` block is omitted, 'all' applies.",
           "title": "Enabled Tools"
         },
         "agent_home_dir": {

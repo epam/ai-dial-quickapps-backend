@@ -452,7 +452,7 @@ Uses the same private-SDK transport as `DialFileService.copy` (see Component 7.5
 
 - Binds `_FileStageWrapper`, `_ListFilesTool`, `_ReadFileLinesTool`, `_SearchInFileTool`, `_WriteFileTool`, `_EditFileTool`, `_DeleteFileTool`, `_CopyFileTool`, `_MoveFileTool` in `request_scope`.
 - Contributes all eight tools to the shared `list[StagedBaseTool]` multiprovider via its own `@multiprovider`-decorated provider method (same pattern as `InternalToolModule._provide_internal_tools`).
-- Tools are gated per app via `app_config.features.dial_files`: `enabled_tools="all"` returns every tool, `"read_only"` the five non-mutating ones; a list returns only the matching subset. When the `dial_files` block is absent the module behaves as if `enabled_tools="read_only"`.
+- Tools are gated per app via `app_config.features.dial_files`: `enabled_tools="all"` returns every tool, `"read_only"` the five non-mutating ones; a list returns only the matching subset. When the `dial_files` block is absent the module behaves as if `enabled_tools="all"`.
 - Is **generally available** (promoted from preview in 073a7517); only the nested `tool_call_result_offload` field is still preview-gated.
 
 **Owner:** `src/quickapp/dial_files_tooling/dial_files_tooling_module.py`
@@ -540,7 +540,7 @@ class Features(BaseModel):
     )
 ```
 
-**Resolution in `DialFilesToolingModule`:** `_effective_config` returns `app_config.features.dial_files`, or `DialFilesConfig(enabled_tools="read_only")` when the block is absent. `expand_enabled_tools` (in `config/dial_files.py`) turns `enabled_tools` (preset or list) into the set of short names, and each tool is exposed when its short name is in that set. The same function backs the offload read-back check, so presets need no special-casing there.
+**Resolution in `DialFilesToolingModule`:** `_effective_config` returns `app_config.features.dial_files`, or `DialFilesConfig()` (all tools) when the block is absent. `expand_enabled_tools` (in `config/dial_files.py`) turns `enabled_tools` (preset or list) into the set of short names, and each tool is exposed when its short name is in that set. The same function backs the offload read-back check, so presets need no special-casing there.
 
 **Design notes:**
 
