@@ -10,7 +10,9 @@ from quickapp.common import RESPONSE_FORMAT, ForwardedHeaders
 from quickapp.common.abstract.base_transformer import PreInvocationTransformer
 from quickapp.common.dial_request_fields import CUSTOM_FIELDS, EXTRA_BODY, to_custom_fields_payload
 from quickapp.common.payload_logging import log_payload, payloads_enabled, summarize_roles
+from quickapp.config.agent_settings import AgentSettings
 from quickapp.config.application import ApplicationConfig
+from quickapp.core.agent._prompt_cache_breakpoints import _PromptCacheBreakpoints
 from quickapp.core.agent._tool_choice_holder import _ToolChoiceHolder
 from quickapp.core.agent.lazy_loaded_tools_holder import LazyLoadedToolsHolder
 from quickapp.core.agent.models import (
@@ -37,6 +39,8 @@ class _ChatCompletionConfigBuilder:
         forwarded_headers: ForwardedHeaders,
         lazy_loaded_tools_holder: LazyLoadedToolsHolder,
         capabilities: OrchestratorCapabilities,
+        agent_settings: AgentSettings,
+        prompt_cache_breakpoints: _PromptCacheBreakpoints,
     ) -> None:
         self.__config: ApplicationConfig = config
         self.__tools: list[OpenAiToolConfigDict] = tools
@@ -46,6 +50,8 @@ class _ChatCompletionConfigBuilder:
         self.__forwarded_headers = forwarded_headers
         self.__lazy_loaded_tools_holder = lazy_loaded_tools_holder
         self.__capabilities: OrchestratorCapabilities = capabilities
+        self.__agent_settings: AgentSettings = agent_settings
+        self.__prompt_cache_breakpoints = prompt_cache_breakpoints
 
     def build(self, messages: list[Message]) -> dict[str, Any]:
         chat_completion_config = self.__config.orchestrator.deployment.parameters.model_dump(
@@ -55,6 +61,7 @@ class _ChatCompletionConfigBuilder:
         self._move_custom_fields_to_extra_body(chat_completion_config)
         prepared_messages = self._prepare_messages(messages)
         all_tools = self._merge_tools()
+        self._place_cache_breakpoints(prepared_messages, all_tools)
         payload: dict[str, Any] = {
             "messages": prepared_messages,
             "stream": True,
@@ -75,6 +82,19 @@ class _ChatCompletionConfigBuilder:
         self._log_result(chat_completion_config, prepared_messages, all_tools)
         return chat_completion_config
 
+    def _place_cache_breakpoints(
+        self, prepared_messages: list[dict[str, Any]], all_tools: list[OpenAiToolConfigDict]
+    ) -> None:
+        if self._cache_breakpoints_enabled():
+            self.__prompt_cache_breakpoints.apply(prepared_messages, all_tools)
+
+    def _cache_breakpoints_enabled(self) -> bool:
+        """Prompt caching is enabled, and the orchestrator deployment supports it."""
+        return (
+            self.__agent_settings.prompt_cache_breakpoints_enabled
+            and self.__capabilities.supports_cache_breakpoints
+        )
+
     def _merge_tools(self) -> list[OpenAiToolConfigDict]:
         eager_names: set[str] = {t.get("function", {}).get("name", "") for t in self.__tools}
         lazy_tools = [
@@ -82,7 +102,11 @@ class _ChatCompletionConfigBuilder:
             for t in self.__lazy_loaded_tools_holder.get_all()
             if t.get("function", {}).get("name", "") not in eager_names
         ]
-        return self.__tools + lazy_tools
+        # Sorted: toolsets may load in parallel, in completion order; a stable order keeps the
+        # prompt-cache prefix byte-stable across requests. Discovered tools stay after the
+        # eager ones, in discovery order, so a discovery only changes the end of the tools block.
+        eager_tools = sorted(self.__tools, key=lambda t: t.get("function", {}).get("name", ""))
+        return eager_tools + lazy_tools
 
     def _apply_response_format(self, payload: dict[str, Any]) -> None:
         if not self.__response_format:
