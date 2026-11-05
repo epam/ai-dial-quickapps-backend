@@ -17,7 +17,8 @@ class _MCPResourceCardProvider(PromptPartProvider):
         self._context = context
 
     async def get_prompt_part(self) -> str:
-        metas = self._context.resource_metas
+        # Sorted: toolsets publish in completion order; the prompt-cache prefix must stay stable.
+        metas = sorted(self._context.resource_metas, key=lambda m: m.toolset_name)
         if not metas:
             return ""
 

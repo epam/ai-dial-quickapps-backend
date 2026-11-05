@@ -5,8 +5,11 @@ import openai
 import pytest
 from aidial_sdk.exceptions import HTTPException as DialHTTPException
 
-from quickapp.core.application._exception_message_resolver import ErrorDetails, ResolvedError
+from quickapp.common.error_details import ErrorDetails
+from quickapp.common.exceptions import FallbackAgentStopException
+from quickapp.core.application._exception_message_resolver import ResolvedError
 from quickapp.core.application._quick_app_completion import (
+    _error_reference_for,
     _outgoing_status_code,
     _QuickAppCompletion,
 )
@@ -34,6 +37,16 @@ class TestOutgoingStatusCode:
     @pytest.mark.parametrize("status", [None, 500, 409])
     def test_other_statuses_collapse_to_500(self, status: int | None) -> None:
         assert _outgoing_status_code(_resolved(status)) == 500
+
+
+class TestErrorReferenceFor:
+    def test_stop_fallback_reuses_the_tool_stage_reference(self) -> None:
+        e = FallbackAgentStopException("call-id")
+        e.error_reference = "ab12cd34"
+        assert _error_reference_for(e) == "ab12cd34"
+
+    def test_other_errors_get_a_fresh_reference(self) -> None:
+        assert re.fullmatch(r"[0-9a-f]{8}", _error_reference_for(RuntimeError("boom")))
 
 
 class TestHandleException:
