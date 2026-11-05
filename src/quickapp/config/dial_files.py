@@ -102,7 +102,8 @@ class DialFilesConfig(BaseModel):
             "Optional sub-directory inside the agent's appdata folder used as the "
             "root for relative paths. Empty (default) means the appdata root. "
             "Must be a relative path; absolute 'files/...' URLs, leading '/', "
-            "and '..' segments are rejected. Example: 'workspace/'."
+            "and '..' segments are rejected. Example: 'workspace/'. Ignored in a project "
+            "chat, where the home is the project's 'artifacts/' folder."
         ),
     )
     tool_call_result_offload: ToolCallResultOffloadConfig | None = PreviewField(  # type: ignore[assignment]

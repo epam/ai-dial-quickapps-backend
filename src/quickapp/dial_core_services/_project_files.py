@@ -72,17 +72,21 @@ class ProjectFilesClient:
         """
         response = await self._request("GET", f"v2/{url}")
         data = response.content
-        metadata = FileMetadata(
-            name=url.rsplit("/", 1)[-1],
-            bucket=url.split("/")[1],
-            url=url,
-            node_type="ITEM",
-            resource_type="FILE",
-            content_length=len(data),
-            content_type=response.headers.get("content-type"),
-            etag=response.headers.get("etag"),
-        )
-        return data, metadata
+        return data, _file_metadata(url, response, len(data))
+
+    async def file_metadata(self, url: str) -> FileMetadata:
+        """``FileMetadata`` of a project file, from a first-byte GET (no metadata endpoint).
+
+        ``content_length`` is the total from ``Content-Range``, or the body length when Core
+        ignores ``Range``. Raises ``ResourceNotFoundError`` for a missing file.
+        """
+        response = await self._request("GET", f"v2/{url}", headers={"Range": "bytes=0-0"})
+        if response.status_code == 206:
+            total = response.headers.get("content-range", "").rpartition("/")[2]
+            content_length = int(total) if total.isdigit() else None
+        else:
+            content_length = len(response.content)
+        return _file_metadata(url, response, content_length)
 
     async def file_etag(self, url: str) -> str | None:
         """The file's own ETag, or ``None`` when the file doesn't exist.
@@ -166,3 +170,16 @@ class ProjectFilesClient:
         return await self._http.request(
             cast_to=httpx.Response, options=options, on_http_error=on_http_error
         )
+
+
+def _file_metadata(url: str, response: httpx.Response, content_length: int | None) -> FileMetadata:
+    return FileMetadata(
+        name=url.rsplit("/", 1)[-1],
+        bucket=url.split("/")[1],
+        url=url,
+        node_type="ITEM",
+        resource_type="FILE",
+        content_length=content_length,
+        content_type=response.headers.get("content-type"),
+        etag=response.headers.get("etag"),
+    )

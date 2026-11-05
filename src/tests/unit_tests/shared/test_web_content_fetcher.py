@@ -2,6 +2,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from quickapp.common.project_context import ProjectContext
 from quickapp.shared.external_fetch.external_url_fetcher import (
     ExternalFetchDisabledError,
     ExternalFetchError,
@@ -15,7 +16,9 @@ from quickapp.shared.external_fetch.web_content_fetcher import (
 _DIAL_URL = "https://dial.example.com"
 
 
-def _make_fetcher(fetch_result: FetchedBytes | Exception | None = None) -> WebContentFetcher:
+def _make_fetcher(
+    fetch_result: FetchedBytes | Exception | None = None, project: ProjectContext | None = None
+) -> WebContentFetcher:
     external = MagicMock()
     if isinstance(fetch_result, Exception):
         external.fetch = AsyncMock(side_effect=fetch_result)
@@ -23,10 +26,18 @@ def _make_fetcher(fetch_result: FetchedBytes | Exception | None = None) -> WebCo
         external.fetch = AsyncMock(return_value=fetch_result)
     dial_settings = MagicMock()
     dial_settings.url = _DIAL_URL
-    return WebContentFetcher(external_fetcher=external, dial_settings=dial_settings)
+    return WebContentFetcher(
+        external_fetcher=external, dial_settings=dial_settings, project=project
+    )
 
 
 class TestFetchExternal:
+    @pytest.mark.asyncio
+    async def test_current_project_url_rejected_as_dial_storage(self):
+        fetcher = _make_fetcher(project=ProjectContext(url="projects/b/P"))
+        with pytest.raises(WebContentFetchError, match="DIAL storage"):
+            await fetcher.fetch_external("projects/b/P/files/context/a.md")
+
     @pytest.mark.asyncio
     async def test_external_url_fetched(self):
         fetched = FetchedBytes(data=b"hello", content_type="text/plain", filename="a.txt")
