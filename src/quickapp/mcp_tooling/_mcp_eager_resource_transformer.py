@@ -76,7 +76,8 @@ class _MCPEagerResourceTransformer(MessagesTransformer):
         self._context = context
 
     async def transform(self, messages: list[Message]) -> list[Message]:
-        eager = self._context.eager_resources
+        # Sorted: toolsets publish in completion order; the prompt-cache prefix must stay stable.
+        eager = sorted(self._context.eager_resources, key=lambda r: r.toolset_name)
         if not eager:
             return messages
 

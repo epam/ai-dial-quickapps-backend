@@ -1,11 +1,17 @@
-import logging
-from typing import Any
+import re
 
 import httpx
 import openai
 from aidial_sdk.exceptions import HTTPException as AiDialHTTPException
 from pydantic import BaseModel, ConfigDict
 
+from quickapp.common.error_details import (
+    MSG_AI_MODEL_RATE_LIMITED,
+    RETRY_SENTENCE,
+    ErrorDetails,
+    extract_error_details,
+    sanitize_display_message,
+)
 from quickapp.common.exceptions import (
     FallbackAgentStopException,
     OrchestratorExceedMaxIterationsException,
@@ -17,24 +23,12 @@ from quickapp.dial_core_services.exceptions import (
     ToolsetNotFoundException,
 )
 
-logger = logging.getLogger(__name__)
-
-# Appended by the resolver to any retryable-classified message — and only those. No
-# message constant carries it, so it is never stacked on top of conflicting advice.
-_RETRY_SENTENCE = "Please try again later."
-
-# display_message is user-safe by DIAL contract but still untrusted text: capped so a
-# misbehaving upstream cannot flood the chat.
-_DISPLAY_MESSAGE_MAX_LEN = 500
-
-
 _FALLBACK_MESSAGE = (
     "Something went wrong with the execution of your request. Please contact your administrator."
 )
 
 # --- AI-model wording (orchestrator LLM call) ---
 # Retryable-classified constants carry the cause only; the retry sentence is appended.
-_MSG_AI_MODEL_RATE_LIMITED = "The request was rate-limited by the AI model service."
 _MSG_AI_MODEL_INTERNAL_ERROR = "The AI model service encountered an internal error."
 _MSG_AI_MODEL_TIMEOUT = "The request to the AI model service timed out."
 _MSG_AI_MODEL_STREAM_FAILURE = "The AI model service failed while responding."
@@ -105,17 +99,17 @@ _CODE_MESSAGES: dict[str, str] = {
     "truncate_prompt_error": _MSG_AI_MODEL_CONTEXT_LENGTH,
 }
 
-
-class ErrorDetails(BaseModel):
-    """Normalized view of an upstream error, extracted from any supported exception shape."""
-
-    model_config = ConfigDict(frozen=True)
-
-    status_code: int | None = None
-    code: str | None = None
-    error_type: str | None = None  # never influences resolution; forwarded to logs and wire `type`
-    message: str | None = None  # internal message — logged, never shown to the user
-    display_message: str | None = None  # user-safe by DIAL contract
+# Provider wordings for a 400 that carries no known code (e.g. Anthropic via DIAL
+# adapters). Matched against the internal message only; it is never shown.
+_MESSAGE_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    # Anthropic
+    (re.compile(r"prompt is too long", re.IGNORECASE), _MSG_AI_MODEL_CONTEXT_LENGTH),
+    # Gemini
+    (
+        re.compile(r"input token count .* exceeds the maximum", re.IGNORECASE),
+        _MSG_AI_MODEL_CONTEXT_LENGTH,
+    ),
+)
 
 
 class ResolvedError(BaseModel):
@@ -132,90 +126,20 @@ class ResolvedError(BaseModel):
 _Resolution = tuple[str, bool]
 
 
-def _unwrap_error_body(body: Any) -> dict[str, Any]:
-    """Return the DIAL error object from a response/exception body.
-
-    openai populates its ``.code`` / ``.type`` attributes from the *top level* of the
-    response body, but DIAL Core nests those fields under ``error`` for 4xx/5xx
-    responses (``{"error": {...}}``). Mid-stream errors are already unwrapped by the SDK,
-    so ``body.get("error", body)`` is a no-op for them and the correct unwrap otherwise.
-    The same nesting applies to raw httpx JSON error bodies, so both paths share this.
-    """
-    if not isinstance(body, dict):
-        return {}
-    inner = body.get("error", body)
-    return inner if isinstance(inner, dict) else {}
-
-
-def _backfill_status_from_code(status_code: int | None, code: str | None) -> int | None:
-    """Recover a status for shapes that carry none of their own.
-
-    DIAL defaults ``code`` to ``str(status_code)``, so a mid-stream ``APIError`` (which
-    has no HTTP status) frequently carries e.g. ``code="429"``. Backfill lets those
-    resolve through the ordinary status ladder.
-    """
-    if status_code is None and code is not None and code.isdigit():
-        return int(code)
-    return status_code
-
-
-def _details_from_body(status_code: int | None, body: dict[str, Any]) -> ErrorDetails:
-    raw_code = body.get("code")
-    code = str(raw_code) if raw_code is not None else None
-    return ErrorDetails(
-        status_code=_backfill_status_from_code(status_code, code),
-        code=code,
-        error_type=body.get("type"),
-        message=body.get("message"),
-        display_message=body.get("display_message"),
-    )
-
-
-def _extract_from_openai(e: openai.APIError) -> ErrorDetails:
-    # Only APIStatusError carries a status code; plain/mid-stream APIError does not.
-    status_code = getattr(e, "status_code", None)
-    return _details_from_body(status_code, _unwrap_error_body(e.body))
-
-
-def _extract_from_aidial(e: AiDialHTTPException) -> ErrorDetails:
-    return ErrorDetails(
-        status_code=e.status_code,
-        code=e.code,
-        error_type=e.type,
-        message=e.message,
-        display_message=e.display_message,
-    )
-
-
-def _extract_from_httpx(e: httpx.HTTPError) -> ErrorDetails:
-    if not isinstance(e, httpx.HTTPStatusError):
-        return ErrorDetails()
-    try:
-        parsed = e.response.json()
-    except Exception:
-        parsed = None
-    return _details_from_body(e.response.status_code, _unwrap_error_body(parsed))
-
-
-def _extract_error_details(e: Exception) -> ErrorDetails:
-    """Best-effort, total: malformed or absent bodies yield an empty ``ErrorDetails``."""
-    try:
-        if isinstance(e, openai.APIError):
-            return _extract_from_openai(e)
-        if isinstance(e, AiDialHTTPException):
-            return _extract_from_aidial(e)
-        if isinstance(e, httpx.HTTPError):
-            return _extract_from_httpx(e)
-    except Exception:
-        logger.debug("Failed to extract error details from %s", type(e), exc_info=True)
-    return ErrorDetails()
-
-
 def _resolve_by_code(details: ErrorDetails) -> _Resolution | None:
     if details.code is None:
         return None
     message = _CODE_MESSAGES.get(details.code)
     return (message, False) if message is not None else None
+
+
+def _resolve_by_message(details: ErrorDetails) -> _Resolution | None:
+    if details.status_code != 400 or not details.message:
+        return None
+    for pattern, message in _MESSAGE_PATTERNS:
+        if pattern.search(details.message):
+            return message, False
+    return None
 
 
 def _resolve_ai_model_status(status: int | None) -> _Resolution | None:
@@ -234,7 +158,7 @@ def _resolve_ai_model_status(status: int | None) -> _Resolution | None:
     if status == 409:
         return _MSG_AI_MODEL_CONFLICT, True
     if status == 429:
-        return _MSG_AI_MODEL_RATE_LIMITED, True
+        return MSG_AI_MODEL_RATE_LIMITED, True
     if status >= 500:
         return _MSG_AI_MODEL_INTERNAL_ERROR, True
     return None
@@ -327,13 +251,6 @@ def _resolve_internal(e: Exception) -> _Resolution | None:
     return None
 
 
-def _sanitize_display_message(text: str) -> str:
-    text = text.strip()
-    if len(text) > _DISPLAY_MESSAGE_MAX_LEN:
-        text = text[: _DISPLAY_MESSAGE_MAX_LEN - 1].rstrip() + "…"
-    return text
-
-
 def _is_retryable_from_details(details: ErrorDetails) -> bool:
     """Derive retryability from status/code for the display_message path (rule 1).
 
@@ -351,24 +268,25 @@ def _is_retryable_from_details(details: ErrorDetails) -> bool:
 
 
 def _compose(message: str, retryable: bool, details: ErrorDetails) -> ResolvedError:
-    text = f"{message} {_RETRY_SENTENCE}" if retryable else message
+    text = f"{message} {RETRY_SENTENCE}" if retryable else message
     return ResolvedError(message=text, retryable=retryable, details=details)
 
 
 def resolve_exception(e: Exception) -> ResolvedError:
     """Resolve any exception into user-facing text plus a retryability classification.
 
-    Precedence: display_message -> code map -> status/type map -> stream-failure rule ->
-    internal map -> tool-error -> fallback. Never leaks raw internal detail: only
-    ``display_message`` (user-safe by contract) and curated canned messages reach the user.
+    Precedence: display_message -> code map -> message patterns -> status/type map ->
+    stream-failure rule -> internal map -> tool-error -> fallback. Never leaks raw internal
+    detail: only ``display_message`` (user-safe by contract) and curated canned messages
+    reach the user.
     """
-    details = _extract_error_details(e)
+    details = extract_error_details(e)
 
     # 1. Upstream-authored, user-safe text wins. Used as-is (never retry-suffixed), since
     #    appending generic advice can contradict a precise upstream explanation. A message
     #    that sanitizes to nothing (whitespace-only) falls through to the rules below.
     if details.display_message:
-        display_message = _sanitize_display_message(details.display_message)
+        display_message = sanitize_display_message(details.display_message)
         if display_message:
             return ResolvedError(
                 message=display_message,
@@ -381,26 +299,31 @@ def resolve_exception(e: Exception) -> ResolvedError:
     if resolution is not None:
         return _compose(*resolution, details)
 
-    # 3. Status / type ladders (source-specific wording; unmatched -> None to continue).
+    # 3. A 400 without a known code whose internal message matches a known provider wording.
+    resolution = _resolve_by_message(details)
+    if resolution is not None:
+        return _compose(*resolution, details)
+
+    # 4. Status / type ladders (source-specific wording; unmatched -> None to continue).
     resolution = _resolve_status_or_type(e, details)
     if resolution is not None:
         return _compose(*resolution, details)
 
-    # 4. Mid-stream openai APIError with no usable status/code — terminal for the stream
+    # 5. Mid-stream openai APIError with no usable status/code — terminal for the stream
     #    path, so a mid-stream failure can never reach the generic fallback.
     if isinstance(e, openai.APIError) and not isinstance(e, openai.APIStatusError):
         return _compose(_MSG_AI_MODEL_STREAM_FAILURE, True, details)
 
-    # 5. Internal, in-process exceptions.
+    # 6. Internal, in-process exceptions.
     resolution = _resolve_internal(e)
     if resolution is not None:
         return _compose(*resolution, details)
 
-    # 6. Tool errors: delegate to cause-aware resolution.
+    # 7. Tool errors: delegate to cause-aware resolution.
     if isinstance(e, ToolErrorException):
         resolved = _resolve_tool_error(e)
         if resolved is not None:
             return resolved
 
-    # 7. Generic fallback (non-retryable).
+    # 8. Generic fallback (non-retryable).
     return _compose(_FALLBACK_MESSAGE, False, details)
