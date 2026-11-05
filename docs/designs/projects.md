@@ -261,13 +261,19 @@ App declaration with #1930 (phase 1). It covers all of the user's own projects:
 
 ```json
 "resourceDependencies": [
-  { "kind": "...", "linkId": "project-read",  "target": { "path": "projects/{current-user}/" }, "access": "READ",  "required": true },
-  { "kind": "...", "linkId": "project-write", "target": { "path": "projects/{current-user}/" }, "access": "WRITE", "required": true }
+  { "kind": "...", "linkId": "project-read",  "target": { "path": "projects/{current-user}/" }, "access": ["READ"],  "required": false },
+  { "kind": "...", "linkId": "project-write", "target": { "path": "projects/{current-user}/" }, "access": ["WRITE"], "required": false }
 ]
 ```
 
 Record shape per Core [PR#1940](https://github.com/epam/ai-dial-core/pull/1940) (`kind`, `linkId`, `target.path`,
 `access`, `required`). Exact `kind` values are to be confirmed when the stack lands.
+
+`required: false` is the default for QuickApps: Core checks dependencies on every call to the app, project chat or
+not. Without consent, `true` makes Core reject **every** call (403 "Required resource dependencies are not
+accessible"), so the app stops working outside projects too; `false` keeps it working and project chats end with
+`project_access_denied`. With consent both behave the same. Use `true` only for apps that make no sense outside a
+project.
 
 Paths in a project `projects/{b}/My%20Project`:
 
