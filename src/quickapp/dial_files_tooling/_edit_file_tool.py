@@ -26,7 +26,7 @@ class _EditFileTool(_DialFileTool):
                 "new_string", "new_string must differ from old_string"
             )
 
-        reject_absolute_path("path", "edit_file", path)
+        reject_absolute_path("path", "edit_file", path, self._home_resolver.project)
         url = await self._home_resolver.resolve_appdata_url(path)
         display_path = await self._home_resolver.to_display_path(url)
 

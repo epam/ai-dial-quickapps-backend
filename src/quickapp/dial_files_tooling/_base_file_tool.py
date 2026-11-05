@@ -16,6 +16,7 @@ from quickapp.config.dial_files import DialFilesConfig
 from quickapp.config.tools.internal import InternalTool
 from quickapp.dial_core_services.dial_file_service import DialFileService, FolderEntry
 from quickapp.dial_files_tooling._dial_files_tool_error_exception import DialFilesToolErrorException
+from quickapp.dial_files_tooling._exceptions import DialFilePermissionException
 from quickapp.dial_files_tooling._stage_wrapper import _FileStageWrapper
 from quickapp.dial_files_tooling._utils import is_root_reference
 from quickapp.shared.home_path.home_path_resolver import HomePathResolver
@@ -145,10 +146,7 @@ class _DialFileTool(StagedBaseTool, ABC):
         return DialFilesToolErrorException(self._resolve_tool_name(), str(exc))
 
     @staticmethod
-    def _check_permission_denied(
-        exc: DialException, url: str, parameter_name: str = "path"
-    ) -> None:
+    def _check_permission_denied(exc: DialException, url: str) -> None:
+        """Raise a non-retryable ``DialFilePermissionException`` for a Core 403."""
         if exc.status_code == 403:
-            raise InvalidToolCallParameterException(
-                parameter_name, f"access denied: {url}"
-            ) from exc
+            raise DialFilePermissionException(url) from exc

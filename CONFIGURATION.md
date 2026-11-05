@@ -1765,6 +1765,29 @@ calls made during that chat completion. No configuration is required.
 Use this for tracing (e.g. `X-Request-Id`, `X-Correlation-Id`), multi-tenancy (`X-Tenant-Id`), or any custom header
 your gateways or downstream services expect.
 
+## Projects
+
+`[Preview]` Requires `ENABLE_PREVIEW_FEATURES=true`. No manifest field: a chat inside a DIAL Chat project sends the
+`x-project-id` header, and QuickApps then reads the project instructions and context files and keeps its files in the
+project's `artifacts/` folder (see [docs/projects.md](./docs/projects.md)).
+
+The app needs access to the project. An admin declares it as resource dependencies of the app in DIAL Core and
+approves them (DIAL Core [#1930](https://github.com/epam/ai-dial-core/issues/1930); Admin UI → Resource Dependencies):
+
+```json
+"resourceDependencies": [
+  { "kind": "...", "linkId": "project-read",  "target": { "path": "projects/{current-user}/" }, "access": "READ",  "required": true },
+  { "kind": "...", "linkId": "project-write", "target": { "path": "projects/{current-user}/" }, "access": "WRITE", "required": true }
+]
+```
+
+- `projects/{current-user}/` covers all of the requesting user's own projects. QuickApps itself touches only the
+  project in the header.
+- The exact `kind` values are to be confirmed when the Core feature is released.
+- Without an approved dependency a project chat fails at the start of the turn with 403 `project_access_denied`.
+- Keep `ENABLE_PREVIEW_FEATURES=false` where DIAL Core has no resource dependencies for projects: project chats then
+  run as ordinary chats.
+
 ## Environment Variables
 
 | Variable                                   | Default                                                         | Required | Description                                                                                                  |

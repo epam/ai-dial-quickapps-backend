@@ -146,3 +146,27 @@ async def test_file_etag_of_an_empty_file_comes_from_the_416(httpx_mock) -> None
     )
 
     assert await _client().file_etag(FILE_URL) == "empty-file-etag"
+
+
+@pytest.mark.asyncio
+async def test_project_metadata_returns_the_body(httpx_mock) -> None:
+    httpx_mock.add_response(
+        method="GET",
+        url=f"{BASE_URL}/v2/metadata/projects/b/My%20Project",
+        json={"name": "My Project", "etag": "e"},
+    )
+
+    assert await _client().project_metadata("projects/b/My%20Project") == {
+        "name": "My Project",
+        "etag": "e",
+    }
+
+
+@pytest.mark.asyncio
+async def test_project_metadata_404_is_not_found(httpx_mock) -> None:
+    httpx_mock.add_response(
+        method="GET", url=f"{BASE_URL}/v2/metadata/projects/b/p", status_code=404
+    )
+
+    with pytest.raises(ResourceNotFoundError):
+        await _client().project_metadata("projects/b/p")

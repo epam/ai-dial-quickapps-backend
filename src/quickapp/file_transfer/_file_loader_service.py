@@ -7,6 +7,7 @@ from injector import inject
 
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import InvalidToolCallParameterException
+from quickapp.common.project_context import PROJECT_CONTEXT
 from quickapp.common.state_holder import StateHolder
 from quickapp.common.url_classification import UrlScheme, classify_url, unsupported_scheme_error
 from quickapp.dial_core_services.dial_downloader import DialDownloader
@@ -44,11 +45,13 @@ class FileLoaderService:
         external_fetcher: ExternalUrlFetcher,
         state_holder: StateHolder,
         dial_settings: DialSettings,
+        project: PROJECT_CONTEXT,
     ) -> None:
         self.__dial_downloader = dial_downloader
         self.__external_fetcher = external_fetcher
         self.__state_holder = state_holder
         self.__dial_url = dial_settings.url
+        self.__project: PROJECT_CONTEXT = project
         self.__inflight: dict[str, asyncio.Task[bytes]] = {}
 
     async def load(self, url: str, parameter_name: str = "<unknown>") -> bytes:
@@ -87,7 +90,7 @@ class FileLoaderService:
         return _DEFAULT_CONTENT_TYPE
 
     async def __do_load(self, url: str, parameter_name: str) -> bytes:
-        scheme = classify_url(url, self.__dial_url)
+        scheme = classify_url(url, self.__dial_url, self.__project)
         metadata: FileMetadata | None = None
         content_type: str | None = None
         if scheme == UrlScheme.DIAL:

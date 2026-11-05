@@ -75,6 +75,7 @@ Require `ENABLE_PREVIEW_FEATURES=true`. May change without a major version bump.
 |------------|----------------|----------------|-------------|
 | MCP per-tool configuration | [CONFIGURATION — MCP per-tool](../CONFIGURATION.md#mcp-per-tool-configuration) | — | — |
 | Tool-result offload | [CONFIGURATION — DIAL files offload](../CONFIGURATION.md#tool-call-result-offload) | — | [large_tool_responses.md](./designs/large_tool_responses.md) |
+| Projects (`x-project-id`) | [CONFIGURATION — Projects](../CONFIGURATION.md#projects) | [projects.md](./projects.md) | [projects.md](./designs/projects.md) |
 
 ## Behaviour guides (L2)
 
@@ -87,6 +88,7 @@ Require `ENABLE_PREVIEW_FEATURES=true`. May change without a major version bump.
 | [File Transfer](./file_transfer.md) | `file:{prefix}::` convention and preprocessing pipeline |
 | [Hooks](./hooks.md) | Config-driven hooks: events, context, failure and timeout handling, tools hidden from the model |
 | [Logging](./logging.md) | Console log modes, OTEL correlation, OTLP export |
+| [Projects](./projects.md) | Project chats: instructions, context files, working folder, access |
 | [Agent Skills](./skills.md) | Skill layout, metadata, DIAL sources, invocation |
 | [Time Awareness](./time_awareness.md) | Current time and data freshness |
 | [Custom CA Certificates](./custom_ca_certificates.md) | Trust private/corporate Root CA (`USE_SYSTEM_CA_CERTS`) |
