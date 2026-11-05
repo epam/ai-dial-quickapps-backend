@@ -2,6 +2,7 @@ from pathlib import PurePosixPath
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
+from quickapp.common.project_context import ProjectContext
 from quickapp.config.dial_files import DialFilesConfig
 from quickapp.dial_core_services.dial_file_service import DialFileService
 from quickapp.shared.home_path.home_path_resolver import HomePathResolver
@@ -39,6 +40,7 @@ def make_tool[ToolT](
     *,
     service: MagicMock | None = None,
     config: DialFilesConfig | None = None,
+    project: ProjectContext | None = None,
 ) -> ToolT:
     """Build a file tool with its DI dependencies (mirrors production wiring).
 
@@ -54,5 +56,5 @@ def make_tool[ToolT](
         perf_timer=MagicMock(),
         dial_file_service=service,
         dial_files_config=config,
-        home_resolver=HomePathResolver(service, config),
+        home_resolver=HomePathResolver(service, config, project),
     )

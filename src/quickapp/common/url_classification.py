@@ -4,6 +4,7 @@ from functools import lru_cache
 from urllib.parse import urlsplit
 
 from quickapp.common.exceptions import InvalidToolCallParameterException
+from quickapp.common.project_context import ProjectContext
 from quickapp.common.url_sanitization import sanitize_url
 
 
@@ -69,11 +70,13 @@ def _dial_host(dial_base_url: str) -> str:
         return ""
 
 
-def classify_url(url: str, dial_base_url: str) -> UrlScheme:
+def classify_url(url: str, dial_base_url: str, project: ProjectContext | None = None) -> UrlScheme:
     """Classify a file reference URL against the configured DIAL base URL.
 
     A bare DIAL relative path (e.g. ``files/bucket/foo.pdf``) or an absolute URL
-    whose host matches the configured DIAL host is :attr:`UrlScheme.DIAL`. Any
+    whose host matches the configured DIAL host is :attr:`UrlScheme.DIAL`. So is a
+    file of the request's ``project`` (``projects/{b}/{p}/files/...``); any other
+    ``projects/...`` string is classified as before (usually appdir-relative). Any
     other ``http(s)://`` URL is :attr:`UrlScheme.EXTERNAL`. A schemeless path
     matching :func:`is_appdir_relative` (e.g. ``reports/img.png``, ``some_dir/``)
     is :attr:`UrlScheme.DIAL_APPDIR_RELATIVE` — the agent-home-relative convention
@@ -85,6 +88,8 @@ def classify_url(url: str, dial_base_url: str) -> UrlScheme:
         return UrlScheme.UNSUPPORTED
 
     if _DIAL_RELATIVE_PATH.match(url):
+        return UrlScheme.DIAL
+    if project is not None and project.contains(url):
         return UrlScheme.DIAL
 
     try:
