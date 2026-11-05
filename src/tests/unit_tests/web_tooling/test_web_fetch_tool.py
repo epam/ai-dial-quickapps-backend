@@ -5,6 +5,7 @@ from aidial_client._exception import DialException, EtagMismatchError
 
 from quickapp.common import ToolCallResult
 from quickapp.common.exceptions import InvalidToolCallParameterException, ToolErrorException
+from quickapp.common.project_context import ProjectContext
 from quickapp.dial_core_services.dial_file_service import DialFileService
 from quickapp.shared.external_fetch.external_url_fetcher import (
     ExternalFetchDisabledError,
@@ -19,6 +20,7 @@ from quickapp.web_tooling._tool_configs import WEB_FETCH_TOOL_CONFIG
 from quickapp.web_tooling._truncation import compose_truncated_content, split_truncation_notice
 from quickapp.web_tooling._web_fetch_stage_wrapper import _WebFetchStageWrapper
 from quickapp.web_tooling._web_fetch_tool import _WebFetchTool
+from tests.unit_tests.dial_files_tooling._helpers import make_config, make_service
 
 _HOME = "files/appbucket/agent/"
 
@@ -28,6 +30,7 @@ def _make_tool(
     *,
     max_inline_size: int = 40_000,
     write_bytes_side_effect=None,
+    project: ProjectContext | None = None,
 ) -> tuple[_WebFetchTool, MagicMock]:
     fetcher = MagicMock(spec=WebContentFetcher)
     if isinstance(fetched, Exception):
@@ -38,10 +41,9 @@ def _make_tool(
     dial_file_service = MagicMock(spec=DialFileService)
     dial_file_service.write_bytes = AsyncMock(side_effect=write_bytes_side_effect)
 
-    # Real resolution semantics (home under files/appbucket/agent/), no network.
-    home_resolver = MagicMock(spec=HomePathResolver)
-    home_resolver.resolve_appdata_url = AsyncMock(side_effect=lambda p: f"{_HOME}{p}")
-    home_resolver.to_display_path = AsyncMock(side_effect=lambda u: u.removeprefix(_HOME))
+    # Real resolution (home under files/appbucket/agent/, or artifacts/ in a project), no
+    # network.
+    home_resolver = HomePathResolver(make_service(), make_config("agent/"), project)
 
     tool = _WebFetchTool(
         stage_wrapper_builder=MagicMock(),
@@ -238,6 +240,60 @@ class TestSaveToWorkspace:
             )
         assert exc.value.parameter_name == "save_path"
         assert "access denied" in exc.value.message
+
+
+_PROJECT = ProjectContext(url="projects/user-bucket/My Project")
+_ARTIFACTS = "projects/user-bucket/My%20Project/files/artifacts/"
+
+
+class TestSaveInProject:
+    @pytest.mark.asyncio
+    async def test_relative_save_path_lands_in_artifacts(self):
+        fetched = FetchedBytes(data=b"x", content_type="text/plain", filename="x.txt")
+        tool, service = _make_tool(fetched, project=_PROJECT)
+        result = await tool._run_in_stage_async(
+            stage_wrapper=None, url="https://x.com/x.txt", save_path="docs/x.txt"
+        )
+        assert service.write_bytes.await_args.kwargs["url"] == f"{_ARTIFACTS}docs/x.txt"
+        assert "Saved docs/x.txt" in result.content
+
+    @pytest.mark.asyncio
+    async def test_context_save_path_is_read_only(self):
+        fetched = FetchedBytes(data=b"x", content_type="text/plain", filename="x.txt")
+        tool, service = _make_tool(fetched, project=_PROJECT)
+        with pytest.raises(InvalidToolCallParameterException) as exc:
+            await tool._run_in_stage_async(
+                stage_wrapper=None,
+                url="https://x.com/x.txt",
+                save_path="projects/user-bucket/My Project/files/context/x.txt",
+            )
+        assert "read-only project file" in exc.value.message
+        service.write_bytes.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_absolute_artifacts_save_path_rejected(self):
+        fetched = FetchedBytes(data=b"x", content_type="text/plain", filename="x.txt")
+        tool, service = _make_tool(fetched, project=_PROJECT)
+        with pytest.raises(InvalidToolCallParameterException) as exc:
+            await tool._run_in_stage_async(
+                stage_wrapper=None, url="https://x.com/x.txt", save_path=f"{_ARTIFACTS}x.txt"
+            )
+        assert exc.value.parameter_name == "save_path"
+        assert "read-only" not in exc.value.message
+        service.write_bytes.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_other_project_save_path_is_home_relative(self):
+        fetched = FetchedBytes(data=b"x", content_type="text/plain", filename="x.txt")
+        tool, service = _make_tool(fetched, project=_PROJECT)
+        await tool._run_in_stage_async(
+            stage_wrapper=None,
+            url="https://x.com/x.txt",
+            save_path="projects/user-bucket/Other/files/x.txt",
+        )
+        assert service.write_bytes.await_args.kwargs["url"] == (
+            f"{_ARTIFACTS}projects/user-bucket/Other/files/x.txt"
+        )
 
 
 class TestSplitTruncationNotice:
