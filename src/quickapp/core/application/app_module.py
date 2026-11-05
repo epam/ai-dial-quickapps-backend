@@ -16,9 +16,11 @@ from quickapp.common import (
     ForwardedHeaders,
 )
 from quickapp.common.dial_settings import DialSettings
+from quickapp.common.feature_settings import FeatureSettings
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.presentation_settings import PresentationSettings
+from quickapp.common.project_context import PROJECT_CONTEXT
 from quickapp.common.tool_timeout_utils import build_async_dial_timeout
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.predefined_content_provider import (
@@ -53,6 +55,7 @@ class AppModule(Module):
         binder.bind(ChatCompletion, to=_QuickAppCompletion, scope=singleton)  # type: ignore[type-abstract]
         binder.bind(DialSettings, to=DialSettings, scope=singleton)
         binder.bind(ProxySettings, to=ProxySettings, scope=singleton)
+        binder.bind(FeatureSettings, to=FeatureSettings, scope=singleton)
         binder.bind(_OtelSettings, to=_OtelSettings, scope=singleton)
         binder.bind(_RequestContext, to=_RequestContext, scope=request_scope)
         binder.bind(_RequestContextSetup, to=_RequestContextSetup, scope=request_scope)
@@ -100,6 +103,10 @@ class AppModule(Module):
     @provider
     def __provide_client_channel_id(self, context: _RequestContext) -> CLIENT_CHANNEL_ID:
         return context.client_channel_id
+
+    @provider
+    def __provide_project_context(self, context: _RequestContext) -> PROJECT_CONTEXT:
+        return context.project_context
 
     @provider
     def __provide_accept_language(self, context: _RequestContext) -> ACCEPT_LANGUAGE:

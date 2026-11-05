@@ -1,5 +1,6 @@
 """Tests for _RequestContextSetup — verifying context fields are set on all request paths."""
 
+import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -7,6 +8,7 @@ from aidial_sdk.chat_completion import Request
 from aidial_sdk.chat_completion.request import Function, StaticFunction, StaticTool, Tool
 from aidial_sdk.deployment.configuration import ConfigurationRequest
 
+from quickapp.common.feature_settings import FeatureSettings
 from quickapp.core.application import _RequestContext
 from quickapp.core.application._proxy_settings import ProxySettings
 from quickapp.core.application._request_context_setup import _RequestContextSetup
@@ -19,6 +21,7 @@ _PATCH_MODEL_VALIDATE = patch(
 
 def _make_setup(
     proxy_settings: ProxySettings | None = None,
+    feature_settings: FeatureSettings | None = None,
 ) -> tuple[_RequestContextSetup, _RequestContext]:
     context = _RequestContext()
     context_provider = MagicMock()
@@ -33,6 +36,7 @@ def _make_setup(
         config_resolver=config_resolver,
         messages_setup=messages_setup,
         proxy_settings=proxy_settings or ProxySettings(),
+        feature_settings=feature_settings or FeatureSettings(),
     )
     return setup, context
 
@@ -247,6 +251,7 @@ async def test_timezone_header_is_stored_before_transformers_run():
         config_resolver=MagicMock(),
         messages_setup=messages_setup,
         proxy_settings=ProxySettings(),
+        feature_settings=FeatureSettings(),
     )
     request = _make_chat_request(headers={"X-Timezone": "Europe/Kyiv"})
     with _PATCH_MODEL_VALIDATE:
@@ -262,3 +267,42 @@ async def test_configuration_request_does_not_set_accept_language():
     with _PATCH_MODEL_VALIDATE:
         await setup.setup_context(request)
     assert context.accept_language is None
+
+
+class TestProjectContext:
+    @staticmethod
+    async def _setup(headers: dict, preview: bool) -> _RequestContext:
+        setup, context = _make_setup(
+            feature_settings=FeatureSettings(ENABLE_PREVIEW_FEATURES=preview)
+        )
+        with _PATCH_MODEL_VALIDATE:
+            await setup.setup_context(_make_chat_request(headers=headers))
+        return context
+
+    @pytest.mark.asyncio
+    async def test_header_sets_the_project_with_preview_on(self):
+        context = await self._setup({"x-project-id": "projects/b/My Project"}, preview=True)
+
+        assert context.project_context is not None
+        assert context.project_context.url == "projects/b/My%20Project"
+
+    @pytest.mark.asyncio
+    async def test_header_is_ignored_with_preview_off(self):
+        context = await self._setup({"x-project-id": "projects/b/p"}, preview=False)
+
+        assert context.project_context is None
+
+    @pytest.mark.asyncio
+    async def test_no_header_means_no_project(self):
+        context = await self._setup({}, preview=True)
+
+        assert context.project_context is None
+
+    @pytest.mark.asyncio
+    async def test_malformed_header_means_no_project_and_a_warning(self, caplog):
+        with caplog.at_level(logging.WARNING, logger="quickapp.common.project_context"):
+            context = await self._setup({"x-project-id": "projects/b/../secret"}, preview=True)
+
+        assert context.project_context is None
+        assert "malformed x-project-id" in caplog.text
+        assert "secret" not in caplog.text

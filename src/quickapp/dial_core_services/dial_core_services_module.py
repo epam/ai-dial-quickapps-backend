@@ -7,6 +7,7 @@ from quickapp.common.abstract.folder_listing_provider import FolderListingProvid
 from quickapp.dial_core_services._folder_listing_provider import DialFolderListingProvider
 from quickapp.dial_core_services._interactive_login_service import InteractiveLoginService
 from quickapp.dial_core_services._interactive_login_settings import InteractiveLoginSettings
+from quickapp.dial_core_services._project_files import ProjectFilesClient
 from quickapp.dial_core_services.attachment_service import AttachmentService
 from quickapp.dial_core_services.deployment_names_service import DeploymentNamesCoreService
 from quickapp.dial_core_services.dial_downloader import DialDownloader
@@ -22,6 +23,7 @@ class DialCoreServicesModule(Module):
         binder.bind(ToolConfigCoreService, ToolConfigCoreService, scope=singleton)
         binder.bind(DeploymentNamesCoreService, DeploymentNamesCoreService, scope=singleton)
         binder.bind(AttachmentService, AttachmentService, scope=request_scope)
+        binder.bind(ProjectFilesClient, ProjectFilesClient, scope=request_scope)
         binder.bind(DialFileService, DialFileService, scope=request_scope)
         binder.bind(DialDownloader, DialDownloader, scope=request_scope)
         binder.bind(DialFilePromoter, DialFilePromoter, scope=request_scope)

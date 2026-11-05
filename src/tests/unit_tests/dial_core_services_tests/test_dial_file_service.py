@@ -4,6 +4,7 @@ import pytest
 from aidial_client._exception import DialException, EtagMismatchError, ResourceNotFoundError
 
 from quickapp.common.state_holder import StateHolder
+from quickapp.dial_core_services._project_files import ProjectFilesClient
 from quickapp.dial_core_services.dial_file_service import DialFileService
 from quickapp.shared.config_resolvers.file_loading_size_limit_resolver import (
     FileLoadingSizeLimitResolver,
@@ -65,6 +66,8 @@ def _make_service(
         dial_client=dial_client or _make_mock_dial_client(),
         state_holder=state_holder or StateHolder(),
         size_limit_resolver=size_limit_resolver or _make_resolver(),
+        project_files=MagicMock(spec=ProjectFilesClient),
+        project=None,
     )
 
 

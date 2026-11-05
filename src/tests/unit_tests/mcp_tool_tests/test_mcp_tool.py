@@ -25,6 +25,7 @@ from quickapp.common.abstract.base_tool_argument_transformer import ToolArgument
 from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
+from quickapp.common.project_context import PROJECT_CONTEXT
 from quickapp.config.application import ApplicationConfig, StageDisplayLevel
 from quickapp.config.tools.base import AttachmentConfig
 from quickapp.config.toolsets.mcp import MCPProtocol, MCPServerInfo, MCPToolSet
@@ -152,6 +153,7 @@ async def test_mcp_tool(mock_get_tools_list, mock_call_mcp_tool):
         binder.bind(PerformanceTimer, to=PerformanceTimer)
         binder.bind(StageDisplayLevel, to=InstanceProvider(StageDisplayLevel.INFO))
         binder.bind(ForwardedHeaders, to=InstanceProvider(None))
+        binder.bind(PROJECT_CONTEXT, to=InstanceProvider(None))
         binder.bind(ACCEPT_LANGUAGE, to=InstanceProvider(None))
         binder.bind(CLIENT_CHANNEL_ID, to=InstanceProvider(None))
         binder.bind(InteractiveLoginSettings, to=InteractiveLoginSettings())
@@ -326,6 +328,7 @@ async def test_mcp_tool_narrow_supported_types_skips_non_matching(
         binder.bind(PerformanceTimer, to=PerformanceTimer)
         binder.bind(StageDisplayLevel, to=InstanceProvider(StageDisplayLevel.INFO))
         binder.bind(ForwardedHeaders, to=InstanceProvider(None))
+        binder.bind(PROJECT_CONTEXT, to=InstanceProvider(None))
         binder.bind(ACCEPT_LANGUAGE, to=InstanceProvider(None))
         binder.bind(CLIENT_CHANNEL_ID, to=InstanceProvider(None))
         binder.bind(InteractiveLoginSettings, to=InteractiveLoginSettings())
