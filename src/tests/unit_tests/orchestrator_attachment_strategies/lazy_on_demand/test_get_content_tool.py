@@ -17,6 +17,7 @@ from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.file_reference_pattern import to_file_url_reference
 from quickapp.common.messages_mixin import MessagesMixin
+from quickapp.common.project_context import ProjectContext
 from quickapp.core.agent import OrchestratorCapabilities
 from quickapp.dial_core_services.dial_file_promoter import DialFilePromoter
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._attachment_acceptance import (
@@ -61,6 +62,7 @@ def _make_tool(
     messages: list[Message] | None = None,
     promoter: DialFilePromoter | None = None,
     home_resolver: MagicMock | None = None,
+    project: ProjectContext | None = None,
 ) -> _GetContentTool:
     caps = OrchestratorCapabilities(
         deployment=SimpleNamespace(  # type: ignore[arg-type]
@@ -78,6 +80,7 @@ def _make_tool(
     materializer = _AttachmentMaterializer(
         dial_promoter=promoter,
         dial_settings=settings,
+        project=project,
     )
     return _GetContentTool(
         stage_wrapper_builder=MagicMock(),
@@ -287,3 +290,52 @@ class TestGetContentTool:
         assert payload is not None
         assert payload.status == GetContentStatus.FAIL
         assert payload.status_message == "Orchestrator deployment does not accept this file type."
+
+
+class TestProjectChat:
+    _PROJECT = ProjectContext(url="projects/b/P")
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "projects/b/P/files/context/a.pdf",
+            "https://dial.local/v1/projects/b/P/files/context/a.pdf",
+        ],
+    )
+    async def test_current_project_url_passes_through(self, url: str):
+        home_resolver = _make_home_resolver()
+        tool = _make_tool(["application/pdf"], home_resolver=home_resolver, project=self._PROJECT)
+
+        result = await tool._run_in_stage_async(stage_wrapper=None, attachment_url=url)
+
+        home_resolver.resolve_appdata_url.assert_not_awaited()
+        assert result.attachments is not None
+        assert result.attachments[0].url == "projects/b/P/files/context/a.pdf"
+        assert result.attachments[0].type == "application/pdf"
+
+    @pytest.mark.asyncio
+    async def test_project_url_without_project_is_home_relative(self):
+        tool = _make_tool(["application/pdf"])
+
+        result = await tool._run_in_stage_async(
+            stage_wrapper=None, attachment_url="projects/b/P/files/context/a.pdf"
+        )
+
+        assert result.attachments is not None
+        assert (
+            result.attachments[0].url
+            == "files/bucket/appdata/app/home/projects/b/P/files/context/a.pdf"
+        )
+
+    @pytest.mark.asyncio
+    async def test_absolute_files_url_still_rejected_in_project(self):
+        tool = _make_tool(["application/pdf"], project=self._PROJECT)
+
+        result = await tool._run_in_stage_async(
+            stage_wrapper=None, attachment_url="https://dial.local/v1/files/b/a.pdf"
+        )
+
+        payload = GetContentToolResponse.from_state(result.state)
+        assert payload is not None
+        assert payload.status == GetContentStatus.FAIL
