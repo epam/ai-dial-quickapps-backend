@@ -34,3 +34,9 @@ class OrchestratorCapabilities:
         that takes the parameter is expected to list the values it takes.
         """
         return reasoning_effort in self.reasoning_efforts
+
+    @property
+    def supports_cache_breakpoints(self) -> bool:
+        """Whether the deployment advertises ``features.cache`` (Core ``cacheSupported``)."""
+        features = self._deployment.features
+        return features is not None and features.cache is True
