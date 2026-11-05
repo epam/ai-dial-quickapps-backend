@@ -211,25 +211,25 @@ class _ChatCompletionConfigBuilder:
         return result
 
     @staticmethod
-    def _strip_client_state(msg_dict: dict[str, Any]) -> None:
-        """Remove client-facing state keys from earlier turns; never forward them to the model."""
+    def _get_state(msg_dict: dict[str, Any]) -> dict[str, Any] | None:
         custom = msg_dict.get("custom_content")
         if not isinstance(custom, dict):
-            return
+            return None
         state = custom.get("state")
-        if isinstance(state, dict):
+        return state if isinstance(state, dict) else None
+
+    @staticmethod
+    def _strip_client_state(msg_dict: dict[str, Any]) -> None:
+        """Remove client-facing state keys from earlier turns; never forward them to the model."""
+        state = _ChatCompletionConfigBuilder._get_state(msg_dict)
+        if state is not None:
             state.pop(STATE_KEY_CONTEXT_USAGE, None)
 
     @staticmethod
     def _promote_orchestrator_state_to_top_level(msg_dict: dict[str, Any]) -> None:
         """Before calling the model, promote state.orchestrator to top-level state."""
-        custom = msg_dict.get("custom_content")
-        if not isinstance(custom, dict):
-            return
-        state = custom.get("state")
-        if not isinstance(state, dict):
-            return
-        if STATE_KEY_ORCHESTRATOR not in state:
+        state = _ChatCompletionConfigBuilder._get_state(msg_dict)
+        if state is None or STATE_KEY_ORCHESTRATOR not in state:
             return
         orch = state.pop(STATE_KEY_ORCHESTRATOR, None)
         if isinstance(orch, dict):

@@ -65,7 +65,8 @@ This is phase 1 of a three-phase feature; later phases (breakdown, compaction) a
 - **Owner:** `core/agent/orchestrator.py`.
 - **Semantics:** After each call in `_run_iteration`, `stream_result.usage` (when present) overwrites the stored
   value, so the last call wins. Tool and sub-agent usage is excluded: it is not part of the orchestrator's window.
-- **Change:** New private attribute set where usage is already read for the "Model call completed" log.
+- **Change:** New private attribute, set in the new `_record_usage(...)`, which `_run_iteration` calls after each
+  orchestrator call.
 
 ### Always requesting orchestrator usage
 
@@ -89,7 +90,7 @@ This is phase 1 of a three-phase feature; later phases (breakdown, compaction) a
   Context size = `prompt_tokens + completion_tokens`. The key is omitted when no usage was observed.
 - **Change:** New state-key constant and a frozen Pydantic model for the payload. The state restore path
   (`_messages_setup.py`) only unpacks `tool_execution_history`, so the key stays on history messages; the config
-  builder strips it (`_promote_orchestrator_state_to_top_level`) before messages are sent to the model.
+  builder strips it (`_strip_client_state`) before messages are sent to the model.
 
 ### Trade-off: why state, not a stage or streamed field
 
@@ -141,8 +142,8 @@ ask for usage; providers that reject `stream_options` are not expected (already 
 
 | Component | Change |
 |---|---|
-| `_chat_completion_config_builder.py` | Always set `include_usage` for orchestrator calls |
+| `_chat_completion_config_builder.py` | Always set `include_usage` for orchestrator calls; strip `context_usage` from history messages |
 | `orchestrator.py` | Store last-call usage; add `context_usage` to state before `set_state` |
 | state keys / models | New constant + frozen Pydantic payload model |
 | tests | Unit: last call wins, absent without usage, independent of `SHOW_USAGE_STATISTICS` |
-| `docs/agent.md` | Short note on the field once implemented |
+| `docs/agent.md` | Short note on the field |

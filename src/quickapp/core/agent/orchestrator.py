@@ -148,19 +148,7 @@ class Orchestrator:
             # Close any per-request async resources (e.g. live MCP sessions) held open
             # for the duration of the request. Runs on both success and error paths.
             await self.__request_async_close_registry.aclose_all()
-            # Store history in state.tool_execution_history for restoring on next request
-            tool_execution_history = self._build_tool_execution_history()
-            if tool_execution_history:
-                if exc_to_reraise is None and self._is_terminal_completion():
-                    for policy in self.__tool_execution_history_policies:
-                        tool_execution_history = policy.apply(tool_execution_history)
-                self.__state_holder.add_state(TOOL_EXECUTION_HISTORY, tool_execution_history)
-
-            if self.__last_context_usage is not None:
-                self.__state_holder.add_state(
-                    STATE_KEY_CONTEXT_USAGE, self.__last_context_usage.model_dump()
-                )
-
+            self._collect_state(failed=exc_to_reraise is not None)
             self.__choice.set_state(self.__state_holder.get_state())
             if self.__usage_statistics_list and self.__SHOW_USAGE_STATISTICS:
                 await self.__usage_statistics_service.process_usage_statistics(
@@ -172,6 +160,21 @@ class Orchestrator:
 
         if exc_to_reraise is not None:
             raise exc_to_reraise
+
+    def _collect_state(self, *, failed: bool) -> None:
+        """Add everything persisted in the choice state; must run before ``set_state``."""
+        # Store history in state.tool_execution_history for restoring on next request
+        tool_execution_history = self._build_tool_execution_history()
+        if tool_execution_history:
+            if not failed and self._is_terminal_completion():
+                for policy in self.__tool_execution_history_policies:
+                    tool_execution_history = policy.apply(tool_execution_history)
+            self.__state_holder.add_state(TOOL_EXECUTION_HISTORY, tool_execution_history)
+
+        if self.__last_context_usage is not None:
+            self.__state_holder.add_state(
+                STATE_KEY_CONTEXT_USAGE, self.__last_context_usage.model_dump()
+            )
 
     async def invoke(self):
         async with self._persisting_state():

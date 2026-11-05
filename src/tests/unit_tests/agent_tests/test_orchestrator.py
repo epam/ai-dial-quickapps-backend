@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, Mock
 
 import openai
@@ -391,8 +392,7 @@ async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messa
     assert choice.add_attachment_kwargs[0] == attach.model_dump()
 
     # tool_execution_history is persisted exactly once in finally (no stream state in mocks)
-    key, value = _single_add_state_call(state_holder, TOOL_EXECUTION_HISTORY)
-    assert key == TOOL_EXECUTION_HISTORY
+    value = _single_add_state_call(state_holder, TOOL_EXECUTION_HISTORY)
     assert isinstance(value, list)
     # New format stores messages directly: ASSISTANT + TOOL = 2 messages
     assert len(value) == 2
@@ -556,10 +556,11 @@ async def test_invoke_tool_calls_returns_no_results_raises_runtime_error():
     tool_executor.execute.assert_awaited_once()
 
 
-def _single_add_state_call(state_holder: Mock, key: str) -> tuple:
+def _single_add_state_call(state_holder: Mock, key: str) -> Any:
+    """Return the value passed to the only ``add_state(key, ...)`` call."""
     calls = [c.args for c in state_holder.add_state.call_args_list if c.args[0] == key]
     assert len(calls) == 1
-    return calls[0]
+    return calls[0][1]
 
 
 def _mock_tool_executor(*, execute=None):
@@ -587,6 +588,7 @@ def _make_orchestrator(
     tool_names: frozenset[str] = frozenset(),
     suppressed_attachment_registry: SuppressedAttachmentRegistry | None = None,
     state_holder: object | None = None,
+    usage_statistics_service: object | None = None,
 ) -> Orchestrator:
     messages_context = Mock()
     messages_context.append_message = Mock(side_effect=lambda msg: messages_list.append(msg))
@@ -597,7 +599,8 @@ def _make_orchestrator(
         messages_context=messages_context,
         choice=choice or Mock(add_attachment=Mock(), set_state=Mock()),
         state_holder=state_holder or Mock(get_state=Mock(return_value={}), add_state=Mock()),
-        usage_statistics_service=Mock(process_usage_statistics=AsyncMock()),
+        usage_statistics_service=usage_statistics_service
+        or Mock(process_usage_statistics=AsyncMock()),
         tool_executor=tool_executor or _mock_tool_executor(),
         assistant_invoker_provider=assistant_invoker_provider or Mock(),
         stream_handler=stream_handler or Mock(),
@@ -658,10 +661,12 @@ class TestContextUsageState:
             ]
         )
         state_holder = Mock(get_state=Mock(return_value={}), add_state=Mock())
+        usage_statistics_service = Mock(process_usage_statistics=AsyncMock())
         orchestrator = _make_orchestrator(
             [],
             choice=SpyChoice(),
             state_holder=state_holder,
+            usage_statistics_service=usage_statistics_service,
             stream_handler=stream_handler,
             tool_executor=_mock_tool_executor(execute=AsyncMock(return_value=[tool_result])),
             assistant_invoker_provider=Mock(
@@ -671,11 +676,11 @@ class TestContextUsageState:
 
         await orchestrator.invoke()
 
-        context_usage_calls = [
-            c for c in state_holder.add_state.call_args_list if c.args[0] == STATE_KEY_CONTEXT_USAGE
-        ]
-        assert len(context_usage_calls) == 1
-        assert context_usage_calls[0].args[1] == {"prompt_tokens": 250, "completion_tokens": 20}
+        assert _single_add_state_call(state_holder, STATE_KEY_CONTEXT_USAGE) == {
+            "prompt_tokens": 250,
+            "completion_tokens": 20,
+        }
+        usage_statistics_service.process_usage_statistics.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_no_usage_means_no_context_usage_key(self):
@@ -1032,8 +1037,7 @@ async def test_invoke_terminal_flow_strips_get_content_attachments_in_saved_hist
 
     await orchestrator.invoke()
 
-    key, value = _single_add_state_call(state_holder, TOOL_EXECUTION_HISTORY)
-    assert key == TOOL_EXECUTION_HISTORY
+    value = _single_add_state_call(state_holder, TOOL_EXECUTION_HISTORY)
     assert isinstance(value, list)
     tool_entry = value[1]
     assert tool_entry["role"] == "tool"
@@ -1146,8 +1150,7 @@ async def test_invoke_interrupted_flow_keeps_get_content_attachments_in_saved_hi
     with pytest.raises(RuntimeError, match="interrupted"):
         await orchestrator.invoke()
 
-    key, value = _single_add_state_call(state_holder, TOOL_EXECUTION_HISTORY)
-    assert key == TOOL_EXECUTION_HISTORY
+    value = _single_add_state_call(state_holder, TOOL_EXECUTION_HISTORY)
     assert isinstance(value, list)
     tool_entry = value[1]
     custom_content = tool_entry.get("custom_content")
