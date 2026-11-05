@@ -164,3 +164,12 @@ assert result is cached_value                      # identity
 assert len(tools) == 4                             # collection size
 mock.method.assert_called_once_with(expected_arg)  # mock verification
 ```
+
+## Known Local Failures
+
+Some tests depend on the OS and can fail on a developer machine while passing in CI. Don't treat these as
+regressions, and don't "fix" them as part of unrelated work:
+
+- `representation_tooling_tests/test_add_attachment_tool.py::TestAddAttachmentTool::test_infers_type_from_url_extension_when_omitted[files/bucket/path/data.csv-text/csv]`
+  — on Windows, `mimetypes` resolves `.csv` via the registry and can return `application/vnd.ms-excel` instead of
+  `text/csv`.
