@@ -10,7 +10,7 @@ Coverage:
     deployments.get_configuration_schema, toolset.get
   - DialDownloader: files.get_metadata, files.download
   - DialFileService:  resource_permissions.grant
-  - AttachmentService: bucket.get_raw, files.upload
+  - AttachmentService: bucket.get_raw, files.upload; v2 PUT in a project
   - _PricingService:  model.get
 """
 
@@ -24,6 +24,7 @@ from injector import ProviderOf
 from pydantic import SecretStr
 
 from quickapp.common.dial_settings import DialSettings
+from quickapp.common.project_context import ProjectContext
 from quickapp.common.state_holder import StateHolder
 from quickapp.dial_core_services.attachment_service import AttachmentService
 from quickapp.dial_core_services.dial_downloader import DialDownloader
@@ -364,7 +365,9 @@ class TestAttachmentServiceHttpCalls:
     """Verify the HTTP requests made by AttachmentService via AsyncDial."""
 
     @pytest.mark.asyncio
-    async def test_upload_attachment_calls_bucket_then_files_upload(self, httpx_mock):
+    async def test_upload_output_attachment_outside_project_calls_bucket_then_files_upload(
+        self, httpx_mock
+    ):
         import base64
 
         from aidial_sdk.chat_completion import Attachment
@@ -387,8 +390,10 @@ class TestAttachmentServiceHttpCalls:
             type="text/plain",
         )
 
-        svc = AttachmentService(dial_client=_dial_client())
-        result = await svc.upload_attachment_to_core(attachment)
+        svc = AttachmentService(
+            dial_client=_dial_client(), file_service=MagicMock(spec=DialFileService), project=None
+        )
+        result = await svc.upload_output_attachment(attachment)
 
         assert result.url == "files/my-bucket/test.txt"
         assert result.data is None
@@ -408,11 +413,48 @@ class TestAttachmentServiceHttpCalls:
             type="text/plain",
         )
 
-        svc = AttachmentService(dial_client=_dial_client())
-        result = await svc.upload_attachment_to_core(attachment)
+        svc = AttachmentService(
+            dial_client=_dial_client(), file_service=MagicMock(spec=DialFileService), project=None
+        )
+        result = await svc.upload_output_attachment(attachment)
 
         assert result.url == "https://already-exists.com/file"
         assert httpx_mock.get_requests() == []
+
+    @pytest.mark.asyncio
+    async def test_upload_output_attachment_in_project_puts_to_v2_artifacts(self, httpx_mock):
+        import base64
+
+        from aidial_sdk.chat_completion import Attachment
+
+        httpx_mock.add_response(
+            method="PUT",
+            url=f"{BASE_URL}/v2/projects/my-bucket/My%20Project/files/artifacts/chart%201.png",
+            status_code=200,
+        )
+        client = _dial_client()
+        project = ProjectContext(url="projects/my-bucket/My Project")
+        file_service = DialFileService(
+            dial_client=client,
+            state_holder=StateHolder(),
+            size_limit_resolver=_file_loading_size_limit_resolver(),
+            project_files=ProjectFilesClient(client),
+            project=project,
+        )
+        svc = AttachmentService(dial_client=client, file_service=file_service, project=project)
+
+        result = await svc.upload_output_attachment(
+            Attachment(
+                title="chart 1.png", data=base64.b64encode(b"png").decode(), type="image/png"
+            )
+        )
+
+        assert result.url == "projects/my-bucket/My%20Project/files/artifacts/chart%201.png"
+        requests = httpx_mock.get_requests()
+        assert len(requests) == 1
+        assert requests[0].method == "PUT"
+        assert "If-Match" not in requests[0].headers
+        assert "If-None-Match" not in requests[0].headers
 
 
 # ---------------------------------------------------------------------------

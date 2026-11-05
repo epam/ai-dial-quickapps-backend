@@ -3,7 +3,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
-from aidial_client import AsyncDial
 from aidial_sdk.chat_completion import Attachment, Stage
 from fastapi_injector import Injected
 from httpx import QueryParams
@@ -128,7 +127,7 @@ async def test_web_api_tool_2_make_correct_http_call(mock_async_client, request_
         binder.bind(DialSettings, DialSettings(url="https://core"))
         binder.bind(DIAL_BEARER, to=InstanceProvider(SecretStr("some_token")))
         binder.bind(DIAL_API_KEY, SecretStr("some_api_key"))
-        binder.bind(AsyncDial, to=InstanceProvider(MagicMock(spec=AsyncDial)))
+        binder.bind(AttachmentService, to=InstanceProvider(MagicMock(spec=AttachmentService)))
         binder.bind(Stage, to=mock_stage)
         binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
         binder.bind(StageDisplayLevel, to=InstanceProvider(StageDisplayLevel.INFO))
@@ -186,7 +185,7 @@ async def test_response_as_attachment_enabled_creates_attachment(mock_async_clie
     async def mock_upload(attachment):
         return attachment
 
-    mock_dial_attachment_service.upload_attachment_to_core = AsyncMock(side_effect=mock_upload)
+    mock_dial_attachment_service.upload_output_attachment = AsyncMock(side_effect=mock_upload)
 
     response_data = {
         "text": '{"data": "value"}',
@@ -233,6 +232,8 @@ async def test_response_as_attachment_enabled_creates_attachment(mock_async_clie
         assert len(result.attachments) == 1
         assert isinstance(result.attachments[0], Attachment)
         assert result.attachments[0].type == "application/json"
+        mock_dial_attachment_service.upload_output_attachment.assert_awaited_once()
+        mock_dial_attachment_service.upload_appdata_attachment.assert_not_called()
         return {"message": "success"}
 
     client = TestClient(app)
@@ -250,7 +251,7 @@ async def test_response_as_attachment_include_body_as_content_false(mock_async_c
     async def mock_upload(attachment):
         return attachment
 
-    mock_dial_attachment_service.upload_attachment_to_core = AsyncMock(side_effect=mock_upload)
+    mock_dial_attachment_service.upload_output_attachment = AsyncMock(side_effect=mock_upload)
 
     response_data = {
         "text": '{"data": "value"}',
@@ -313,7 +314,7 @@ async def test_toolset_level_response_as_attachment_propagation(mock_async_clien
     async def mock_upload(attachment):
         return attachment
 
-    mock_dial_attachment_service.upload_attachment_to_core = AsyncMock(side_effect=mock_upload)
+    mock_dial_attachment_service.upload_output_attachment = AsyncMock(side_effect=mock_upload)
 
     response_data = {
         "text": '{"data": "value"}',
@@ -387,7 +388,7 @@ async def test_forwarded_x_headers_passed_to_rest_api_request(mock_async_client)
         binder.bind(DialSettings, DialSettings(url="https://core"))
         binder.bind(DIAL_BEARER, to=InstanceProvider(SecretStr("some_token")))
         binder.bind(DIAL_API_KEY, SecretStr("some_api_key"))
-        binder.bind(AsyncDial, to=InstanceProvider(MagicMock(spec=AsyncDial)))
+        binder.bind(AttachmentService, to=InstanceProvider(MagicMock(spec=AttachmentService)))
         binder.bind(Stage, to=mock_stage)
         binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
         binder.bind(StageDisplayLevel, to=InstanceProvider(StageDisplayLevel.INFO))
@@ -433,7 +434,7 @@ def test_openai_tools_names():
         binder.bind(DialSettings, DialSettings(url="https://core"))
         binder.bind(DIAL_BEARER, to=InstanceProvider(SecretStr("some_token")))
         binder.bind(DIAL_API_KEY, SecretStr("some_api_key"))
-        binder.bind(AsyncDial, to=InstanceProvider(MagicMock(spec=AsyncDial)))
+        binder.bind(AttachmentService, to=InstanceProvider(MagicMock(spec=AttachmentService)))
         binder.bind(StageDisplayLevel, to=InstanceProvider(StageDisplayLevel.INFO))
         binder.bind(ForwardedHeaders, to=InstanceProvider(None))
         binder.bind(ACCEPT_LANGUAGE, to=InstanceProvider(None))
@@ -642,7 +643,7 @@ def test_stage_names_include_toolset_and_tool_name():
         binder.bind(DialSettings, DialSettings(url="https://core"))
         binder.bind(DIAL_BEARER, to=InstanceProvider(SecretStr("some_token")))
         binder.bind(DIAL_API_KEY, SecretStr("some_api_key"))
-        binder.bind(AsyncDial, to=InstanceProvider(MagicMock(spec=AsyncDial)))
+        binder.bind(AttachmentService, to=InstanceProvider(MagicMock(spec=AttachmentService)))
         binder.bind(StageDisplayLevel, to=InstanceProvider(StageDisplayLevel.INFO))
         binder.bind(ForwardedHeaders, to=InstanceProvider(None))
         binder.bind(ACCEPT_LANGUAGE, to=InstanceProvider(None))
@@ -695,7 +696,7 @@ async def test_http_status_error_can_forward_error_message_via_fallback(mock_asy
         binder.bind(DialSettings, DialSettings(url="https://core"))
         binder.bind(DIAL_BEARER, to=InstanceProvider(SecretStr("some_token")))
         binder.bind(DIAL_API_KEY, SecretStr("some_api_key"))
-        binder.bind(AsyncDial, to=InstanceProvider(MagicMock(spec=AsyncDial)))
+        binder.bind(AttachmentService, to=InstanceProvider(MagicMock(spec=AttachmentService)))
         binder.bind(Stage, to=mock_stage)
         binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
         binder.bind(StageDisplayLevel, to=InstanceProvider(StageDisplayLevel.INFO))
@@ -761,7 +762,7 @@ async def test_http_status_error_can_append_instructions_after_forwarded_error(m
         binder.bind(DialSettings, DialSettings(url="https://core"))
         binder.bind(DIAL_BEARER, to=InstanceProvider(SecretStr("some_token")))
         binder.bind(DIAL_API_KEY, SecretStr("some_api_key"))
-        binder.bind(AsyncDial, to=InstanceProvider(MagicMock(spec=AsyncDial)))
+        binder.bind(AttachmentService, to=InstanceProvider(MagicMock(spec=AttachmentService)))
         binder.bind(Stage, to=mock_stage)
         binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
         binder.bind(StageDisplayLevel, to=InstanceProvider(StageDisplayLevel.INFO))
