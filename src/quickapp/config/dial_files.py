@@ -6,34 +6,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from quickapp.common.base_config import PreviewField
 from quickapp.config.tool_result_limit import ToolResultLimitSettings
 
-DialFilesToolName = Literal[
-    "list",
-    "read_lines",
-    "read_chars",
-    "search",
-    "find",
-    "write",
-    "edit",
-    "delete",
-    "copy",
-    "move",
-]
+DialFilesReadToolName = Literal["list", "read_lines", "read_chars", "search", "find"]
+DialFilesWriteToolName = Literal["write", "edit", "delete", "copy", "move"]
+DialFilesToolName = Literal[DialFilesReadToolName, DialFilesWriteToolName]
 
 DialFilesToolPreset = Literal["all", "read_only"]
 
-_ALL_TOOLS: frozenset[str] = frozenset(get_args(DialFilesToolName))
-_READ_ONLY_TOOLS: frozenset[str] = frozenset({"list", "read_lines", "read_chars", "search", "find"})
-
-
-def expand_enabled_tools(
-    enabled_tools: DialFilesToolPreset | list[DialFilesToolName],
-) -> frozenset[str]:
-    """Resolve an `enabled_tools` value (preset or explicit list) to short tool names."""
-    if enabled_tools == "all":
-        return _ALL_TOOLS
-    if enabled_tools == "read_only":
-        return _READ_ONLY_TOOLS
-    return frozenset(enabled_tools)
+_READ_ONLY_TOOLS: frozenset[DialFilesToolName] = frozenset(get_args(DialFilesReadToolName))
+_ALL_TOOLS: frozenset[DialFilesToolName] = frozenset(get_args(DialFilesToolName))
 
 
 class ToolCallResultOffloadSettings(BaseSettings):
@@ -141,6 +121,15 @@ class DialFilesConfig(BaseModel):
             "notice. Bounds worst-case egress on large subtrees."
         ),
     )
+
+    @property
+    def expanded_tools(self) -> frozenset[DialFilesToolName]:
+        """`enabled_tools` (preset or explicit list) resolved to short tool names."""
+        if self.enabled_tools == "all":
+            return _ALL_TOOLS
+        if self.enabled_tools == "read_only":
+            return _READ_ONLY_TOOLS
+        return frozenset(self.enabled_tools)
 
     @field_validator("agent_home_dir")
     @classmethod

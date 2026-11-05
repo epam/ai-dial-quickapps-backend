@@ -5,14 +5,13 @@ from quickapp.config.dial_files import (
     DialFilesConfig,
     ToolCallResultOffloadConfig,
     ToolCallResultOffloadSettings,
-    expand_enabled_tools,
 )
 from quickapp.config.tool_result_limit import ToolResultLimitSettings
 
 
-class TestExpandEnabledTools:
+class TestExpandedTools:
     def test_all_is_every_tool(self):
-        assert expand_enabled_tools("all") == {
+        assert DialFilesConfig(enabled_tools="all").expanded_tools == {
             "list",
             "read_lines",
             "read_chars",
@@ -26,7 +25,7 @@ class TestExpandEnabledTools:
         }
 
     def test_read_only_excludes_mutating_tools(self):
-        assert expand_enabled_tools("read_only") == {
+        assert DialFilesConfig(enabled_tools="read_only").expanded_tools == {
             "list",
             "read_lines",
             "read_chars",
@@ -35,7 +34,8 @@ class TestExpandEnabledTools:
         }
 
     def test_explicit_list_is_passed_through(self):
-        assert expand_enabled_tools(["write", "read_lines"]) == {"write", "read_lines"}
+        cfg = DialFilesConfig(enabled_tools=["write", "read_lines"])
+        assert cfg.expanded_tools == {"write", "read_lines"}
 
 
 class TestDialFilesConfig:

@@ -16,7 +16,7 @@ from quickapp.common.tool_names import (
     INTERNAL_SKILLS_READ_SKILL_TOOL_NAME,
 )
 from quickapp.config.application import ApplicationConfig
-from quickapp.config.dial_files import DialFilesConfig, expand_enabled_tools
+from quickapp.config.dial_files import DialFilesConfig
 from quickapp.config.tools.internal import InternalTool
 from quickapp.dial_files_tooling._copy_file_tool import _CopyFileTool
 from quickapp.dial_files_tooling._delete_file_tool import _DeleteFileTool
@@ -126,7 +126,7 @@ class DialFilesToolingModule(Module):
         global_transformers: list[ToolArgumentTransformer],
         path_transformer: _AppdataHomePathTransformer,
     ) -> list[StagedBaseTool]:
-        enabled_names = expand_enabled_tools(self._effective_config(app_config).enabled_tools)
+        enabled_names = self._effective_config(app_config).expanded_tools
 
         tools: list[tuple[AssistedBuilder[Any], InternalTool]] = [
             (list_builder, LIST_FILES_TOOL_CONFIG),
@@ -218,4 +218,4 @@ class DialFilesToolingModule(Module):
         ]
 
     def _missing_read_back_tools(self, cfg: DialFilesConfig) -> list[str]:
-        return sorted(self._REQUIRED_READ_BACK_TOOLS - expand_enabled_tools(cfg.enabled_tools))
+        return sorted(self._REQUIRED_READ_BACK_TOOLS - cfg.expanded_tools)

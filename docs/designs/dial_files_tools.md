@@ -540,7 +540,7 @@ class Features(BaseModel):
     )
 ```
 
-**Resolution in `DialFilesToolingModule`:** `_effective_config` returns `app_config.features.dial_files`, or `DialFilesConfig()` (all tools) when the block is absent. `expand_enabled_tools` (in `config/dial_files.py`) turns `enabled_tools` (preset or list) into the set of short names, and each tool is exposed when its short name is in that set. The same function backs the offload read-back check, so presets need no special-casing there.
+**Resolution in `DialFilesToolingModule`:** `_effective_config` returns `app_config.features.dial_files`, or `DialFilesConfig()` (all tools) when the block is absent. `DialFilesConfig.expanded_tools` (in `config/dial_files.py`) turns `enabled_tools` (preset or list) into the set of short names, and each tool is exposed when its short name is in that set. The same property backs the offload read-back check, so presets need no special-casing there.
 
 **Design notes:**
 
