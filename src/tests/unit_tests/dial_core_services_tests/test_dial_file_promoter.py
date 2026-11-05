@@ -56,14 +56,14 @@ async def test_dial_branch_reads_metadata_no_upload():
     metadata = _make_metadata(url="https://dial.example.com/v1/files/y.pdf", name="y.pdf")
     get_metadata = AsyncMock(return_value=metadata)
     attachments = MagicMock(spec=AttachmentService)
-    attachments.upload_bytes = AsyncMock()
+    attachments.upload_appdata_bytes = AsyncMock()
 
     promoter = _make_promoter(files_get_metadata=get_metadata, attachments=attachments)
     result = await promoter.promote("files/bucket/y.pdf")
 
     assert result is metadata
     get_metadata.assert_awaited_once_with("files/bucket/y.pdf")
-    attachments.upload_bytes.assert_not_awaited()
+    attachments.upload_appdata_bytes.assert_not_awaited()
 
 
 _PROJECT = ProjectContext(url="projects/bucket/My%20Project")
@@ -123,16 +123,18 @@ async def test_external_branch_fetches_and_uploads():
     )
     attachments = MagicMock(spec=AttachmentService)
     uploaded = _make_metadata(url="https://dial.example.com/v1/files/hi.txt", name="hi.txt")
-    attachments.upload_bytes = AsyncMock(return_value=uploaded)
+    attachments.upload_appdata_bytes = AsyncMock(return_value=uploaded)
 
     promoter = _make_promoter(fetcher=fetcher, attachments=attachments)
     result = await promoter.promote("https://example.com/hi.txt")
 
     assert result is uploaded
     fetcher.fetch.assert_awaited_once_with("https://example.com/hi.txt")
-    attachments.upload_bytes.assert_awaited_once_with(
+    attachments.upload_appdata_bytes.assert_awaited_once_with(
         data=b"hello", content_type="text/plain", filename="hi.txt"
     )
+    # Promoted URLs feed deployments and the interpreter: always appdata (D6).
+    attachments.upload_output_bytes.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -142,7 +144,7 @@ async def test_second_call_for_same_url_hits_cache():
         return_value=FetchedBytes(data=b"x", content_type="text/plain", filename="x.txt")
     )
     attachments = MagicMock(spec=AttachmentService)
-    attachments.upload_bytes = AsyncMock(return_value=_make_metadata())
+    attachments.upload_appdata_bytes = AsyncMock(return_value=_make_metadata())
 
     promoter = _make_promoter(fetcher=fetcher, attachments=attachments)
     first = await promoter.promote("https://example.com/x.txt")
@@ -150,7 +152,7 @@ async def test_second_call_for_same_url_hits_cache():
 
     assert first is second
     fetcher.fetch.assert_awaited_once()
-    attachments.upload_bytes.assert_awaited_once()
+    attachments.upload_appdata_bytes.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -167,7 +169,7 @@ async def test_upload_failure_propagates():
         return_value=FetchedBytes(data=b"x", content_type="text/plain", filename="x.txt")
     )
     attachments = MagicMock(spec=AttachmentService)
-    attachments.upload_bytes = AsyncMock(side_effect=RuntimeError("upload boom"))
+    attachments.upload_appdata_bytes = AsyncMock(side_effect=RuntimeError("upload boom"))
 
     promoter = _make_promoter(fetcher=fetcher, attachments=attachments)
     with pytest.raises(RuntimeError, match="upload boom"):
@@ -187,7 +189,7 @@ async def test_concurrent_promote_same_url_dedupes_fetch_and_upload():
     fetcher = MagicMock(spec=ExternalUrlFetcher)
     fetcher.fetch = AsyncMock(side_effect=slow_fetch)
     attachments = MagicMock(spec=AttachmentService)
-    attachments.upload_bytes = AsyncMock(return_value=_make_metadata())
+    attachments.upload_appdata_bytes = AsyncMock(return_value=_make_metadata())
 
     promoter = _make_promoter(fetcher=fetcher, attachments=attachments)
 
@@ -200,7 +202,7 @@ async def test_concurrent_promote_same_url_dedupes_fetch_and_upload():
 
     assert first is second
     fetcher.fetch.assert_awaited_once()
-    attachments.upload_bytes.assert_awaited_once()
+    attachments.upload_appdata_bytes.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -213,7 +215,7 @@ async def test_failed_promote_allows_retry():
         ]
     )
     attachments = MagicMock(spec=AttachmentService)
-    attachments.upload_bytes = AsyncMock(return_value=_make_metadata())
+    attachments.upload_appdata_bytes = AsyncMock(return_value=_make_metadata())
 
     promoter = _make_promoter(fetcher=fetcher, attachments=attachments)
 

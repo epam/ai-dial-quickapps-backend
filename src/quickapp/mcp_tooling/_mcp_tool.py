@@ -317,7 +317,7 @@ class _MCPTool(StagedBaseTool):
             for content in non_text_contents:
                 attachment = self._content_to_attachment(content)
                 if attachment is not None and self._should_upload(attachment.type):
-                    attachment = await self.__dial_attachment_service.upload_attachment_to_core(
+                    attachment = await self.__dial_attachment_service.upload_output_attachment(
                         attachment
                     )
                     attachments.append(attachment)
