@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+import pytest
+
 from quickapp.core.agent import OrchestratorCapabilities
 
 
@@ -56,3 +58,22 @@ def test_reasoning_efforts_empty_when_deployment_has_no_features():
 
     assert caps.reasoning_efforts == []
     assert caps.supports_reasoning_effort("low") is False
+
+
+def test_supports_cache_breakpoints_when_deployment_advertises_cache():
+    caps = OrchestratorCapabilities(
+        deployment=_deployment(features=SimpleNamespace(cache=True))  # type: ignore[arg-type]
+    )
+
+    assert caps.supports_cache_breakpoints is True
+
+
+@pytest.mark.parametrize(
+    "features",
+    [SimpleNamespace(cache=None), SimpleNamespace(cache=False), None],
+    ids=["cache_none", "cache_false", "no_features"],
+)
+def test_no_cache_breakpoints_when_cache_not_advertised(features: SimpleNamespace | None):
+    caps = OrchestratorCapabilities(deployment=_deployment(features=features))  # type: ignore[arg-type]
+
+    assert caps.supports_cache_breakpoints is False
