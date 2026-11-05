@@ -1,3 +1,4 @@
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -20,6 +21,7 @@ from quickapp.common import (
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.deferred_tool_types import DeferredToolCatalogEntry, DeferredToolsetSummary
 from quickapp.common.dial_settings import DialSettings
+from quickapp.common.oauth_token_fetcher import OAuthTokenFetcher
 from quickapp.config.application import ApplicationConfig, StageDisplayLevel
 from quickapp.config.tool_discovery import ToolDiscoveryConfig
 from quickapp.config.tools.base import (
@@ -38,10 +40,11 @@ from quickapp.config.tools.rest_api import (
     ToolEndpointParamType,
 )
 from quickapp.config.tools.tool_fallback import ContinueStrategyModel, ToolFallbackConfig
-from quickapp.config.toolsets.authorization import BearerAuthorization
+from quickapp.config.toolsets.authorization import BearerAuthorization, ClientIdSecretAuthorization
 from quickapp.config.toolsets.rest_api import RestApiToolSet
 from quickapp.dial_core_services.attachment_service import AttachmentService
 from quickapp.rest_api_tooling import RestApiToolingModule
+from quickapp.rest_api_tooling._request_detail_builder import _RequestDetailsBuilder
 from quickapp.rest_api_tooling._rest_api_stage_wrapper import _RestApiStageWrapper
 from quickapp.rest_api_tooling._rest_api_tool_error_exception import RestApiToolErrorException
 from tests.unit_tests.common import create_test_app
@@ -492,6 +495,137 @@ def test_repeated_tool_resolution_does_not_grow_deferred_registry():
         return {}
 
     assert TestClient(app).get("/").status_code == 200
+
+
+def _make_optional_params_tool() -> RestApiTool:
+    def param(location: ToolEndpointParamType, key: str) -> RestApiEndpointSimpleTypeParam:
+        return RestApiEndpointSimpleTypeParam(
+            type="string",
+            description=key,
+            parameter_info=RestApiEndpointHeaderParamInfo(type=location, key=key),
+        )
+
+    return RestApiTool(
+        rest_api_method_info=RestApiEndpointMethodInfo(
+            method_url="https://example.com/items", method_type=ToolEndpointInfoMethodType.post
+        ),
+        open_ai_tool=OpenAiToolConfig(
+            function=OpenAiToolFunction(
+                name="items",
+                description="Items",
+                parameters=OpenAiToolFunctionParameters(
+                    type="object",
+                    properties={
+                        "limit": param(ToolEndpointParamType.query, "limit"),
+                        "x_trace": param(ToolEndpointParamType.header, "x-trace"),
+                        "note": param(ToolEndpointParamType.body, "note"),
+                    },
+                ),
+            )
+        ),
+    )
+
+
+def _run_shared_tool_calls(authorization, scenario, *, token_fetcher=None):
+    """Resolves one REST tool through DI and hands it to `scenario` (an async callable)."""
+    toolset = RestApiToolSet(
+        name="rest-api", authorization=authorization, tools=[_make_optional_params_tool()]
+    )
+
+    def configure(binder: Binder):
+        binder.bind(DialSettings, DialSettings(url="https://core"))
+        binder.bind(DIAL_BEARER, to=InstanceProvider(SecretStr("some_token")))
+        binder.bind(DIAL_API_KEY, SecretStr("some_api_key"))
+        binder.bind(AsyncDial, to=InstanceProvider(MagicMock(spec=AsyncDial)))
+        binder.bind(Stage, to=MagicMock(spec=Stage))
+        binder.bind(ApplicationConfig, to=create_app_configuration([toolset]))
+        binder.bind(StageDisplayLevel, to=InstanceProvider(StageDisplayLevel.INFO))
+        binder.bind(ForwardedHeaders, to=InstanceProvider(None))
+        binder.bind(ACCEPT_LANGUAGE, to=InstanceProvider(None))
+        binder.multibind(list[ToolArgumentTransformer], to=[])
+        if token_fetcher is not None:
+            binder.bind(OAuthTokenFetcher, to=InstanceProvider(token_fetcher))
+
+    app = create_test_app([RestApiToolingModule, configure])
+
+    @app.get("/")
+    async def get_method(tools: list[StagedBaseTool] = Injected(list[StagedBaseTool])):
+        assert len(tools) == 1
+        await scenario(tools[0])
+        return {}
+
+    assert TestClient(app).get("/").status_code == 200
+
+
+def test_request_details_builder_binding_is_unscoped():
+    """The tool's per-call isolation relies on every resolution returning a new builder."""
+
+    def configure(binder: Binder):
+        binder.bind(DIAL_BEARER, to=InstanceProvider(SecretStr("some_token")))
+
+    app = create_test_app([RestApiToolingModule, configure])
+
+    @app.get("/")
+    async def get_method(
+        first: _RequestDetailsBuilder = Injected(_RequestDetailsBuilder),
+        second: _RequestDetailsBuilder = Injected(_RequestDetailsBuilder),
+    ):
+        assert first is not second
+        return {}
+
+    assert TestClient(app).get("/").status_code == 200
+
+
+def _mock_ok_response() -> AsyncMock:
+    response = AsyncMock(text="{}", headers={"Content-Type": "application/json"})
+    response.raise_for_status = MagicMock()
+    return response
+
+
+@patch("httpx.AsyncClient")
+def test_shared_tool_instance_does_not_leak_optional_args_between_calls(mock_async_client):
+    request = mock_async_client.return_value.__aenter__.return_value.request
+    request.return_value = _mock_ok_response()
+
+    async def scenario(tool: StagedBaseTool) -> None:
+        await tool.arun("call-1", None, limit="5", x_trace="t1", note="n1")
+        await tool.arun("call-2", None)
+
+    _run_shared_tool_calls(BearerAuthorization(token="test_token"), scenario)
+
+    second = request.call_args_list[1].kwargs
+    assert "limit" not in second["params"]
+    assert "x-trace" not in second["headers"]
+    assert not second["json"]
+
+
+@patch("httpx.AsyncClient")
+def test_parallel_calls_on_shared_tool_keep_their_own_args(mock_async_client):
+    request = mock_async_client.return_value.__aenter__.return_value.request
+    request.return_value = _mock_ok_response()
+
+    async def slow_token(_auth_info) -> str:
+        await asyncio.sleep(0)  # yields between with_parameters and build()
+        return "token"
+
+    token_fetcher = MagicMock(spec=OAuthTokenFetcher)
+    token_fetcher.fetch_oauth_token = slow_token
+
+    async def scenario(tool: StagedBaseTool) -> None:
+        await asyncio.gather(
+            tool.arun("call-1", None, limit="1"),
+            tool.arun("call-2", None, limit="2", note="only-second"),
+        )
+
+    _run_shared_tool_calls(
+        ClientIdSecretAuthorization(client_id="id", client_secret="secret", token_url="https://t"),
+        scenario,
+        token_fetcher=token_fetcher,
+    )
+
+    by_limit = {c.kwargs["params"]["limit"]: c.kwargs for c in request.call_args_list}
+    assert not by_limit["1"]["json"]
+    assert by_limit["2"]["json"] == {"note": "only-second"}
 
 
 def test_stage_names_include_toolset_and_tool_name():
