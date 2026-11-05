@@ -1,6 +1,7 @@
 # Design: User-Facing Error Message Resolution
 
 - **Status:** Implemented
+- **User-facing:** [Error handling](../error_handling.md)
 - **Approved:** 2026-07-08
 - **Dependencies:**
   - None
@@ -164,7 +165,7 @@ class ErrorDetails(BaseModel):
     display_message: str | None # user-safe by DIAL contract
 ```
 
-**Owner:** `_exception_message_resolver` (private helper within the module).
+**Owner:** `common/error_details.py`, shared by `_exception_message_resolver` and `DeploymentStageWrapper`.
 
 **Semantics:** One extraction function understands the four shapes an error reaches us in:
 
@@ -290,8 +291,9 @@ constants are reworded per the retryability split.
 **What:** Every handled exception gets a short opaque reference (8 hex chars derived from a random UUID) that
 appears in **both** the log record and the user-facing message.
 
-**Owner:** `_QuickAppCompletion.__handle_exception` — generation and logging stay with the component that owns
-the log call, keeping the resolver pure.
+**Owner:** `_QuickAppCompletion.__handle_exception` for request failures and `StagedBaseTool` for tool-stage
+errors — generation and logging stay with the component that owns the log call, keeping the resolver pure. Both
+generate it with `new_error_reference()` from `common/error_details.py`.
 
 **Semantics:**
 
@@ -304,6 +306,12 @@ the log call, keeping the resolver pure.
   reference: `a1b2c3d4`)", matching the Usage-table examples.
 - The reference is a correlation token only — it carries no encoded meaning and is not persisted anywhere
   besides the log stream and the error text shown to the user.
+- A failed tool call gets its own reference: `StagedBaseTool` adds it to the "Tool call failed" warning, and
+  `BaseStageWrapper.add_exception` shows it in the tool stage as `> ##### Error reference:`.
+- When the tool's `stop` fallback ends the turn, `FallbackAgentStopException.error_reference` carries the tool's
+  reference and `__handle_exception` reuses it, so the stage, the error box and both log records share one
+  reference. A tool error re-raised because no fallback strategy matched still gets a fresh request-level
+  reference.
 
 **Change:** `__handle_exception` grows from two lines to: generate ref → resolve → log with ref → raise
 (Component 4).
@@ -488,8 +496,8 @@ and internal error message at the matching record.
 
 ### Non-breaking changes
 
-- All resolution changes are internal to `core/application`; no config schema, no env vars, no DI wiring
-  changes outside the module.
+- Resolution stays in `core/application`; error-detail extraction and reference generation live in
+  `common/error_details.py` so tool stages can share them. No config schema, env var or DI wiring changes.
 - Unit tests for the resolver (`test_exception_message_resolver.py`) are extended for the new precedence
   order, body extraction, and the no-leak guarantee (the existing `test_no_internal_detail_leaked` contract is
   kept and extended to the wire format: the outgoing `message` mirrors the sanitized text, so raw internal
@@ -499,8 +507,8 @@ and internal error message at the matching record.
 
 **`core/application/_exception_message_resolver.py`**
 
-- Added: `ErrorDetails` value object + best-effort extractor over openai / aidial / httpx error shapes,
-  including numeric-code → status backfill.
+- Added, then moved to `common/error_details.py`: `ErrorDetails` value object + best-effort extractor over
+  openai / aidial / httpx error shapes, including numeric-code → status backfill.
 - Added: code map (`content_filter`, `context_length_exceeded`, `truncate_prompt_error`).
 - Added: `_MSG_AI_MODEL_STREAM_FAILURE` constant — terminal rule for mid-stream `APIError` with no usable body.
 - Added: `ResolvedError` (message + retryable + details) returned by the new `resolve_exception`;
@@ -535,6 +543,22 @@ and internal error message at the matching record.
 **`core/agent/assistant_invoker.py`, `core/agent/orchestrator.py`**
 
 - Cleanup: redundant `(BadRequestError, APIError)` tuples reduced to `APIError` (no behavior change).
+
+**`common/error_details.py`**
+
+- Added: shared home for `ErrorDetails`, `extract_error_details`, `sanitize_display_message` (500-character
+  cap), `RETRY_SENTENCE`, `MSG_AI_MODEL_RATE_LIMITED` and `new_error_reference()`, imported by the resolver and
+  the tool stages.
+
+**`common/staged_base_tool.py`, `common/base_stage_wrapper.py`, `common/exceptions/fallback_agent_stop.py`**
+
+- Added: a per-call error reference, logged on tool failure and shown in the tool stage; carried on
+  `FallbackAgentStopException` so a `stop` fallback reuses it at the top level.
+
+**`dial_deployment_tooling/deployment_stage_wrapper.py`**
+
+- Changed: a 429 from the deployment (`openai` error, before or mid-stream) shows the upstream `display_message`
+  or the resolver's rate-limit wording, plus the status code, instead of the generic exception text.
 
 **Tests**
 
