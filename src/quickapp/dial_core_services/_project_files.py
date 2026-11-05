@@ -13,11 +13,13 @@ Core behaviour this relies on:
 - Listing a missing folder returns 200 with no items, never 404.
 """
 
+from http import HTTPStatus
 from typing import Literal
 
 import httpx
 from aidial_client import AsyncDial
 from aidial_client._exception import DialException, ResourceNotFoundError
+from aidial_client._http_client._base import ErrorHandler
 from aidial_client._internal_types._http_request import FinalRequestOptions
 from aidial_client.helpers.storage_resource import (
     _percent_encode_relative_url,
@@ -28,6 +30,25 @@ from injector import inject
 from pydantic import BaseModel, ConfigDict
 
 from quickapp.common.project_context import has_unsafe_segments
+
+
+class _RangeNotSatisfiableError(DialException):
+    """A 416 on a one-byte ranged GET: the file exists but is empty."""
+
+    def __init__(self, etag: str | None):
+        super().__init__(
+            message="Range not satisfiable", status_code=HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE
+        )
+        self.etag = etag
+
+
+def _ranged_get_error_processor(
+    http_status_error: httpx.HTTPStatusError,
+) -> DialException | None:
+    response = http_status_error.response
+    if response.status_code == HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE:
+        return _RangeNotSatisfiableError(response.headers.get("etag"))
+    return _storage_error_processor(http_status_error)
 
 
 class ProjectItem(BaseModel):
@@ -67,12 +88,20 @@ class ProjectFilesClient:
         """The file's own ETag, or ``None`` when the file doesn't exist.
 
         Asks for the first byte only (200 or 206 both work); if Core ignores ``Range`` the
-        whole file comes back, which is slower but still correct.
+        whole file comes back, which is slower but still correct. A 0-byte file answers
+        416 (no byte 0): it exists, and the ETag comes from that response.
         """
         try:
-            response = await self._request("GET", f"v2/{url}", headers={"Range": "bytes=0-0"})
+            response = await self._request(
+                "GET",
+                f"v2/{url}",
+                headers={"Range": "bytes=0-0"},
+                on_http_error=_ranged_get_error_processor,
+            )
         except ResourceNotFoundError:
             return None
+        except _RangeNotSatisfiableError as e:
+            return e.etag
         return response.headers.get("etag")
 
     async def project_etag(self, project_url: str) -> str:
@@ -89,12 +118,25 @@ class ProjectFilesClient:
     async def put(
         self, url: str, content: bytes, content_type: str, if_match: str | None = None
     ) -> None:
+        """Upload a file; with ``if_match``, conditionally on the project ETag.
+
+        A conditional PUT is sent once: the HTTP client's retry after a timeout or a
+        connection error could resend a write that already landed, and the resend then
+        fails with 412 against the ETag that write changed. The caller's own 412 loop
+        re-reads the state instead. An unconditional PUT keeps the client's retries.
+        """
         filename = url.rsplit("/", 1)[-1]
+        if if_match is None:
+            await self._request(
+                "PUT", f"v2/{url}", files={"file": (filename, content, content_type)}
+            )
+            return
         await self._request(
             "PUT",
             f"v2/{url}",
             files={"file": (filename, content, content_type)},
-            headers={"If-Match": if_match} if if_match is not None else None,
+            headers={"If-Match": if_match},
+            max_retries=0,
         )
 
     async def delete(self, url: str) -> None:
@@ -129,19 +171,22 @@ class ProjectFilesClient:
         files: dict | None = None,
         params: dict | None = None,
         headers: dict[str, str] | None = None,
+        max_retries: int | None = None,
+        on_http_error: ErrorHandler = _storage_error_processor,
     ) -> httpx.Response:
         # Defence in depth: callers only pass URLs of the request's project, which are
         # checked already; never send a path that could leave it.
         if has_unsafe_segments(url):
             raise DialException(message=f"Invalid project resource path: {url}", status_code=400)
+        options = FinalRequestOptions(
+            method=method,
+            url=_percent_encode_relative_url(url),
+            files=files,
+            params=params,
+            headers=headers or {},
+        )
+        if max_retries is not None:
+            options.max_retries = max_retries
         return await self._http.request(
-            cast_to=httpx.Response,
-            options=FinalRequestOptions(
-                method=method,
-                url=_percent_encode_relative_url(url),
-                files=files,
-                params=params,
-                headers=headers or {},
-            ),
-            on_http_error=_storage_error_processor,
+            cast_to=httpx.Response, options=options, on_http_error=on_http_error
         )

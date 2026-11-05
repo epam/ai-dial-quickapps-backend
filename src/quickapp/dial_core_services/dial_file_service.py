@@ -19,6 +19,7 @@ from quickapp.dial_core_services.dial_downloader import ensure_within_size_limit
 from quickapp.dial_core_services.exceptions import (
     FileTooLargeError,
     PartialMoveException,
+    ProjectFileOperationException,
     ProjectFileTooLargeException,
     ProjectWriteConflictException,
     SameSourceAndDestinationException,
@@ -331,8 +332,12 @@ class DialFileService:
         """Copy a file into, out of or inside the request's project.
 
         Core's copy/move endpoints don't cover projects, so this downloads and uploads,
-        which only works within the file-loading size limit.
+        which only works within the file-loading size limit, and only for files.
         """
+        if source_url.endswith("/"):
+            raise ProjectFileOperationException(
+                "copying or moving folders in a project is not supported"
+            )
         if canonical_resource_url(source_url) == canonical_resource_url(destination_url):
             raise SameSourceAndDestinationException(source_url)
         try:
