@@ -77,6 +77,20 @@ class ProjectFilesClient:
         ) as response:
             yield FileDownloadResponse(response=response, filename=url.rsplit("/", 1)[-1])
 
+    async def file_metadata(self, url: str) -> FileMetadata:
+        """``FileMetadata`` of a project file, from a first-byte GET (no metadata endpoint).
+
+        ``content_length`` is the total from ``Content-Range``, or the body length when Core
+        ignores ``Range``. Raises ``ResourceNotFoundError`` for a missing file.
+        """
+        response = await self._request("GET", f"v2/{url}", headers={"Range": "bytes=0-0"})
+        if response.status_code == 206:
+            total = response.headers.get("content-range", "").rpartition("/")[2]
+            content_length = int(total) if total.isdigit() else None
+        else:
+            content_length = len(response.content)
+        return project_file_metadata(url, response.headers, content_length)
+
     async def file_etag(self, url: str) -> str | None:
         """The file's own ETag, or ``None`` when the file doesn't exist.
 
@@ -173,7 +187,7 @@ class ProjectFilesClient:
         )
 
 
-def project_file_metadata(url: str, headers: httpx.Headers, size: int) -> FileMetadata:
+def project_file_metadata(url: str, headers: httpx.Headers, size: int | None) -> FileMetadata:
     """``FileMetadata`` for a project file, built from its GET response headers."""
     return FileMetadata(
         name=url.rsplit("/", 1)[-1],
