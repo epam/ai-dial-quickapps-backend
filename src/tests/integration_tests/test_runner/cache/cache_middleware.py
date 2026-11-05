@@ -340,6 +340,10 @@ class CacheMiddlewareApp(FastAPI):
 
     def _get_headers(self, request):
         allowed_headers = ["accept-encoding", "accept", "connection", "content-type", "api-key"]
+        if request.url.path.startswith("/v2/"):
+            # Project files (v2): the write flows depend on preconditions and ranged reads.
+            # Kept off v1, where the existing suites have always run without them.
+            allowed_headers += ["if-match", "if-none-match", "range"]
         headers = dict(
             (key, request.headers.get(key))
             for key in request.headers.keys()

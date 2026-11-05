@@ -185,6 +185,10 @@ class UserMessage(BaseModel):
     attachment_checks: list[AttachmentCheck] | None = None
     answer: list[str] | None = None
     answer_not_contains: list[str] | None = None
+    answer_contains: list[str] | None = None
+    """Exact substrings the response must contain (e.g. a marker token)."""
+    new_conversation: bool = False
+    """Send this message as the first one of a fresh conversation (same app and headers)."""
     usage_statistics_contains: list[str] | None = None
     usage_statistics_not_contains: list[str] | None = None
     external_tool_calls: list[ToolCall] | None = None
@@ -222,6 +226,12 @@ class TstCase:
         self.tools = tools
         self.tools_payload_absent: list[str] = []
         self.tools_payload_present: list[str] = []
+        self.headers_factory: Callable[[], dict[str, str]] | None = None
+
+    def with_headers(self, headers_factory: Callable[[], dict[str, str]]):
+        """Extra request headers, resolved when the case runs (e.g. from a module fixture)."""
+        self.headers_factory = headers_factory
+        return self
 
     def add_tools_payload_check(
         self, absent: list[str] | None = None, present: list[str] | None = None
@@ -243,6 +253,8 @@ class TstCase:
         answer_not_contains: list[str] | None = None,
         usage_statistics_contains: list[str] | None = None,
         usage_statistics_not_contains: list[str] | None = None,
+        answer_contains: list[str] | None = None,
+        new_conversation: bool = False,
     ):
         tool_calls, attachment_checks = self._adjust_thresholds(tool_calls, attachment_checks)
         if external_tool_calls:
@@ -255,6 +267,8 @@ class TstCase:
                 attachment_checks=attachment_checks,
                 answer=answer,
                 answer_not_contains=answer_not_contains,
+                answer_contains=answer_contains,
+                new_conversation=new_conversation,
                 usage_statistics_contains=usage_statistics_contains,
                 usage_statistics_not_contains=usage_statistics_not_contains,
                 external_tool_calls=external_tool_calls,
