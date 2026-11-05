@@ -67,7 +67,7 @@ class DialFilePromoter:
                 raise InvalidToolCallParameterException(
                     parameter_name=parameter_name, message=str(exc)
                 ) from exc
-            return await self.__attachment_service.upload_bytes(
+            return await self.__attachment_service.upload_appdata_bytes(
                 data=fetched.data,
                 content_type=fetched.content_type,
                 filename=fetched.filename,

@@ -55,7 +55,7 @@ class ToolCallResultOffloadProcessor(ToolCallResultProcessor):
         )
 
         try:
-            uploaded = await self._attachment_service.upload_attachment_to_core(upload_attachment)
+            uploaded = await self._attachment_service.upload_appdata_attachment(upload_attachment)
             if uploaded.url is None:
                 raise RuntimeError("Upload returned no URL")
         except Exception:
