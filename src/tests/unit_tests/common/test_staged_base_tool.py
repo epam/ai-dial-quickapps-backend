@@ -1,7 +1,8 @@
 import logging
+import re
 import time
 from typing import Any
-from unittest.mock import Mock
+from unittest.mock import ANY, AsyncMock, Mock, patch
 
 import pytest
 from aidial_sdk.chat_completion import Attachment, Status
@@ -10,13 +11,14 @@ from injector import AssistedBuilder
 from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.chat_completion_stream.adopted_tool_stage import AdoptedToolStage
+from quickapp.common.exceptions import FallbackAgentStopException
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
 from quickapp.config.application import StageDisplayLevel
 from quickapp.config.tools.base import AttachmentConfig
 from quickapp.config.tools.display.tool import ToolDisplayConfig, ToolStageConfig
 from quickapp.config.tools.tool import AnyTool
-from quickapp.config.tools.tool_fallback import ToolFallbackConfig
+from quickapp.config.tools.tool_fallback import HardStopStrategyModel, ToolFallbackConfig
 
 
 class CustomTestStagedBaseTool(StagedBaseTool):
@@ -476,7 +478,7 @@ async def test_error_during_suppressed_stage_opens_stage_and_returns_fallback(
 
     on_the_fly_stage = mock_stage_wrapper_factory.build.return_value
     # The error was written into the on-the-fly stage
-    on_the_fly_stage.add_exception.assert_called_once_with(error)
+    on_the_fly_stage.add_exception.assert_called_once_with(error, ANY)
     # The stage was opened and closed
     on_the_fly_stage.__enter__.assert_called_once()
     on_the_fly_stage.__exit__.assert_called_once()
@@ -508,3 +510,63 @@ async def test_error_at_none_level_no_stage_and_returns_fallback(
     # A result was returned (fallback), not an exception
     assert result is not None
     assert result.tool_call_id == "call-id"
+
+
+@pytest.mark.asyncio
+async def test_error_reference_is_logged_and_shown_in_stage(mock_stage_wrapper_factory, caplog):
+    tool = FailingTestTool(
+        stage_wrapper_builder=mock_stage_wrapper_factory,
+        tool_config=_make_tool_config(),
+        perf_timer=Mock(),
+        error=RuntimeError("boom"),
+    )
+
+    with caplog.at_level(logging.WARNING):
+        await tool.arun("call-id")
+
+    stage = mock_stage_wrapper_factory.build.return_value
+    error_reference = stage.add_exception.call_args.args[1]
+    assert re.fullmatch(r"[0-9a-f]{8}", error_reference)
+    assert f"error_reference={error_reference}" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_stop_fallback_carries_the_stage_error_reference(mock_stage_wrapper_factory):
+    tool_config = _make_tool_config()
+    tool_config.fallback_configuration = ToolFallbackConfig(
+        display_error_in_stage=True, strategies=[HardStopStrategyModel()]
+    )
+    tool = FailingTestTool(
+        stage_wrapper_builder=mock_stage_wrapper_factory,
+        tool_config=tool_config,
+        perf_timer=Mock(),
+        error=RuntimeError("boom"),
+    )
+
+    with pytest.raises(FallbackAgentStopException) as excinfo:
+        await tool.arun("call-id")
+
+    stage = mock_stage_wrapper_factory.build.return_value
+    assert excinfo.value.error_reference == stage.add_exception.call_args.args[1]
+
+
+@pytest.mark.asyncio
+async def test_tool_parameter_named_error_reference_reaches_the_tool(
+    mock_stage_wrapper_factory, mock_tool_config
+):
+    tool = CustomTestStagedBaseTool(
+        stage_wrapper_builder=mock_stage_wrapper_factory,
+        tool_config=mock_tool_config,
+        perf_timer=Mock(),
+    )
+
+    with patch.object(
+        CustomTestStagedBaseTool,
+        "_run_in_stage_async",
+        new_callable=AsyncMock,
+        return_value=ToolCallResult(content="ok", content_type="text/plain"),
+    ) as run:
+        await tool.arun("call-id", error_reference="from-the-model")
+
+    assert run.call_args.kwargs["error_reference"] == "from-the-model"
+    mock_stage_wrapper_factory.build.return_value.add_exception.assert_not_called()

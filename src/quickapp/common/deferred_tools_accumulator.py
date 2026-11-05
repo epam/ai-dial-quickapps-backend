@@ -70,13 +70,14 @@ class DeferredToolsAccumulator:
     def deferred_names(self) -> frozenset[str]:
         return frozenset(self._definitions.keys())
 
+    # Sorted: toolsets may register in parallel, in completion order.
     @property
     def catalog(self) -> list[dict[str, str]]:
-        return list(self._catalog)
+        return sorted(self._catalog, key=lambda e: e["name"])
 
     @property
     def toolset_summaries(self) -> list[dict[str, str | int | None]]:
-        return list(self._toolset_summaries)
+        return sorted(self._toolset_summaries, key=lambda e: str(e["name"]))
 
     def get_definition(self, name: str) -> OpenAiToolConfigDict | None:
         return self._definitions.get(name)

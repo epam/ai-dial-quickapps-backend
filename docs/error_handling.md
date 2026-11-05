@@ -13,7 +13,7 @@ Quick Apps surfaces failures in three distinct ways, each aimed at a different a
 |---|---|---|---|
 | **Request failure** | Something aborts the whole turn — the AI model call fails, a required service is unavailable, or the app hits an internal error | A true error state: an explanation of the cause plus an error reference, rendered by the client as an error rather than as a chat reply | This document |
 | **Initialization issues** | Some tools or skills fail to load, but the request can still proceed without them | A diagnostic *Initialization issues* stage above a normal, successful answer — aimed at the app builder fixing their manifest | [Agent Design §6](agent.md#6-error-handling) |
-| **Tool-execution fallbacks** | A single tool call fails mid-conversation and the tool's configured fallback strategy decides what happens next | Usually nothing directly — the agent is instructed to recover, retry, or explain the failure in its own words | [Agent Design — Tool System](agent.md#error-handling) |
+| **Tool-execution fallbacks** | A single tool call fails mid-conversation and the tool's configured fallback strategy decides what happens next | The tool stage shows the error and an error reference; the agent is instructed to recover, retry, or explain the failure in its own words | [Agent Design — Tool System](agent.md#error-handling) |
 
 The rest of this document covers the first surface.
 
@@ -61,6 +61,9 @@ The message is selected by a fixed precedence — the most specific and trustwor
    advice could contradict a precise upstream explanation.
 2. **Known error codes.** A curated set of causes gets tailored, actionable advice: content-policy
    rejections ("please rephrase your message"), context-window overflows ("please shorten your messages").
+   Some providers report an overflow as a plain 400 with no specific error code; a known provider overflow
+   wording in the internal message is then treated the same way (the internal message itself is still never
+   shown).
 3. **Status-class messages.** Failing that, the status determines a canned message, worded for the failing
    component: *AI model* wording when the model call failed, *service* wording when a platform service did.
    Authentication, permission, not-found, payload-size, rate-limit, timeout, and connectivity causes each
@@ -87,8 +90,9 @@ be false hope. The classification is also recorded in the log entry for operator
 is therefore stamped with a short opaque reference that appears in **both** places:
 
 - **In the user-facing text** — `<message> (error reference: a1b2c3d4)`.
-- **In a single server log record** — together with the full stack trace, the internal error details, and
-  the retryability classification.
+- **In the server logs** — one record for the request failure, with the full stack trace, the internal error
+  details, and the retryability classification. When a tool's `stop` fallback ended the turn, the tool's
+  "Tool call failed" warning carries the same reference.
 
 The workflow: the user reports the reference (a screenshot or copy-paste suffices) → the administrator greps
 the application logs for it → the matching record has everything needed to diagnose the failure. Internal

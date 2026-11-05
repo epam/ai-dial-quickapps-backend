@@ -229,6 +229,21 @@ class TestToolsetSummaries:
             {"name": "toolset_b", "description": None, "tool_count": 2},
         ]
 
+    def test_catalog_and_summaries_do_not_follow_registration_order(self):
+        """Toolsets may register in parallel, in completion order."""
+        context = DeferredToolsAccumulator()
+        context.register_deferred_tools(
+            RestApiToolSet(name="toolset_b", tools=[]),
+            [_make_staged_tool(_make_rest_api_tool_with_const_param("tool_b"))],
+        )
+        context.register_deferred_tools(
+            RestApiToolSet(name="toolset_a", tools=[]),
+            [_make_staged_tool(_make_rest_api_tool_with_const_param("tool_a"))],
+        )
+
+        assert [e["name"] for e in context.catalog] == ["tool_a", "tool_b"]
+        assert [s["name"] for s in context.toolset_summaries] == ["toolset_a", "toolset_b"]
+
 
 class TestRegistrationIdempotency:
     """Unscoped providers re-register the same toolset several times per request."""

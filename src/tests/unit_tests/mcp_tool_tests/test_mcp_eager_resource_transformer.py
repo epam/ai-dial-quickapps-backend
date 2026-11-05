@@ -263,3 +263,14 @@ async def test_transform_partially_seen_resource_only_new_injected():
     new_tool_msgs = [m for m in result if m.role == Role.TOOL]
     assert len(new_tool_msgs) == 1
     assert new_tool_msgs[0].content == "b text"
+
+
+@pytest.mark.asyncio
+async def test_transform_injects_in_toolset_name_order_not_publish_order():
+    r1 = _eager("urn://b", "ts2", "b text")
+    r2 = _eager("urn://a", "ts1", "a text")
+    transformer = _MCPEagerResourceTransformer(_make_context([r1, r2]))
+
+    result = await transformer.transform([_user_msg()])
+
+    assert [m.content for m in result if m.role == Role.TOOL] == ["a text", "b text"]
