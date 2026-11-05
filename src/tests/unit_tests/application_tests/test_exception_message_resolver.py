@@ -4,6 +4,7 @@ import pytest
 from aidial_sdk.exceptions import ContextLengthExceededError as AiDialContextLengthError
 from aidial_sdk.exceptions import InvalidRequestError as AiDialInvalidRequestError
 
+from quickapp.common.error_details import RETRY_SENTENCE
 from quickapp.common.exceptions import (
     FallbackAgentStopException,
     OrchestratorExceedMaxIterationsException,
@@ -11,7 +12,6 @@ from quickapp.common.exceptions import (
 )
 from quickapp.core.application._exception_message_resolver import (
     _MSG_FALLBACK_STOP,
-    _RETRY_SENTENCE,
     resolve_exception,
 )
 from quickapp.dial_core_services.exceptions import (
@@ -93,7 +93,7 @@ class TestResolveOpenAIError:
         e = _make_openai_status_error(openai.ConflictError, 409)
         resolved = resolve_exception(e)
         assert resolved.retryable is True
-        assert resolved.message.endswith(_RETRY_SENTENCE)
+        assert resolved.message.endswith(RETRY_SENTENCE)
 
     def test_payload_too_large(self) -> None:
         e = _make_openai_status_error(openai.APIStatusError, 413)
@@ -216,7 +216,7 @@ class TestDisplayMessagePreference:
         # Classified retryable (5xx) for logging, but the upstream text is used verbatim.
         assert resolved.retryable is True
         assert resolved.message == "Upstream is down."
-        assert not resolved.message.endswith(_RETRY_SENTENCE)
+        assert not resolved.message.endswith(RETRY_SENTENCE)
 
     def test_whitespace_only_display_message_falls_through(self) -> None:
         e = _make_openai_status_error(
@@ -263,12 +263,71 @@ class TestCodeMap:
         assert "context length" in resolve_exception(e).message.lower()
 
 
+class TestMessagePatterns:
+    @pytest.mark.parametrize(
+        "upstream_message",
+        [
+            "prompt is too long: 1008024 tokens > 1000000 maximum",
+            "The input token count (1100000) exceeds the maximum number of tokens allowed (1048576).",
+        ],
+    )
+    def test_context_overflow_wording_on_codeless_400(self, upstream_message: str) -> None:
+        e = _make_openai_status_error(
+            openai.BadRequestError,
+            400,
+            body={"error": {"code": "400", "message": upstream_message}},
+        )
+        resolved = resolve_exception(e)
+        assert "context length" in resolved.message.lower()
+        assert resolved.retryable is False
+
+    def test_context_overflow_wording_mid_stream(self) -> None:
+        e = _make_openai_api_error(
+            body={"code": "400", "message": "prompt is too long: 1008024 tokens > 1000000 maximum"}
+        )
+        assert "context length" in resolve_exception(e).message.lower()
+
+    def test_context_overflow_wording_on_aidial_exception(self) -> None:
+        e = AiDialInvalidRequestError(
+            message="prompt is too long: 1008024 tokens > 1000000 maximum"
+        )
+        assert "context length" in resolve_exception(e).message.lower()
+
+    def test_context_overflow_raw_detail_not_leaked(self) -> None:
+        e = _make_openai_status_error(
+            openai.BadRequestError,
+            400,
+            body={"error": {"message": "prompt is too long: 1008024 tokens > 1000000 maximum"}},
+        )
+        message = resolve_exception(e).message
+        assert "1008024" not in message
+        assert "prompt is too long" not in message
+
+    def test_unrelated_400_message_stays_invalid_request(self) -> None:
+        e = _make_openai_status_error(
+            openai.BadRequestError,
+            400,
+            body={"error": {"code": "400", "message": "messages: unexpected role"}},
+        )
+        assert "rejected as invalid" in resolve_exception(e).message.lower()
+
+    def test_context_overflow_wording_on_non_400_uses_status_ladder(self) -> None:
+        e = _make_openai_status_error(
+            openai.InternalServerError,
+            500,
+            body={"error": {"message": "prompt is too long: 1008024 tokens > 1000000 maximum"}},
+        )
+        resolved = resolve_exception(e)
+        assert "context length" not in resolved.message.lower()
+        assert resolved.retryable is True
+
+
 class TestStreamFailure:
     def test_plain_api_error_without_body_is_stream_failure(self) -> None:
         resolved = resolve_exception(_make_openai_api_error(body=None))
         assert "failed while responding" in resolved.message.lower()
         assert resolved.retryable is True
-        assert resolved.message.endswith(_RETRY_SENTENCE)
+        assert resolved.message.endswith(RETRY_SENTENCE)
 
     def test_mid_stream_numeric_code_backfills_to_status_ladder(self) -> None:
         # DIAL defaults code to str(status); a mid-stream 429 carries code="429" and no
@@ -286,13 +345,13 @@ class TestRetryabilityComposition:
     def test_retryable_appends_retry_sentence_once(self) -> None:
         resolved = resolve_exception(_make_openai_status_error(openai.InternalServerError, 500))
         assert resolved.retryable is True
-        assert resolved.message.endswith(_RETRY_SENTENCE)
-        assert resolved.message.count(_RETRY_SENTENCE) == 1
+        assert resolved.message.endswith(RETRY_SENTENCE)
+        assert resolved.message.count(RETRY_SENTENCE) == 1
 
     def test_non_retryable_has_no_retry_sentence(self) -> None:
         resolved = resolve_exception(_make_openai_status_error(openai.PermissionDeniedError, 403))
         assert resolved.retryable is False
-        assert not resolved.message.endswith(_RETRY_SENTENCE)
+        assert not resolved.message.endswith(RETRY_SENTENCE)
 
     def test_connection_error_is_non_retryable(self) -> None:
         resolved = resolve_exception(openai.APIConnectionError(request=_make_httpx_request()))
@@ -301,7 +360,7 @@ class TestRetryabilityComposition:
     def test_network_error_is_retryable(self) -> None:
         resolved = resolve_exception(httpx.NetworkError("reset"))
         assert resolved.retryable is True
-        assert resolved.message.endswith(_RETRY_SENTENCE)
+        assert resolved.message.endswith(RETRY_SENTENCE)
 
 
 class TestExtraction:

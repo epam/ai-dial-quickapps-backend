@@ -1,6 +1,5 @@
 import logging
 import time
-import uuid
 from collections import Counter
 
 from aidial_sdk.chat_completion import ChatCompletion, Request, Response
@@ -10,7 +9,8 @@ from injector import Injector, inject
 
 from quickapp.common import InitializerType, StagedBaseTool
 from quickapp.common.base_initializer import invoke_initializers
-from quickapp.common.exceptions import ConfigResolutionException
+from quickapp.common.error_details import new_error_reference
+from quickapp.common.exceptions import ConfigResolutionException, FallbackAgentStopException
 from quickapp.common.lifecycle_logging import format_duration, format_event
 from quickapp.common.model_hidden_tool import ModelHiddenTool
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
@@ -39,6 +39,13 @@ def _outgoing_status_code(resolved: ResolvedError) -> int:
     if status in _CLIENT_ERROR_STATUS_CODES:
         return status
     return 500
+
+
+def _error_reference_for(e: Exception) -> str:
+    # A stop fallback already showed this reference in the tool stage; reuse it.
+    if isinstance(e, FallbackAgentStopException) and e.error_reference:
+        return e.error_reference
+    return new_error_reference()
 
 
 # The _QuickAppCompletion class is a dependency-injected implementation of the ChatCompletion interface.
@@ -103,7 +110,7 @@ class _QuickAppCompletion(ChatCompletion):
                 # (or an SSE error chunk once the choice has opened the stream).
                 failed = True
                 outcome = "failed"
-                error_reference = uuid.uuid4().hex[:8]
+                error_reference = _error_reference_for(e)
                 self.__handle_exception(e, error_reference)
             finally:
                 timer_service.stop_period(self.__timer_period_name)
