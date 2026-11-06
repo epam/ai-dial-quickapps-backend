@@ -35,6 +35,7 @@ from quickapp.mcp_tooling._mcp_tool_error_exception import MCPToolErrorException
 from quickapp.mcp_tooling._mcp_toolset_client import _MCPToolsetClient
 from quickapp.mcp_tooling._mcp_unauthorized_exception import MCPUnauthorizedException
 from quickapp.shared.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
+from quickapp.skills.skill_file_url import skill_root_of_file_url
 
 logger = logging.getLogger(__name__)
 
@@ -112,14 +113,18 @@ class _MCPTool(StagedBaseTool):
         return {k: v for k, v in params.items() if k not in self.__fixed_arguments}
 
     def _collect_dial_url_files(self, kwargs: dict[str, Any]) -> list[str]:
-        """Collect the values of ``dial_url``-flagged parameters as DIAL file paths.
+        """Collect the DIAL resources to grant for ``dial_url``-flagged parameters.
+
+        A DIAL file is granted as is; a skill file is granted through its skill root,
+        because Core treats a skill as one resource. The result is de-duplicated, so
+        several files of one skill cost one grant.
 
         External or unsupported URLs are rejected with a parameter-aware
         ``InvalidToolCallParameterException`` — ``dial_url`` parameters require a
         DIAL file because permission-grant has no meaning for external resources.
         """
         properties = self.__tool.inputSchema.get("properties", {})
-        files_to_share: list[str] = []
+        resources: list[str] = []
         for key, value in kwargs.items():
             if not properties.get(key, {}).get("dial_url"):
                 continue
@@ -128,30 +133,42 @@ class _MCPTool(StagedBaseTool):
                 candidates.append(value)
             elif isinstance(value, list):
                 candidates.extend(elem for elem in value if isinstance(elem, str))
-            for candidate in candidates:
-                scheme = classify_url(candidate, self.__dial_url)
-                if scheme == UrlScheme.EXTERNAL:
-                    raise InvalidToolCallParameterException(
-                        parameter_name=key,
-                        message=(
-                            f"Parameter `{key}` requires a DIAL file but received an "
-                            "external URL. Use `file:data::` or `file:base64::` / "
-                            "`file:text::` to "
-                            "inline the content, or upload the file to DIAL first."
-                        ),
-                    )
-                # TODO(#445): resolve appdir-relative paths via HomePathResolver
-                #  instead of rejecting them.
-                if scheme in (UrlScheme.UNSUPPORTED, UrlScheme.DIAL_APPDIR_RELATIVE):
-                    raise InvalidToolCallParameterException(
-                        parameter_name=key,
-                        message=(
-                            f"Parameter `{key}` requires a DIAL file but received an "
-                            f"unsupported URL: {sanitize_url(candidate)}."
-                        ),
-                    )
-            files_to_share.extend(candidates)
-        return files_to_share
+            resources.extend(self._grant_resource(key, candidate) for candidate in candidates)
+        return list(dict.fromkeys(resources))
+
+    def _grant_resource(self, key: str, candidate: str) -> str:
+        """The resource to grant for one ``dial_url`` value.
+
+        Core cannot grant a single skill file, so a skill file URL maps to its skill root.
+        """
+        skill_root = skill_root_of_file_url(candidate)
+        if skill_root is not None:
+            return skill_root
+        self._validate_dial_file(key, candidate)
+        return candidate
+
+    def _validate_dial_file(self, key: str, candidate: str) -> None:
+        scheme = classify_url(candidate, self.__dial_url)
+        if scheme == UrlScheme.EXTERNAL:
+            raise InvalidToolCallParameterException(
+                parameter_name=key,
+                message=(
+                    f"Parameter `{key}` requires a DIAL file but received an "
+                    "external URL. Use `file:data::` or `file:base64::` / "
+                    "`file:text::` to "
+                    "inline the content, or upload the file to DIAL first."
+                ),
+            )
+        # TODO(#445): resolve appdir-relative paths via HomePathResolver
+        #  instead of rejecting them.
+        if scheme in (UrlScheme.UNSUPPORTED, UrlScheme.DIAL_APPDIR_RELATIVE):
+            raise InvalidToolCallParameterException(
+                parameter_name=key,
+                message=(
+                    f"Parameter `{key}` requires a DIAL file but received an "
+                    f"unsupported URL: {sanitize_url(candidate)}."
+                ),
+            )
 
     def _resource_title(self, resource: Any) -> str:
         """Use the filename the MCP server put in ``resource.uri``, when it has one."""

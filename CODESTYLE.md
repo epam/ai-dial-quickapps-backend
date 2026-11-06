@@ -105,6 +105,7 @@ def __init__(self, ..., agent_settings: AgentSettings) -> None:
 
 - **Protected by default**: Use a single leading underscore (`_`) for class attributes and methods that are internal to the class or module.
 - **Public only when needed**: Expose public attributes (no underscore) only when they are part of the intended external API.
+- **Underscore modules are package-private**: A module whose filename starts with `_` (e.g. `_skills_registry.py`) is internal to its package. Production code outside that package must not import from it — that is access to a protected member, even when the class inside has a public name. Import from the package itself (`from quickapp.skills.registry import SkillsRegistry`), so a class meant for use elsewhere is re-exported in the package's `__init__.py`; otherwise it is not part of the package's API. Constants shared across packages belong in a public module (e.g. `common/`). Imports between modules of the same package are fine. Tests are exempt, since they exercise internals.
 - This keeps the public surface small and makes refactoring safer.
 
 ---
@@ -134,6 +135,7 @@ def __init__(self, ..., agent_settings: AgentSettings) -> None:
 - **Logical separation**: Group related classes and functions into modules. Each module should have a clear purpose or feature.
 - **Small focused functions**: A function or method should do one job and be readable without scrolling. If it is long or runs several distinct phases in a row (e.g. validate → build → route/register, a side-effect block like logging next to the main flow, a large loop or branch body), extract each phase into a named `_private` function/method so the caller reads as a short sequence of steps. When extending an existing function, judge the result as a whole and extract the new or the old part rather than appending inline. Don't split into one-liners for the sake of it.
 - **Explicit imports**: Avoid `from module import *`. Import only what you use.
+- **No imports of another package's `_` modules**: see §3. If you need something that lives in a package-private module, re-export it from that package's `__init__.py` (or move it to a public module) instead of reaching into the `_` module.
 - **Import order**: Standard library → third-party → local/project modules, with a blank line between each group.
 
 ---
@@ -203,6 +205,6 @@ Pick the level from what the record *means for the service*, not from how it rea
 - **DI**: Cross-module use of services or config goes through constructor injection; types are bound in a module’s `configure()`; no direct instantiation of other modules’ types in business code.
 - **Env**: Env-based config lives in a pydantic-settings class per module (or shared in `common/`), bound in the injector and injected; no `os.getenv` in application/tooling code.
 - **Naming**: Module class `XxxModule`, settings class `XxxSettings`, env names preserved via `Field(alias="ENV_VAR_NAME")`.
-- **Visibility**: Prefer protected (`_`) for internals; public only for the intended API.
+- **Visibility**: Prefer protected (`_`) for internals; public only for the intended API. Never import from another package's `_`-prefixed module in production code — go through the package's `__init__.py`.
 - **Types**: Use type hints and modern generics; use Pydantic for validation and complex arguments (not `@dataclass`); avoid mutable defaults in Pydantic fields.
 - **Structure**: Clear module boundaries, explicit imports, no complex logic in class bodies, logging instead of print, declared dependencies, functions and methods that do one job (no long multi-phase "noodle" functions).

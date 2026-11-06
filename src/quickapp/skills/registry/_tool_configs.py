@@ -42,10 +42,12 @@ SKILL_READER_TOOL_CONFIG = InternalTool(
                     "file_path": ConfigurableSchemaSimpleType(
                         type=JsonTypeEnum.string,
                         description=(
-                            "Optional. Path of a file bundled with the skill, relative to the"
-                            " skill root, written exactly as listed in that skill's"
-                            " <skill_files> block (e.g. references/api-schema.md). Omit it to"
-                            " read the skill's instructions."
+                            "Optional. A file bundled with the skill, written exactly as listed"
+                            " in that skill's <skill_files> block: a"
+                            " skill://<skill_name>/<path> reference (e.g."
+                            " skill://my-skill/references/api-schema.md) or the bare path"
+                            " inside the skill (references/api-schema.md). Omit it to read"
+                            " the skill's instructions."
                         ),
                         display=ParameterDisplayConfig(stage=FormattedParameterConfig(ignore=True)),
                     ),

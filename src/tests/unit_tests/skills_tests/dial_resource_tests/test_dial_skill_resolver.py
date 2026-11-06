@@ -52,7 +52,12 @@ class TestResolve:
         skill = output.resolved[0]
         assert skill.metadata.name == "refund-policy"
         assert skill.files == ("references/eu.md", "references/us.md")
-        assert "<skill_files>\nreferences/eu.md\nreferences/us.md\n</skill_files>" in skill.content
+        assert (
+            "<skill_files>\n"
+            "skill://refund-policy/references/eu.md\n"
+            "skill://refund-policy/references/us.md\n"
+            "</skill_files>"
+        ) in skill.content
         assert skill.content.startswith("---")
 
     @pytest.mark.asyncio
@@ -81,7 +86,7 @@ class TestResolve:
         skill = (await resolver.resolve([_config("skills/b/x")])).resolved[0]
 
         # An escaped path would advertise a name no lookup resolves.
-        assert "references/user's-guide.md" in skill.content
+        assert "skill://refund-policy/references/user's-guide.md" in skill.content
         assert "&apos;" not in skill.content
 
     @pytest.mark.asyncio

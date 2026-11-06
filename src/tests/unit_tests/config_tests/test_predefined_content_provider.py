@@ -41,6 +41,7 @@ class TestBuiltinLayer:
     def test_lists_builtin_skills(self, builtin_provider: PredefinedContentProvider):
         names = builtin_provider.list_names(ContentType.SKILL)
         assert "tool-call-file-parameter-formatting" in names
+        assert "tool-call-skill-file-references" in names
 
     def test_builtin_default_configuration_is_dict(
         self, builtin_provider: PredefinedContentProvider

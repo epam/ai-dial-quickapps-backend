@@ -8,6 +8,7 @@ from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.state_holder import StateHolder
 from quickapp.dial_core_services.dial_downloader import DialDownloader
+from quickapp.file_transfer import FileSource
 from quickapp.file_transfer._file_loader_service import FileLoaderService
 from quickapp.shared.external_fetch.external_url_fetcher import (
     ExternalFetchDisabledError,
@@ -35,13 +36,22 @@ def _make_loader(
     dial_downloader: MagicMock | None = None,
     fetcher: MagicMock | None = None,
     state_holder: StateHolder | None = None,
+    file_sources: list[FileSource] | None = None,
 ) -> FileLoaderService:
     return FileLoaderService(
         dial_downloader=dial_downloader or MagicMock(spec=DialDownloader),
         external_fetcher=fetcher or MagicMock(spec=ExternalUrlFetcher),
         state_holder=state_holder or StateHolder(),
         dial_settings=_settings(),
+        file_sources=file_sources or [],
     )
+
+
+def _source(prefix: str = "skill://", data: bytes = b"src") -> MagicMock:
+    source = MagicMock(spec=FileSource)
+    source.handles = MagicMock(side_effect=lambda url: url.startswith(prefix))
+    source.load = AsyncMock(return_value=data)
+    return source
 
 
 @pytest.mark.asyncio
@@ -270,3 +280,62 @@ async def test_external_disabled_error_translated_to_invalid_param():
     with pytest.raises(InvalidToolCallParameterException) as excinfo:
         await loader.load("https://example.com/x", parameter_name="content")
     assert excinfo.value.parameter_name == "content"
+
+
+@pytest.mark.asyncio
+async def test_file_source_serves_the_url_it_handles():
+    dial_dl = MagicMock(spec=DialDownloader)
+    dial_dl.fetch = AsyncMock()
+    fetcher = MagicMock(spec=ExternalUrlFetcher)
+    fetcher.fetch = AsyncMock()
+    source = _source()
+
+    loader = _make_loader(dial_downloader=dial_dl, fetcher=fetcher, file_sources=[source])
+    result = await loader.load("skill://s/a.py", parameter_name="p")
+
+    assert result == b"src"
+    source.load.assert_awaited_once_with("skill://s/a.py", "p")
+    dial_dl.fetch.assert_not_awaited()
+    fetcher.fetch.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_file_source_result_is_cached_per_request():
+    source = _source()
+
+    loader = _make_loader(file_sources=[source])
+    await loader.load("skill://s/a.py")
+    await loader.load("skill://s/a.py")
+
+    source.load.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_file_source_content_type_is_guessed_from_file_name():
+    loader = _make_loader(file_sources=[_source()])
+
+    data, content_type = await loader.load_with_content_type("skill://s/scripts/a.py")
+
+    assert data == b"src"
+    assert content_type == "text/x-python"
+
+
+@pytest.mark.asyncio
+async def test_skill_url_without_sources_is_unsupported():
+    loader = _make_loader()
+
+    with pytest.raises(InvalidToolCallParameterException, match="URL scheme not supported"):
+        await loader.load("skill://s/a.py")
+
+
+@pytest.mark.asyncio
+async def test_url_no_source_handles_goes_through_dial_branch():
+    dial_dl = MagicMock(spec=DialDownloader)
+    dial_dl.fetch = AsyncMock(return_value=(b"dial-bytes", _metadata()))
+    source = _source()
+
+    loader = _make_loader(dial_downloader=dial_dl, file_sources=[source])
+    result = await loader.load("files/bucket/x.pdf")
+
+    assert result == b"dial-bytes"
+    source.load.assert_not_awaited()

@@ -2,7 +2,6 @@ import asyncio
 import logging
 import mimetypes
 
-from aidial_client.types.metadata import FileMetadata
 from injector import inject
 
 from quickapp.common.dial_settings import DialSettings
@@ -10,6 +9,7 @@ from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.state_holder import StateHolder
 from quickapp.common.url_classification import UrlScheme, classify_url, unsupported_scheme_error
 from quickapp.dial_core_services.dial_downloader import DialDownloader
+from quickapp.file_transfer.file_source import FileSource
 from quickapp.shared.external_fetch.external_url_fetcher import (
     ExternalFetchDisabledError,
     ExternalFetchError,
@@ -44,7 +44,9 @@ class FileLoaderService:
         external_fetcher: ExternalUrlFetcher,
         state_holder: StateHolder,
         dial_settings: DialSettings,
+        file_sources: list[FileSource],
     ) -> None:
+        self.__file_sources = file_sources
         self.__dial_downloader = dial_downloader
         self.__external_fetcher = external_fetcher
         self.__state_holder = state_holder
@@ -87,26 +89,39 @@ class FileLoaderService:
         return _DEFAULT_CONTENT_TYPE
 
     async def __do_load(self, url: str, parameter_name: str) -> bytes:
-        scheme = classify_url(url, self.__dial_url)
-        metadata: FileMetadata | None = None
-        content_type: str | None = None
-        if scheme == UrlScheme.DIAL:
-            data, metadata = await self.__dial_downloader.fetch(url)
-        elif scheme == UrlScheme.EXTERNAL:
-            try:
-                fetched = await self.__external_fetcher.fetch(url)
-            except (ExternalFetchError, ExternalFetchDisabledError) as exc:
-                raise InvalidToolCallParameterException(
-                    parameter_name=parameter_name, message=str(exc)
-                ) from exc
-            data = fetched.data
-            content_type = fetched.content_type
-        else:
-            raise unsupported_scheme_error(url, parameter_name)
+        source = next((s for s in self.__file_sources if s.handles(url)), None)
+        if source is not None:
+            return await self.__load_from_source(source, url, parameter_name)
 
-        # Store metadata alongside the bytes on the DIAL branch so a later
-        # DialFileService.download_file cache-hit returns a real FileMetadata
-        # (callers like _edit_file_tool need metadata.etag for If-Match).
-        # External Content-Type is stored separately for data: URI envelopes.
-        self.__state_holder.store_file_data(url, data, metadata, content_type=content_type)
+        scheme = classify_url(url, self.__dial_url)
+        if scheme == UrlScheme.DIAL:
+            return await self.__load_dial(url)
+        if scheme == UrlScheme.EXTERNAL:
+            return await self.__load_external(url, parameter_name)
+        raise unsupported_scheme_error(url, parameter_name)
+
+    async def __load_from_source(self, source: FileSource, url: str, parameter_name: str) -> bytes:
+        data = await source.load(url, parameter_name)
+        self.__state_holder.store_file_data(url, data, None)
         return data
+
+    async def __load_dial(self, url: str) -> bytes:
+        data, metadata = await self.__dial_downloader.fetch(url)
+        # Store the metadata alongside the bytes so a later DialFileService.download_file
+        # cache-hit returns a real FileMetadata (callers like _edit_file_tool need
+        # metadata.etag for If-Match).
+        self.__state_holder.store_file_data(url, data, metadata)
+        return data
+
+    async def __load_external(self, url: str, parameter_name: str) -> bytes:
+        try:
+            fetched = await self.__external_fetcher.fetch(url)
+        except (ExternalFetchError, ExternalFetchDisabledError) as exc:
+            raise InvalidToolCallParameterException(
+                parameter_name=parameter_name, message=str(exc)
+            ) from exc
+        # The external Content-Type is stored separately for data: URI envelopes.
+        self.__state_holder.store_file_data(
+            url, fetched.data, None, content_type=fetched.content_type
+        )
+        return fetched.data
