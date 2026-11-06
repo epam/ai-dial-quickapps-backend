@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Callable
 from typing import Any, ClassVar
 
 import httpx
@@ -32,7 +33,7 @@ class _RestApiTool(StagedBaseTool):
     def __init__(
         self,
         auth_info: Authorization,
-        request_details_builder: _RequestDetailsBuilder,
+        request_details_builder_factory: Callable[[], _RequestDetailsBuilder],
         tool_config: RestApiTool,
         stage_wrapper_builder: AssistedBuilder[_RestApiStageWrapper],
         dial_attachment_service: AttachmentService,
@@ -51,7 +52,8 @@ class _RestApiTool(StagedBaseTool):
             stage_display_level=stage_display_level,
             argument_transformers=argument_transformers,
         )
-        self.__request_details_builder: _RequestDetailsBuilder = request_details_builder
+        # The builder is stateful: the factory must return a new one per call.
+        self.__request_details_builder_factory = request_details_builder_factory
         self.stage_name_component = f"Calling {tool_config.rest_api_method_info.method_url}"
         self.__auth_info: Authorization = auth_info
         self._tool_config: RestApiTool = tool_config
@@ -69,9 +71,8 @@ class _RestApiTool(StagedBaseTool):
         timeout = self.__timeout_resolver.resolve()
         async with translate_timeout(self._tool_config.open_ai_tool.function.name, timeout):
             request_details = (
-                self.__request_details_builder.with_url(
-                    self._tool_config.rest_api_method_info.method_url
-                )
+                self.__request_details_builder_factory()
+                .with_url(self._tool_config.rest_api_method_info.method_url)
                 .with_method(self._tool_config.rest_api_method_info.method_type)
                 .with_parameters(
                     self._tool_config.open_ai_tool.function.parameters.properties,
