@@ -101,6 +101,41 @@ async def test_history_propagation_enabled(completion_service, azure_client, moc
 
 
 @pytest.mark.asyncio
+async def test_system_prompt_is_sent_before_history(
+    completion_service, azure_client, mock_stage_wrapper
+):
+    await completion_service.complete_request_async(
+        params={"query": "Test query"},
+        deployment_id="test-deployment",
+        deployment_name="Test Deployment",
+        stage_wrapper=mock_stage_wrapper,
+        history=[UserMessageParam(role="user", content="First question")],
+        system_prompt="Be brief",
+    )
+
+    messages = azure_client.chat.completions.create.call_args[1]["messages"]
+    assert [m["role"] for m in messages] == ["system", "user", "user"]
+    assert messages[0]["content"] == "Be brief"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("system_prompt", [None, ""])
+async def test_no_system_message_without_prompt(
+    completion_service, azure_client, mock_stage_wrapper, system_prompt
+):
+    await completion_service.complete_request_async(
+        params={"query": "Test query"},
+        deployment_id="test-deployment",
+        deployment_name="Test Deployment",
+        stage_wrapper=mock_stage_wrapper,
+        system_prompt=system_prompt,
+    )
+
+    messages = azure_client.chat.completions.create.call_args[1]["messages"]
+    assert [m["role"] for m in messages] == ["user"]
+
+
+@pytest.mark.asyncio
 async def test_no_history(completion_service, azure_client, mock_stage_wrapper):
     # Act — no history passed
     await completion_service.complete_request_async(

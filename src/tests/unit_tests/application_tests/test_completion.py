@@ -189,6 +189,24 @@ def make_request_completion():
 
 
 @pytest.mark.asyncio
+async def test_config_resolution_error_from_initializer_stops_request(
+    make_request_completion, monkeypatch
+):
+    async def _raise(injector, itype):
+        raise ConfigResolutionException(message="bad", template_name="prompts/b/p")
+
+    monkeypatch.setattr(quick_app_completion, "invoke_initializers", _raise)
+    init_handler = Mock()
+    orchestrator = Mock()
+    request, completion, _ = make_request_completion(orchestrator, init_handler=init_handler)
+
+    await completion.chat_completion(request, FakeResponse(FakeChoice()))
+
+    init_handler.handle_initialization_issues.assert_called_once()
+    orchestrator.invoke.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_chat_completion_success(make_request_completion):
     # Arrange
     choice = FakeChoice()

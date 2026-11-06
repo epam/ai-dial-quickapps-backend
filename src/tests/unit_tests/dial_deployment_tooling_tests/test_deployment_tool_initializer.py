@@ -1,8 +1,11 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from aidial_client._exception import ResourceNotFoundError
 
+from quickapp.common.exceptions import ToolInitializationException
 from quickapp.config.dial_deployment import DialDeploymentToolConfig, DialDeploymentToolParameters
+from quickapp.config.prompt import CustomSystemPromptConfig, DialSystemPromptConfig
 from quickapp.config.tool_access_filter import ToolAccessFilterConfig
 from quickapp.config.tool_discovery import ToolDiscoveryConfig
 from quickapp.config.tools.base import (
@@ -55,6 +58,7 @@ def _make_initializer(toolset: DeploymentToolSet, builder: MagicMock) -> _Deploy
         dial_tools_provider=make_provider([]),
         app_config=create_app_configuration([toolset]),
         access_filter=make_access_filter(),
+        dial_client=MagicMock(),
     )
 
 
@@ -106,6 +110,7 @@ def _make_simple_initializer(
         dial_tools_provider=make_provider([]),
         app_config=app_config,
         access_filter=make_access_filter(),
+        dial_client=MagicMock(),
     )
 
 
@@ -214,6 +219,7 @@ def _make_initializer_with_discovery(
         dial_tools_provider=make_provider([]),
         app_config=app_config,
         access_filter=make_access_filter(),
+        dial_client=MagicMock(),
     )
 
 
@@ -276,6 +282,107 @@ class TestDeferredDeploymentTools:
         deferred_context.register_deferred_tools.assert_not_called()
 
 
+class TestToolSystemPrompt:
+    @staticmethod
+    def _make_initializer(
+        tool: DialDeploymentTool,
+        builder: MagicMock,
+        dial_client: MagicMock,
+        context: MagicMock | None = None,
+    ) -> _DeploymentToolInitializer:
+        toolset = DeploymentToolSet(name="ts", tools=[tool])
+        return _DeploymentToolInitializer(
+            context=context or MagicMock(),
+            deferred_context=MagicMock(),
+            tool_config_service=MagicMock(),
+            builder=builder,
+            deployment_cache=MagicMock(),
+            dial_tools_provider=make_provider([]),
+            app_config=create_app_configuration([toolset]),
+            access_filter=make_access_filter(),
+            dial_client=dial_client,
+        )
+
+    @staticmethod
+    def _make_client(content: str | None = None, error: Exception | None = None) -> MagicMock:
+        client = MagicMock()
+        client.prompts.get = AsyncMock(return_value=MagicMock(content=content), side_effect=error)
+        return client
+
+    @pytest.mark.asyncio
+    async def test_dial_prompt_content_is_filled(self):
+        tool = _make_deployment_tool("t")
+        tool.system_prompt = DialSystemPromptConfig(path="prompts/b/p")
+        builder = MagicMock()
+
+        await self._make_initializer(
+            tool, builder, self._make_client(content="Be brief")
+        ).initialize()
+
+        built = builder.build.call_args.kwargs["tool_config"]
+        assert built.system_prompt.content == "Be brief"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "client_kwargs",
+        [{"error": ResourceNotFoundError("missing")}, {"content": "  "}],
+        ids=["fetch_error", "empty_content"],
+    )
+    async def test_failure_records_issue_and_keeps_tool_without_prompt(self, client_kwargs):
+        tool = _make_deployment_tool("t")
+        # A manifest-supplied `content` must not survive a failed fetch.
+        tool.system_prompt = DialSystemPromptConfig(path="prompts/b/p", content="stale")
+        builder = MagicMock()
+        context = MagicMock()
+
+        await self._make_initializer(
+            tool, builder, self._make_client(**client_kwargs), context
+        ).initialize()
+
+        built = builder.build.call_args.kwargs["tool_config"]
+        assert built.system_prompt is None
+        exception = context.append_exception.call_args.args[0]
+        assert isinstance(exception, ToolInitializationException)
+        assert exception.tool_name == "t"
+        assert "prompts/b/p" in str(exception)
+
+    @pytest.mark.asyncio
+    async def test_custom_prompt_makes_no_fetch(self):
+        tool = _make_deployment_tool("t")
+        tool.system_prompt = CustomSystemPromptConfig(content="Own prompt", variables={})
+        client = self._make_client()
+
+        await self._make_initializer(tool, MagicMock(), client).initialize()
+
+        client.prompts.get.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_inaccessible_tool_makes_no_fetch(self):
+        tool = _make_deployment_tool("denied_tool")
+        tool.deployment.deployment_id = "denied-app"
+        tool.system_prompt = DialSystemPromptConfig(path="prompts/b/p")
+        toolset = DeploymentToolSet(name="ts", tools=[tool])
+        app_config = create_app_configuration([toolset])
+        app_config.features.tool_access_filter = ToolAccessFilterConfig(enabled=True)
+        client = self._make_client(content="unused")
+        builder = MagicMock()
+
+        await _DeploymentToolInitializer(
+            context=MagicMock(),
+            deferred_context=MagicMock(),
+            tool_config_service=MagicMock(),
+            builder=builder,
+            deployment_cache=MagicMock(),
+            dial_tools_provider=make_provider([]),
+            app_config=app_config,
+            access_filter=make_access_filter(app_config, make_deployment_names_service([])),
+            dial_client=client,
+        ).initialize()
+
+        client.prompts.get.assert_not_awaited()
+        builder.build.assert_not_called()
+
+
 class TestToolAccessFiltering:
     @pytest.mark.asyncio
     async def test_inaccessible_tools_are_not_built_and_simple_tools_skip_metadata_fetch(self):
@@ -302,6 +409,7 @@ class TestToolAccessFiltering:
             dial_tools_provider=make_provider([]),
             app_config=app_config,
             access_filter=make_access_filter(app_config, names_service),
+            dial_client=MagicMock(),
         ).initialize()
 
         builder.build.assert_called_once()
