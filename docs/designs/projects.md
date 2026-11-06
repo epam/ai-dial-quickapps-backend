@@ -9,8 +9,10 @@
 ## Problem Statement
 
 - DIAL Chat ships projects (behind `PROJECTS_ENABLED`): a project holds instructions, context files and chats. On every
-  model call of a project chat Chat sends one header, `x-project-id: projects/{bucket}/{path}`, and nothing else: no
-  system message and no attachment ([ai-dial-chat PR#9649](https://github.com/epam/ai-dial-chat/pull/9649)).
+  model call of a project chat Chat sends one header, `x-project-id: projects/{bucket}/{path}`, and adds nothing else
+  for the project: no system message, no project-file attachment
+  ([ai-dial-chat PR#9649](https://github.com/epam/ai-dial-chat/pull/9649)). Files the user attaches to a message
+  arrive as usual.
 - QuickApps ignores the header. In a project chat the agent:
   - doesn't see the project instructions or context files;
   - keeps its files in its own appdata, so chats in one project share nothing;
