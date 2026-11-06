@@ -8,8 +8,7 @@ from openai.types import CompletionUsage
 from quickapp.common import DEPLOYMENT_AZURE_CLIENT
 from quickapp.common.deployment_usage import ModelUsage
 from quickapp.config.application import ApplicationConfig
-
-from ._routing_prompt import (
+from quickapp.tool_discovery._routing_prompt import (
     CatalogItem,
     ScoredName,
     SelectionKind,
@@ -17,7 +16,7 @@ from ._routing_prompt import (
     build_user_prompt,
     parse_selection,
 )
-from ._routing_result import RoutingResult
+from quickapp.tool_discovery._routing_result import RoutingResult
 
 logger = logging.getLogger(__name__)
 

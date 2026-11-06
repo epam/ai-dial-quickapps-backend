@@ -2,9 +2,8 @@ from abc import ABC, abstractmethod
 
 from quickapp.common.deferred_tool_types import DeferredToolCatalogEntry
 from quickapp.config.tool_discovery import BaseSearchStrategyConfig
-
-from .._anonymous_agent import _AnonymousAgent
-from .._routing_result import RoutingResult
+from quickapp.tool_discovery._anonymous_agent import _AnonymousAgent
+from quickapp.tool_discovery._routing_result import RoutingResult
 
 
 class ToolSearchStrategy[ConfigT: BaseSearchStrategyConfig](ABC):

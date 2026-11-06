@@ -1,7 +1,6 @@
 from quickapp.config.tool_discovery import PlainSearchStrategyConfig
-
-from .._routing_result import RoutingResult
-from ._strategy import ToolSearchStrategy
+from quickapp.tool_discovery._routing_result import RoutingResult
+from quickapp.tool_discovery.strategies._strategy import ToolSearchStrategy
 
 
 class PlainStrategy(ToolSearchStrategy[PlainSearchStrategyConfig]):

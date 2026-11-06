@@ -2,10 +2,9 @@ import asyncio
 
 from quickapp.common.deferred_tool_types import DeferredToolCatalogEntry
 from quickapp.config.tool_discovery import WindowSearchStrategyConfig
-
-from .._routing_prompt import render_catalog_line
-from .._routing_result import RoutingResult
-from ._strategy import ToolSearchStrategy
+from quickapp.tool_discovery._routing_prompt import render_catalog_line
+from quickapp.tool_discovery._routing_result import RoutingResult
+from quickapp.tool_discovery.strategies._strategy import ToolSearchStrategy
 
 _MAX_PARALLEL_WINDOW_CALLS = 8
 

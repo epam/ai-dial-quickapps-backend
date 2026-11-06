@@ -2,10 +2,9 @@ import logging
 
 from quickapp.common.deferred_tool_types import DeferredToolCatalogEntry, DeferredToolsetSummary
 from quickapp.config.tool_discovery import HierarchySearchStrategyConfig
-
-from .._anonymous_agent import _AnonymousAgent
-from .._routing_result import RoutingResult
-from ._strategy import ToolSearchStrategy
+from quickapp.tool_discovery._anonymous_agent import _AnonymousAgent
+from quickapp.tool_discovery._routing_result import RoutingResult
+from quickapp.tool_discovery.strategies._strategy import ToolSearchStrategy
 
 logger = logging.getLogger(__name__)
 
