@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock
 
 from quickapp.common.exceptions import InitializationException, OffloadConfigurationException
+from quickapp.config.dial_files import DialFilesConfig
 from quickapp.dial_files_tooling.dial_files_tooling_module import DialFilesToolingModule
 
 
@@ -27,6 +28,7 @@ def _make_app_config(
         return cfg
     dial_files = cfg.features.dial_files
     dial_files.enabled_tools = enabled_tools
+    dial_files.expanded_tools = DialFilesConfig(enabled_tools=enabled_tools).expanded_tools
     dial_files.tool_call_result_offload = _make_offload() if offload == "default" else offload
     return cfg
 

@@ -477,7 +477,7 @@ external-fetch overrides; stage display falls back to `info` unless `DEFAULT_STA
 | `external_url_fetch`     | No       | Object         | Per-app override for fetching external (non-DIAL) URLs. See [External URL fetch configuration](#external-url-fetch-configuration).                                           | `{}`                                   |
 | `tool_access_filter`     | No       | Object or null | Per-user tool access filtering: hide DIAL deployment, application and `dial-mcp` toolset tools the calling user cannot access. See [Tool access filter configuration](#tool-access-filter-configuration). | `null`                                 |
 | `stage_display`          | No       | Object         | Which tool-execution stages appear in the DIAL UI. See [Stage display configuration](#stage-display-configuration).                                                          | `{"level": "info"}`                    |
-| `dial_files`             | No       | Object or null | Built-in DIAL workspace file tools. `null` (default) exposes the read-only tools. See [DIAL files configuration](#dial-files-configuration).                                               | `null`                                 |
+| `dial_files`             | No       | Object or null | Built-in DIAL workspace file tools. `null` (default) exposes all tools, same as `{}`. See [DIAL files configuration](#dial-files-configuration).                                               | `null`                                 |
 | `web_fetch`              | No       | Object or null | Built-in `internal_web_fetch` tool. See [Web fetch configuration](#web-fetch-configuration).                                                                                 | `null`                                 |
 | `representation_tooling` | No       | Object or null | Tools that control how the agent surfaces output (e.g. add attachment to the answer). See [Representation tooling](#representation-tooling-configuration).                   | `null`                                 |
 
@@ -623,10 +623,10 @@ Controls which tool-execution stages are surfaced in the DIAL UI. The deployment
 
 #### DIAL files configuration
 
-The built-in workspace file tools (`internal_file_*`) are on by default in **read-only** form: an app
-that omits `dial_files` (or sets it to `null`) gets `list`, `read_lines`, `read_chars`, `search` and
-`find`. The mutating tools (`write`, `edit`, `delete`, `copy`, `move`) are opt-in. Setting
-`"dial_files": {}` enables **all** tools with defaults. File tools cannot be turned off.
+The built-in workspace file tools (`internal_file_*`) are on by default: an app that omits `dial_files`
+(or sets it to `null`) behaves exactly like `"dial_files": {}` and gets **all** tools, including the
+mutating ones (`write`, `edit`, `delete`, `copy`, `move`). To expose only the non-mutating tools set
+`"enabled_tools": "read_only"`. There is no dedicated option to turn the file tools off.
 
 | Field                      | Required | Type                         | Description                                                                                                                                 | Default Value |
 |----------------------------|----------|------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------|---------------|

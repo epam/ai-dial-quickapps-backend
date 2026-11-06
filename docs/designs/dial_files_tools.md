@@ -544,9 +544,9 @@ class Features(BaseModel):
 
 **Design notes:**
 
-- **Default semantics.** `features.dial_files` defaults to `None`, which means the **read-only** tools (`list`, `read_lines`, `read_chars`, `search`, `find`) are exposed. Mutating tools are opt-in. Once the block is present, `enabled_tools` defaults to `"all"`, so `"dial_files": {}` keeps exposing every tool (changing it would silently remove write tools from existing apps).
-- **No off switch.** There is no way to turn the file tools off: an absent block (or `null`) yields the read-only set, `"dial_files": {}` yields all tools, and a list only narrows the set. A dedicated disable option (`"none"`, `enabled: false`) was deliberately dropped.
-- **Offload is unchanged.** An absent block exposes the read-only tools but does not enable offload; offload still requires the explicit block.
+- **Default semantics.** `features.dial_files` defaults to `None`, which behaves exactly like `"dial_files": {}`: `enabled_tools` defaults to `"all"`, so every tool, including the mutating ones, is exposed. A read-only default was considered and dropped: it would give an absent block and `{}` different tool sets and make the default depend on whether a client writes the block. Apps that must not modify the workspace opt in to `"enabled_tools": "read_only"`.
+- **No off switch.** There is no way to turn the file tools off: an absent block (or `null`) and `"dial_files": {}` yield all tools, and `"read_only"` or a list only narrows the set. A dedicated disable option (`"none"`, `enabled: false`) was deliberately dropped. Note that `"dial_files": null` used to mean "off" and now means "all tools".
+- **Offload is unchanged.** An absent block exposes the tools but does not enable offload; offload still requires the explicit block.
 - **Preview gating.** `dial_files` itself is not a preview field. Only the nested `tool_call_result_offload` is.
 - **`agent_home_dir` repointing.** Operators can point the agent's home at a non-appdata bucket (e.g. `"files/org-shared-bucket/reports/"`) or at a subdirectory under appdata (e.g. `"files/{appdata}/workspace/"`). When the template omits `{appdata}`, read/search/list still work even if `my_appdata_home()` would have returned `None` — useful for app-style deployments where appdata isn't provisioned but a shared bucket is.
 - **Future knobs.** `DialFilesConfig` is the natural home for additions like `max_file_size_bytes`, allow/deny path prefixes, or a default `content_type` override. (The "per-app subdir under appdata" use case is now covered by `agent_home_dir`.)

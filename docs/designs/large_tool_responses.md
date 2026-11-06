@@ -185,7 +185,7 @@ Specified separately in [DIAL Files Tools](dial_files_tools.md). Relevant facts 
 
 - The read-back tools are named `internal_file_read_lines`, `internal_file_read_chars` and `internal_file_search`; these names are always in `ToolCallResultOffloadProcessor`'s resolved `excluded_tools` (a mandatory, non-overridable exclusion folded in by `_provide_offload_config`) so read-back results are never re-offloaded.
 - Both tools address files by `path`, which may be a path relative to the agent's home dir **or** an absolute `files/...` URL. Offloaded files live under `files/{bucket}/offloaded-responses/`, outside the agent home dir, so the LLM reads them back via the absolute URL carried in the notice.
-- They are wired by `DialFilesToolingModule` (generally available; exposed by default in read-only form), which **also owns the offload wiring** (see Component 5). Offload has a **hard dependency** on these tools being exposed: when they are not, it self-disables. Because offload config nests under `dial_files`, offload cannot exist without the module that provides read-back.
+- They are wired by `DialFilesToolingModule` (generally available; all tools exposed by default), which **also owns the offload wiring** (see Component 5). Offload has a **hard dependency** on these tools being exposed: when they are not, it self-disables. Because offload config nests under `dial_files`, offload cannot exist without the module that provides read-back.
 
 ---
 

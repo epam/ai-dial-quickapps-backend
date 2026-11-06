@@ -191,7 +191,7 @@ sequenceDiagram
 
 **Status:** Implemented outside folder context (see `dial_files_tools.md`).
 
-**What:** `DialFilesConfig.enabled_tools` accepts the `"read_only"` preset alongside `"all"` and explicit tool lists. An absent `dial_files` block behaves as `"read_only"`.
+**What:** `DialFilesConfig.enabled_tools` accepts the `"read_only"` preset alongside `"all"` and explicit tool lists. An absent `dial_files` block behaves as `"all"` (same as `{}`).
 
 **Note:** Folder expansion does **not** require `features.dial_files` regardless of preset design.
 
@@ -206,7 +206,7 @@ sequenceDiagram
 | Feature | Gating mechanism |
 |---------|------------------|
 | `FolderContextConfig` in `contexts` | `@preview_model` on the class; schema strips the `folder` discriminator when preview off; runtime removal via `nullify_preview_fields()` list filtering + warning |
-| `features.dial_files` | None (GA). An absent block exposes the read-only file tools |
+| `features.dial_files` | None (GA). An absent block exposes all file tools (same as `{}`) |
 | `DialFilesToolingModule` | None (GA), always wired |
 | `features.dial_files.tool_call_result_offload` | `PreviewField` (see `large_tool_responses.md`) |
 
