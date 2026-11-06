@@ -85,16 +85,19 @@ class _QuickAppCompletion(ChatCompletion):
                 request_context_setup = self.__injector.get(_RequestContextSetup)
                 try:
                     await request_context_setup.setup_context(request, choice)
+                    self.__log_request_received(request)
+                    timer_service.add_milestone(
+                        self.__timer_period_name, "request context pre-init"
+                    )
+                    await invoke_initializers(self.__injector, InitializerType.completion)
                 except ConfigResolutionException:
-                    # System prompt resolution is the only path that still raises;
-                    # tool / toolset failures are skip-and-record inside the resolver.
+                    # System prompt resolution is the only path that still raises (predefined in
+                    # setup_context, `dial` in its initializer); tool / toolset failures are
+                    # skip-and-record.
                     failed = True
                     outcome = "failed"
                     self.__injector.get(_InitializationErrorHandler).handle_initialization_issues()
                     return
-                self.__log_request_received(request)
-                timer_service.add_milestone(self.__timer_period_name, "request context pre-init")
-                await invoke_initializers(self.__injector, InitializerType.completion)
                 timer_service.add_milestone(self.__timer_period_name, "initializers")
                 await request_context_setup.setup_messages(request.messages)
                 timer_service.add_milestone(self.__timer_period_name, "messages finalized")

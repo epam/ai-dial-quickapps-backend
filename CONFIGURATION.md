@@ -333,11 +333,15 @@ With custom fields sample:
 
 #### System prompt configuration
 
-| Field     | Required                    | Type                 | Description                                                      | Available Values | Default Value |
-|-----------|-----------------------------|----------------------|------------------------------------------------------------------|------------------|---------------|
-| type      | Yes                         | String               | The type of the System prompt                                    | `dial`, `custom` | -             |
-| variables | Yes                         | Dict[String, String] | Dict with variables that should be replaced in the system prompt | -                | -             |
-| content   | Yes (if `type` is `custom`) | String               | The system prompt itself                                         | -                | -             |
+| Field     | Required                    | Type                 | Description                                                      | Available Values                | Default Value |
+|-----------|-----------------------------|----------------------|------------------------------------------------------------------|---------------------------------|---------------|
+| type      | Yes                         | String               | The type of the System prompt                                    | `dial`, `custom`, `predefined`  | -             |
+| variables | Yes (if `type` is `custom`) | Dict[String, String] | Dict with variables that should be replaced in the system prompt | -                               | -             |
+| content   | Yes (if `type` is `custom`) | String               | The system prompt itself                                         | -                               | -             |
+| path      | Yes (if `type` is `dial`)   | String               | Relative prompt URL in DIAL (e.g. `prompts/<bucket>/<path>`)     | -                               | -             |
+| template  | Yes (if `type` is `predefined`) | String           | The predefined template name for a system prompt                 | -                               | -             |
+
+A `dial` prompt is loaded from DIAL on each request. If the orchestrator's prompt cannot be loaded or is empty, the request fails. If a deployment tool's prompt cannot be loaded, the tool runs without it and the problem is shown in the "Initialization issues" stage.
 
 <details>
 <summary><b>System prompt configuration JSON sample</b></summary>
@@ -352,6 +356,17 @@ Custom system prompt:
       "reason_of_life": "42"
     },
     "content": "This is base Agent prompt. The reason of life is {reason_of_life}"
+  }
+}
+```
+
+DIAL system prompt:
+
+```json
+{
+  "system_prompt": {
+    "type": "dial",
+    "path": "prompts/<bucket>/<path>"
   }
 }
 ```
@@ -1279,6 +1294,7 @@ The same as ApiKeyAuthorization but for mcp location is not configurable and alw
 | propagate_annotations_to_choice | No                          | Boolean | Only for `deployment-tool` and `dial-deployment-simple`. Propagate citation annotations returned by the deployment to the app's answer. See [Citation annotations](#citation-annotations)               | `true`, `false`  | `null`        |
 | conversation_mode               | No                          | Object  | Resumable subagent conversation. Applies to `deployment-tool`, `dial-deployment-simple`, and `dial-app` (chat-completion branch only). See [Conversation mode](#conversation-mode) | - | `null` |
 | content_propagation             | No                          | Object  | Header / **deprecated** history propagation. Prefer `conversation_mode`. See [Content propagation](#content-propagation-deprecated-history-flag) | - | `null` |
+| system_prompt                   | No                          | Object  | Only for `deployment-tool`. Sent to the deployment as a system message. Accepts `custom` and `dial`, not `predefined`. See [System prompt configuration](#system-prompt-configuration) | - | `null` |
 
 #### Conversation mode
 

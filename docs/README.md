@@ -65,6 +65,7 @@ See [Feature Lifecycle](../README.md#feature-lifecycle) in the root README.
 | Folder context | [CONFIGURATION — Folder context](../CONFIGURATION.md#folder-context-type-folder) | — | [folder_context.md](./designs/folder_context.md) |
 | DIAL skill resources (`dial-skill`) | [CONFIGURATION — Skills](../CONFIGURATION.md#skills-configuration) | [skills.md](./skills.md) | [skills_as_dial_resource.md](./designs/skills_as_dial_resource.md) |
 | Skill invocation from a message | [CONFIGURATION — Environment Variables](../CONFIGURATION.md#environment-variables) / [skills.md](./skills.md#invoking-a-skill-from-a-message) | [skills.md](./skills.md) | [skill_invocation.md](./designs/skill_invocation.md) |
+| DIAL system prompts (`dial`) | [CONFIGURATION — System prompt](../CONFIGURATION.md#system-prompt-configuration) | — | — |
 | Citation annotation propagation | [CONFIGURATION — Citations](../CONFIGURATION.md#citation-annotations) | [agent.md](./agent.md) | — |
 
 ### Preview
