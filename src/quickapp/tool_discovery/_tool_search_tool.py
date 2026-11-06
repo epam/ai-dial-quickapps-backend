@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 @inject
 class _ToolSearchTool(StagedBaseTool):
-    """Meta-tool that discovers deferred tools on demand via an anonymous LLM routing call."""
+    """Meta-tool that discovers deferred tools on demand by delegating to the configured search strategy."""
 
     def __init__(
         self,

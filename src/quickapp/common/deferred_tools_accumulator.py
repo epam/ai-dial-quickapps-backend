@@ -1,4 +1,4 @@
-from quickapp.common.deferred_tool_types import DeferredToolCatalogEntry
+from quickapp.common.deferred_tool_types import DeferredToolCatalogEntry, DeferredToolsetSummary
 from quickapp.common.localized_string import resolve_localized
 from quickapp.common.staged_base_tool import StagedBaseTool
 from quickapp.config.tool_discovery import ToolDiscoveryConfig
@@ -20,7 +20,7 @@ class DeferredToolsAccumulator:
     def __init__(self) -> None:
         self._catalog: list[DeferredToolCatalogEntry] = []
         self._definitions: dict[str, OpenAiToolConfigDict] = {}
-        self._toolset_summaries: list[dict[str, str | int | None]] = []
+        self._toolset_summaries: list[DeferredToolsetSummary] = []
         self._registered: set[tuple[str, tuple[str, ...]]] = set()
 
     def register_deferred_tools(self, toolset: BaseToolSet, tools: list[StagedBaseTool]) -> None:
@@ -79,8 +79,8 @@ class DeferredToolsAccumulator:
         return sorted(self._catalog, key=lambda e: e["name"])
 
     @property
-    def toolset_summaries(self) -> list[dict[str, str | int | None]]:
-        return sorted(self._toolset_summaries, key=lambda e: str(e["name"]))
+    def toolset_summaries(self) -> list[DeferredToolsetSummary]:
+        return sorted(self._toolset_summaries, key=lambda e: e["name"])
 
     def get_definition(self, name: str) -> OpenAiToolConfigDict | None:
         return self._definitions.get(name)

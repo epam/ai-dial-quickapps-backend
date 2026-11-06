@@ -187,12 +187,13 @@ without needing separate top-level toggles.
 ### 2. Matching mechanism — one shared LLM classification call
 
 Mirrors `tool_discovery` exactly (`_AnonymousAgent`, `_ToolSearchTool`): a single, non-streaming,
-history-less `chat.completions.create` call against `DEPLOYMENT_AZURE_CLIENT` (the orchestrator
-client is pinned to the orchestrator deployment and ignores a different model; or
-`skill_matching.service_model` if set), given the message text and the merged catalog (`name`,
-`description`, and enough to resolve later — `source` and `url`), returning a JSON array of
-matched names (tool discovery's variant asks for `{name, score}` objects). Same fail-open contract: any `openai.OpenAIError`, timeout, or malformed response
-becomes an empty match list, never an error surfaced to the user.
+history-less `chat.completions.create` call against `DEPLOYMENT_AZURE_CLIENT`, using
+`skill_matching.service_model` if set. (The orchestrator client is pinned to the orchestrator
+deployment and would ignore a different model.) The call is given the message text and the merged
+catalog (`name`, `description`, and enough to resolve later — `source` and `url`), and returns a
+JSON array of matched names (tool discovery's variant asks for `{name, score}` objects). Same
+fail-open contract: any `openai.OpenAIError`, timeout, or malformed response becomes an empty
+match list, never an error surfaced to the user.
 
 `tool_discovery`'s `_AnonymousAgent.route` goes through `DEPLOYMENT_AZURE_CLIENT` (provided by the
 shared `DeploymentClientModule`), which applies the tool timeout; mirror that client rather than

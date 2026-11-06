@@ -323,7 +323,7 @@ exactly one deployment tool, so the deferral threshold never applies to them any
 
 `DeferredToolsContext` holds two structures across all deferred toolsets in the request (not
 one instance per toolset — a single request-scoped context aggregates all of them):
-- **catalog**: `list[{name, description}]` — compact, never forwarded to the main LLM
+- **catalog**: `list[{name, description, toolset}]` — compact, never forwarded to the main LLM
 - **definitions**: `dict[str, OpenAiToolConfigDict]` — full schemas (transformed the same way
   as eager tools — const params stripped, `enrich_openai_tool_schema` applied), looked up by
   `_ToolSearchTool` when the anonymous agent returns matches
@@ -372,8 +372,9 @@ tools:   none
 
 The agent asks the model for a JSON array of `{"name", "score"}` objects (score 0..1) and keeps
 the known names scoring at least `score_threshold`, best first, at most `limit`. A bare string
-is accepted as a perfect fit, a score that is present but unreadable (non-numeric, `null`, NaN) rejects the pick, duplicates keep their best
-score, and errors or unparsable answers yield an empty result (fail-open). The call goes through
+is accepted as a perfect fit, a score that is present but unreadable (non-numeric, `null`, NaN)
+rejects the pick, duplicates keep their best score, and errors or unparsable answers yield an
+empty result (fail-open). The call goes through
 `DEPLOYMENT_AZURE_CLIENT`, not the orchestrator client: the latter is pinned to the orchestrator
 deployment and would ignore `service_model`. Because this call carries no conversation history
 and no application system prompt, its token cost is bounded by the catalog size alone.
@@ -395,7 +396,7 @@ returns the matched names plus the summed routing usage.
 | `type` | Class | Behaviour |
 |---|---|---|
 | `plain` (default) | `PlainStrategy` | One routing call over the whole deferred catalog. Same shape as the original MVP, now with scores, `top_k` and the threshold |
-| `window` | `WindowStrategy` | The catalog is split into windows of up to `window_size_chars` rendered characters. Windows are searched in parallel (at most 8 concurrent calls), each keeping `per_window_top_k` picks; one final call filters the union down to `top_k`. A catalog that fits one window makes a single call. Best recall on large catalogs; reads the whole catalog on every search |
+| `window` | `WindowStrategy` | The catalog is split into windows of up to `window_size_chars` rendered characters. Windows are searched in parallel (at most 8 concurrent calls), each keeping `per_window_top_k` picks; one final call filters the union down to `top_k`, skipped when the windows return at most one candidate. A catalog that fits one window makes a single call. Best recall on large catalogs; reads the whole catalog on every search |
 | `hierarchy` | `HierarchyStrategy` | First call picks up to `toolset_top_k` toolsets from their summaries, second call picks tools among the chosen toolsets. Skipped when there is one toolset; falls back to the whole catalog when no toolset is chosen. `score_threshold` applies to both calls. Cheapest on large catalogs; recall is bounded by the toolset choice |
 
 Catalog entries carry their toolset's localized display name (`toolset`), which is the join key

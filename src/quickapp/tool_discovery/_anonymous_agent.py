@@ -82,7 +82,7 @@ class _AnonymousAgent:
             return RoutingResult(usage=_to_model_usage(service_model, response.usage))
 
         raw = (response.choices[0].message.content or "").strip()
-        known_names = {str(entry["name"]) for entry in catalog}
+        known_names = {entry["name"] for entry in catalog}
         picked = parse_selection(raw, known_names, limit=limit, threshold=threshold)
         _log_selection(picked, len(catalog), kind, threshold)
         return RoutingResult(

@@ -8,14 +8,17 @@ DeferredToolName = Annotated[str, "DeferredToolName"]
 
 
 class DeferredToolCatalogEntry(TypedDict):
-    """`toolset` is the localized toolset display name — the join key of the hierarchy strategy."""
+    """`toolset` is the localized display name of the toolset the tool belongs to."""
 
     name: str
     description: str
     toolset: str
 
 
-DeferredToolsetSummary = Annotated[dict[str, str | int | None], "DeferredToolsetSummary"]
+class DeferredToolsetSummary(TypedDict):
+    name: str
+    description: str | None
+    tool_count: int
 
 
 class DeferredToolDefinition(BaseModel):
