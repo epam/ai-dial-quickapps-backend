@@ -1,6 +1,7 @@
 from injector import Module
 
 from quickapp.shared.config_resolvers.config_resolvers_module import ConfigResolversModule
+from quickapp.shared.deployment_client.deployment_client_module import DeploymentClientModule
 from quickapp.shared.external_fetch.external_fetch_module import ExternalFetchModule
 from quickapp.shared.home_path.home_path_module import HomePathModule
 from quickapp.shared.user_access.user_access_module import UserAccessModule
@@ -10,6 +11,7 @@ from quickapp.shared.user_access.user_access_module import UserAccessModule
 # individually.
 shared_module: list[Module] = [
     ConfigResolversModule(),
+    DeploymentClientModule(),
     ExternalFetchModule(),
     HomePathModule(),
     UserAccessModule(),

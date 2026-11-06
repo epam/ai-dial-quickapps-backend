@@ -1,3 +1,4 @@
+from quickapp.common.deferred_tool_types import DeferredToolCatalogEntry, DeferredToolsetSummary
 from quickapp.common.localized_string import resolve_localized
 from quickapp.common.staged_base_tool import StagedBaseTool
 from quickapp.config.tool_discovery import ToolDiscoveryConfig
@@ -17,9 +18,9 @@ class DeferredToolsAccumulator:
     """
 
     def __init__(self) -> None:
-        self._catalog: list[dict[str, str]] = []
+        self._catalog: list[DeferredToolCatalogEntry] = []
         self._definitions: dict[str, OpenAiToolConfigDict] = {}
-        self._toolset_summaries: list[dict[str, str | int | None]] = []
+        self._toolset_summaries: list[DeferredToolsetSummary] = []
         self._registered: set[tuple[str, tuple[str, ...]]] = set()
 
     def register_deferred_tools(self, toolset: BaseToolSet, tools: list[StagedBaseTool]) -> None:
@@ -29,11 +30,12 @@ class DeferredToolsAccumulator:
             if isinstance(t.tool_config, BaseOpenAITool)
             and (name := t.tool_config.open_ai_tool.function.name)
         ]
+        toolset_name = resolve_localized(toolset.name)
         # Providers that call this are unscoped and re-run several times per request, so
         # registration must be idempotent. Toolset names may collide, so the key also
         # includes the tool names.
         registration_key = (
-            resolve_localized(toolset.name),
+            toolset_name,
             tuple(sorted(name for _, _, name in entries)),
         )
         if registration_key in self._registered:
@@ -43,6 +45,7 @@ class DeferredToolsAccumulator:
             {
                 "name": name,
                 "description": tool_config.open_ai_tool.function.description or "",
+                "toolset": toolset_name,
             }
             for _, tool_config, name in entries
         )
@@ -58,7 +61,7 @@ class DeferredToolsAccumulator:
         )
         self._toolset_summaries.append(
             {
-                "name": resolve_localized(toolset.name),
+                "name": toolset_name,
                 "description": (
                     resolve_localized(toolset.description) if toolset.description else None
                 ),
@@ -72,12 +75,12 @@ class DeferredToolsAccumulator:
 
     # Sorted: toolsets may register in parallel, in completion order.
     @property
-    def catalog(self) -> list[dict[str, str]]:
+    def catalog(self) -> list[DeferredToolCatalogEntry]:
         return sorted(self._catalog, key=lambda e: e["name"])
 
     @property
-    def toolset_summaries(self) -> list[dict[str, str | int | None]]:
-        return sorted(self._toolset_summaries, key=lambda e: str(e["name"]))
+    def toolset_summaries(self) -> list[DeferredToolsetSummary]:
+        return sorted(self._toolset_summaries, key=lambda e: e["name"])
 
     def get_definition(self, name: str) -> OpenAiToolConfigDict | None:
         return self._definitions.get(name)

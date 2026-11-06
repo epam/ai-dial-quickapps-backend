@@ -1,16 +1,9 @@
 import logging
 
 from fastapi_injector import request_scope
-from injector import Binder, Module, ProviderOf, multiprovider, provider, singleton
-from openai.lib.azure import AsyncAzureOpenAI
+from injector import Binder, Module, ProviderOf, multiprovider, singleton
 
-from quickapp.common import (
-    DEPLOYMENT_AZURE_CLIENT,
-    DIAL_API_KEY,
-    DIAL_BEARER,
-    ForwardedHeaders,
-    StagedBaseTool,
-)
+from quickapp.common import StagedBaseTool
 from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
 from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.deferred_tool_types import (
@@ -20,20 +13,20 @@ from quickapp.common.deferred_tool_types import (
     DeferredToolsetSummary,
 )
 from quickapp.common.deployment_tool_cache import DialDeploymentToolCacheService
-from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import InitializationException
-from quickapp.common.tool_timeout_utils import build_async_dial_timeout
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.toolsets.deployment import DeploymentToolSet
-from quickapp.shared.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
-
-from ._annotation_anchor_prompt_provider import _AnnotationAnchorPromptProvider
-from ._attachment_resolver import AttachmentResolver
-from ._deployment_deferred_tools_context import _DeploymentDeferredToolsContext
-from ._deployment_tool_context import _DeploymentToolingContext
-from ._deployment_tool_initializer import _DeploymentToolInitializer
-from .deployment_stage_wrapper import DeploymentStageWrapper
-from .dial_completion_service import DialCompletionService
+from quickapp.dial_deployment_tooling._annotation_anchor_prompt_provider import (
+    _AnnotationAnchorPromptProvider,
+)
+from quickapp.dial_deployment_tooling._attachment_resolver import AttachmentResolver
+from quickapp.dial_deployment_tooling._deployment_deferred_tools_context import (
+    _DeploymentDeferredToolsContext,
+)
+from quickapp.dial_deployment_tooling._deployment_tool_context import _DeploymentToolingContext
+from quickapp.dial_deployment_tooling._deployment_tool_initializer import _DeploymentToolInitializer
+from quickapp.dial_deployment_tooling.deployment_stage_wrapper import DeploymentStageWrapper
+from quickapp.dial_deployment_tooling.dial_completion_service import DialCompletionService
 
 logger = logging.getLogger(__name__)
 
@@ -58,28 +51,6 @@ class DialDeploymentToolingModule(Module):
             DialDeploymentToolCacheService, to=DialDeploymentToolCacheService, scope=singleton
         )
         logger.debug("DialDeploymentTooling module configuration completed")
-
-    @provider
-    def provide_deployment_openai_client(
-        self,
-        dial_settings: DialSettings,
-        api_key: DIAL_API_KEY,
-        forwarded_headers: ForwardedHeaders,
-        timeout_resolver: ToolTimeoutResolver,
-        bearer: DIAL_BEARER,
-    ) -> DEPLOYMENT_AZURE_CLIENT:
-        headers = dict(forwarded_headers or {})
-
-        if bearer:
-            headers["Authorization"] = f"Bearer {bearer.get_secret_value()}"
-
-        return AsyncAzureOpenAI(
-            azure_endpoint=dial_settings.url,
-            api_key=api_key.get_secret_value(),
-            api_version=dial_settings.api_version,
-            default_headers=headers,
-            timeout=build_async_dial_timeout(timeout_resolver.resolve()),
-        )
 
     @multiprovider
     def __provide_tools(

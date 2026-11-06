@@ -2,13 +2,14 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from quickapp.common.deferred_tool_types import DeferredToolDefinition
 from quickapp.common.deployment_usage import DeploymentUsage, ModelUsage
 from quickapp.config.tools.base import (
     OpenAiToolConfig,
     OpenAiToolFunction,
     OpenAiToolFunctionParameters,
 )
-from quickapp.tool_discovery._anonymous_agent import _RoutingResult
+from quickapp.tool_discovery._routing_result import RoutingResult
 from quickapp.tool_discovery._tool_search_tool import _ToolSearchTool
 
 
@@ -31,7 +32,7 @@ def _make_tool_search_tool(toolset_summaries: list[dict[str, str | int | None]])
         definitions=[],
         toolset_summaries=toolset_summaries,
         lazy_holder=MagicMock(),
-        anonymous_agent=MagicMock(),
+        strategy=MagicMock(),
     )
 
 
@@ -93,9 +94,9 @@ class TestEnrichOpenAiToolSchema:
 
 class TestRoutingUsage:
     @staticmethod
-    def _make_tool(routing: _RoutingResult) -> _ToolSearchTool:
-        anonymous_agent = MagicMock()
-        anonymous_agent.route = AsyncMock(return_value=routing)
+    def _make_tool(routing: RoutingResult) -> _ToolSearchTool:
+        strategy = MagicMock()
+        strategy.search = AsyncMock(return_value=routing)
         return _ToolSearchTool(
             stage_wrapper_builder=MagicMock(),
             tool_config=MagicMock(),
@@ -104,13 +105,13 @@ class TestRoutingUsage:
             definitions=[],
             toolset_summaries=[],
             lazy_holder=MagicMock(),
-            anonymous_agent=anonymous_agent,
+            strategy=strategy,
         )
 
     @pytest.mark.asyncio
     async def test_result_carries_routing_call_usage(self):
         tool = self._make_tool(
-            _RoutingResult(
+            RoutingResult(
                 usage=ModelUsage(model="router-model", prompt_tokens=120, completion_tokens=8)
             )
         )
@@ -129,8 +130,55 @@ class TestRoutingUsage:
 
     @pytest.mark.asyncio
     async def test_result_has_no_usage_when_routing_reports_none(self):
-        tool = self._make_tool(_RoutingResult())
+        tool = self._make_tool(RoutingResult())
 
         result = await tool._run_in_stage_async(None, query="find a tool")
 
         assert result.usage is None
+
+
+class TestRunInStage:
+    @staticmethod
+    def _tool(routed: list[str]) -> tuple[_ToolSearchTool, MagicMock]:
+        lazy_holder = MagicMock()
+        strategy = MagicMock()
+        strategy.search = AsyncMock(return_value=RoutingResult(names=routed))
+        tool = _ToolSearchTool(
+            stage_wrapper_builder=MagicMock(),
+            tool_config=MagicMock(),
+            perf_timer=MagicMock(),
+            catalog=[{"name": "tool_a", "description": "A", "toolset": "ts"}],
+            definitions=[DeferredToolDefinition(name="tool_a", definition={"type": "function"})],
+            toolset_summaries=[],
+            lazy_holder=lazy_holder,
+            strategy=strategy,
+        )
+        return tool, lazy_holder
+
+    @pytest.mark.asyncio
+    async def test_returns_matched_names_as_json_list(self):
+        tool, lazy_holder = self._tool(["tool_a"])
+
+        result = await tool._run_in_stage_async(query="q")
+
+        assert result.content == '["tool_a"]'
+        assert result.content_type == "application/json"
+        lazy_holder.add.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_skips_unknown_names(self):
+        tool, _ = self._tool(["ghost", "tool_a"])
+
+        result = await tool._run_in_stage_async(query="q")
+
+        assert result.content == '["tool_a"]'
+
+    @pytest.mark.asyncio
+    async def test_no_match_returns_text(self):
+        tool, lazy_holder = self._tool(["ghost"])
+
+        result = await tool._run_in_stage_async(query="q")
+
+        assert result.content == "No matching tools found for the given query."
+        assert result.content_type == "text/plain"
+        lazy_holder.add.assert_not_called()
