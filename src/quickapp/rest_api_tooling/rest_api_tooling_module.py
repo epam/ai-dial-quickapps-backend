@@ -1,7 +1,8 @@
 import logging
+from collections.abc import Callable
 
 from fastapi_injector import request_scope
-from injector import Binder, ClassAssistedBuilder, Module, multiprovider
+from injector import Binder, ClassAssistedBuilder, Module, ProviderOf, multiprovider
 
 from quickapp.common import ACCEPT_LANGUAGE, StagedBaseTool
 from quickapp.common.deferred_tool_types import (
@@ -45,12 +46,18 @@ class RestApiToolingModule(Module):
         tool_builder: ClassAssistedBuilder[_RestApiTool],
         accept_language: ACCEPT_LANGUAGE,
         deferred_context: _RestApiDeferredToolsContext,
+        request_details_builder_provider: ProviderOf[_RequestDetailsBuilder],
     ) -> list[StagedBaseTool]:
         result: list[StagedBaseTool] = []
         for toolset_info in app_config.tool_sets:
             if isinstance(toolset_info, RestApiToolSet) and toolset_info.enabled:
                 toolset_stage_name = resolve_localized(toolset_info.name, accept_language)
-                tools = self.__create_rest_api_tools(toolset_info, tool_builder, toolset_stage_name)
+                tools = self.__create_rest_api_tools(
+                    toolset_info,
+                    tool_builder,
+                    toolset_stage_name,
+                    request_details_builder_provider.get,
+                )
                 discovery_cfg = app_config.orchestrator.tool_discovery
                 if is_toolset_deferred(toolset_info, discovery_cfg, len(tools)):
                     deferred_context.register_deferred_tools(toolset_info, tools)
@@ -95,6 +102,7 @@ class RestApiToolingModule(Module):
         rest_api_toolset: RestApiToolSet,
         tool_builder: ClassAssistedBuilder[_RestApiTool],
         toolset_stage_name: str,
+        request_details_builder_factory: Callable[[], _RequestDetailsBuilder],
     ) -> list[StagedBaseTool]:
         result: list[StagedBaseTool] = []
         for tool_config in rest_api_toolset.tools:
@@ -133,7 +141,9 @@ class RestApiToolingModule(Module):
                     }
                 )
             tool = tool_builder.build(
-                tool_config=tool_config, auth_info=rest_api_toolset.authorization
+                tool_config=tool_config,
+                auth_info=rest_api_toolset.authorization,
+                request_details_builder_factory=request_details_builder_factory,
             )
             tool.stage_name_component = (
                 f"{toolset_stage_name}: {tool_label}" if tool_label else toolset_stage_name

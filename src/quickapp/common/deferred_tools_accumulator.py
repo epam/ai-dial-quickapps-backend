@@ -21,6 +21,7 @@ class DeferredToolsAccumulator:
         self._catalog: list[DeferredToolCatalogEntry] = []
         self._definitions: dict[str, OpenAiToolConfigDict] = {}
         self._toolset_summaries: list[dict[str, str | int | None]] = []
+        self._registered: set[tuple[str, tuple[str, ...]]] = set()
 
     def register_deferred_tools(self, toolset: BaseToolSet, tools: list[StagedBaseTool]) -> None:
         entries: list[tuple[StagedBaseTool, BaseOpenAITool, str]] = [
@@ -30,6 +31,16 @@ class DeferredToolsAccumulator:
             and (name := t.tool_config.open_ai_tool.function.name)
         ]
         toolset_name = resolve_localized(toolset.name)
+        # Providers that call this are unscoped and re-run several times per request, so
+        # registration must be idempotent. Toolset names may collide, so the key also
+        # includes the tool names.
+        registration_key = (
+            toolset_name,
+            tuple(sorted(name for _, _, name in entries)),
+        )
+        if registration_key in self._registered:
+            return
+        self._registered.add(registration_key)
         self._catalog.extend(
             {
                 "name": name,
