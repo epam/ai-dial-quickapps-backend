@@ -41,11 +41,16 @@ class TestParseSelection:
         raw = '[{"name": "tool_a", "score": "0.2"}, {"name": "tool_b", "score": "0.9"}]'
         assert _parse(raw) == ["tool_b"]
 
-    def test_unreadable_score_counts_as_perfect_fit(self):
-        assert _parse('[{"name": "tool_a", "score": "high"}]') == ["tool_a"]
+    @pytest.mark.parametrize("score", ['"high"', "null", "[]", "1" + "0" * 400])
+    def test_unreadable_score_is_rejected(self, score):
+        raw = '[{"name": "tool_a", "score": ' + score + '}, {"name": "tool_b", "score": 0.6}]'
+        assert _parse(raw) == ["tool_b"]
 
-    def test_overflowing_score_counts_as_unreadable(self):
-        assert _parse('[{"name": "tool_a", "score": 1' + "0" * 400 + "}]") == ["tool_a"]
+    def test_missing_score_counts_as_perfect_fit(self):
+        assert _parse('[{"name": "tool_a"}, {"name": "tool_b", "score": 0.9}]') == [
+            "tool_a",
+            "tool_b",
+        ]
 
     def test_nan_score_is_rejected(self):
         assert _parse('[{"name": "tool_a", "score": NaN}, {"name": "tool_b", "score": 0.9}]') == [

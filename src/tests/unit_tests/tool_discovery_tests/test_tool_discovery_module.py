@@ -1,14 +1,23 @@
 from unittest.mock import MagicMock
 
 import pytest
+from injector import Binder, Injector
 
+from quickapp.common.deferred_tool_types import DeferredToolCatalogEntry, DeferredToolsetSummary
+from quickapp.config.application import ApplicationConfig
 from quickapp.config.tool_discovery import (
     HierarchySearchStrategyConfig,
     PlainSearchStrategyConfig,
     WindowSearchStrategyConfig,
 )
+from quickapp.tool_discovery._anonymous_agent import _AnonymousAgent
 from quickapp.tool_discovery._tool_search_hint_prompt_provider import _ToolSearchHintPromptProvider
-from quickapp.tool_discovery.strategies import HierarchyStrategy, PlainStrategy, WindowStrategy
+from quickapp.tool_discovery.strategies import (
+    HierarchyStrategy,
+    PlainStrategy,
+    ToolSearchStrategy,
+    WindowStrategy,
+)
 from quickapp.tool_discovery.tool_discovery_module import ToolDiscoveryModule
 
 
@@ -85,9 +94,16 @@ class TestProvideSearchStrategy:
 
         assert type(result) is expected
 
-    def test_falls_back_to_plain_when_discovery_unset(self):
-        result = ToolDiscoveryModule()._provide_search_strategy(
-            _make_config(None), MagicMock(), [], []
-        )
+    def test_resolves_strategy_through_injector(self):
+        config = _make_config(True)
+        config.orchestrator.tool_discovery.strategy = HierarchySearchStrategyConfig()
 
-        assert type(result) is PlainStrategy
+        def configure(binder: Binder) -> None:
+            binder.bind(ApplicationConfig, to=config)
+            binder.bind(_AnonymousAgent, to=MagicMock(spec=_AnonymousAgent))
+            binder.multibind(list[DeferredToolCatalogEntry], to=[])
+            binder.multibind(list[DeferredToolsetSummary], to=[])
+
+        strategy = Injector([ToolDiscoveryModule(), configure]).get(ToolSearchStrategy)
+
+        assert type(strategy) is HierarchyStrategy

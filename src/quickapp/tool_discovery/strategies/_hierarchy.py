@@ -2,14 +2,15 @@ import logging
 
 from quickapp.common.deferred_tool_types import DeferredToolCatalogEntry, DeferredToolsetSummary
 from quickapp.config.tool_discovery import HierarchySearchStrategyConfig
-from quickapp.tool_discovery._anonymous_agent import _AnonymousAgent
-from quickapp.tool_discovery.routing_result import RoutingResult
-from quickapp.tool_discovery.strategies._strategy import BaseStrategy, sum_routing_usage
+
+from .._anonymous_agent import _AnonymousAgent
+from .._routing_result import RoutingResult
+from ._strategy import ToolSearchStrategy
 
 logger = logging.getLogger(__name__)
 
 
-class HierarchyStrategy(BaseStrategy[HierarchySearchStrategyConfig]):
+class HierarchyStrategy(ToolSearchStrategy[HierarchySearchStrategyConfig]):
     """Picks toolsets first, then tools among the tools of the chosen toolsets.
 
     Tools are joined to their toolset by the localized toolset display name, so two toolsets
@@ -29,7 +30,7 @@ class HierarchyStrategy(BaseStrategy[HierarchySearchStrategyConfig]):
     async def search(self, query: str) -> RoutingResult:
         candidates, stage_one = await self._pick_candidates(query)
         picked = await self._route_tools(query, candidates)
-        return picked.with_usage(sum_routing_usage(stage_one, picked))
+        return RoutingResult(names=picked.names, usage=RoutingResult.total_usage(stage_one, picked))
 
     async def _pick_candidates(
         self, query: str

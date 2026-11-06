@@ -77,15 +77,19 @@ def parse_selection(
 
 
 def _read_item(item: object) -> tuple[str | None, float]:
-    """A plain string is accepted and treated as a perfect fit (the model skipped the score)."""
+    """A plain string or an object without a score is treated as a perfect fit (the model
+    skipped the score). A score that is present but unreadable is rejected, so it can neither
+    bypass the threshold nor outrank properly scored picks."""
     if isinstance(item, str):
         return item, 1.0
-    if isinstance(item, dict) and isinstance(item.get("name"), str):
-        try:
-            score = float(item.get("score", 1.0))
-        except (TypeError, ValueError, OverflowError):
-            return item["name"], 1.0
-        if math.isnan(score):
-            return None, 0.0
-        return item["name"], min(max(score, 0.0), 1.0)
-    return None, 0.0
+    if not isinstance(item, dict) or not isinstance(item.get("name"), str):
+        return None, 0.0
+    if "score" not in item:
+        return item["name"], 1.0
+    try:
+        score = float(item["score"])
+    except (TypeError, ValueError, OverflowError):
+        return None, 0.0
+    if math.isnan(score):
+        return None, 0.0
+    return item["name"], min(max(score, 0.0), 1.0)

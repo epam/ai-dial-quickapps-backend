@@ -9,8 +9,8 @@ from quickapp.config.tools.base import (
     OpenAiToolFunction,
     OpenAiToolFunctionParameters,
 )
+from quickapp.tool_discovery._routing_result import RoutingResult
 from quickapp.tool_discovery._tool_search_tool import _ToolSearchTool
-from quickapp.tool_discovery.routing_result import RoutingResult
 
 
 def _make_open_ai_tool(description: str = "Search for additional tools.") -> OpenAiToolConfig:
@@ -167,7 +167,7 @@ class TestRunInStage:
 
     @pytest.mark.asyncio
     async def test_skips_unknown_names(self):
-        tool, lazy_holder = self._tool(["ghost", "tool_a"])
+        tool, _ = self._tool(["ghost", "tool_a"])
 
         result = await tool._run_in_stage_async(query="q")
 

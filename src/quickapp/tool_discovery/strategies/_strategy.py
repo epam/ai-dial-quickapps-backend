@@ -1,32 +1,18 @@
-from typing import Protocol
+from abc import ABC, abstractmethod
 
 from quickapp.common.deferred_tool_types import DeferredToolCatalogEntry
-from quickapp.common.deployment_usage import ModelUsage
 from quickapp.config.tool_discovery import BaseSearchStrategyConfig
-from quickapp.tool_discovery._anonymous_agent import _AnonymousAgent
-from quickapp.tool_discovery.routing_result import RoutingResult
+
+from .._anonymous_agent import _AnonymousAgent
+from .._routing_result import RoutingResult
 
 
-class ToolSearchStrategy(Protocol):
-    async def search(self, query: str) -> RoutingResult:
-        """Return the catalog tools that best match the query (best first) and the routing usage."""
-        ...
+class ToolSearchStrategy[ConfigT: BaseSearchStrategyConfig](ABC):
+    """Finds the best matching tools of the request's deferred catalog.
 
-
-def sum_routing_usage(*results: RoutingResult) -> ModelUsage | None:
-    """Total the usage of several routing calls (all made against the same model)."""
-    usages = [r.usage for r in results if r.usage is not None]
-    if not usages:
-        return None
-    return ModelUsage(
-        model=usages[0].model,
-        prompt_tokens=sum(u.prompt_tokens for u in usages),
-        completion_tokens=sum(u.completion_tokens for u in usages),
-    )
-
-
-class BaseStrategy[ConfigT: BaseSearchStrategyConfig]:
-    """Holds the routing agent, the strategy config and the request's deferred catalog."""
+    Holds the routing agent, the strategy config and the catalog; concrete strategies decide
+    how many routing calls are made and over which part of the catalog.
+    """
 
     def __init__(
         self,
@@ -37,6 +23,10 @@ class BaseStrategy[ConfigT: BaseSearchStrategyConfig]:
         self._agent = agent
         self._config = config
         self._catalog = catalog
+
+    @abstractmethod
+    async def search(self, query: str) -> RoutingResult:
+        """Return the catalog tools that best match the query (best first) and the routing usage."""
 
     async def _route_tools(
         self,

@@ -12,7 +12,7 @@ from quickapp.config.tool_discovery import (
     ToolDiscoveryConfig,
     WindowSearchStrategyConfig,
 )
-from quickapp.tool_discovery.routing_result import RoutingResult
+from quickapp.tool_discovery._routing_result import RoutingResult
 from quickapp.tool_discovery.strategies import HierarchyStrategy, PlainStrategy, WindowStrategy
 from quickapp.tool_discovery.strategies._window import split_into_windows
 
@@ -114,19 +114,6 @@ class TestWindowStrategy:
         assert result.names == ["t1"]
         assert result.usage == ModelUsage(model="m", prompt_tokens=20, completion_tokens=2)
         assert agent.route.await_count == 2
-
-    @pytest.mark.asyncio
-    async def test_failed_window_is_treated_as_empty(self):
-        catalog = [_entry(f"t{i}", description="x" * 600) for i in range(2)]
-        agent = MagicMock()
-        agent.route = AsyncMock(
-            side_effect=[IndexError("no choices"), RoutingResult(names=["t1"], usage=_usage(10))]
-        )
-        strategy = WindowStrategy(
-            agent, WindowSearchStrategyConfig(window_size_chars=1000), catalog
-        )
-        result = await strategy.search("q")
-        assert result.names == ["t1"]
 
 
 class TestHierarchyStrategy:

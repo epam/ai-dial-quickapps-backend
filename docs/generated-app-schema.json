@@ -2114,7 +2114,7 @@
         },
         "score_threshold": {
           "default": 0.5,
-          "description": "Minimum relevance score (0..1, reported by the routing model) for a tool to be returned. Tools scored lower are dropped; the hierarchy strategy applies the same threshold to toolsets in its first call.",
+          "description": "Minimum relevance score (0..1, reported by the routing model) for a pick to be kept. Picks scored lower are dropped.",
           "maximum": 1.0,
           "minimum": 0.0,
           "title": "Score Threshold",
@@ -2123,7 +2123,7 @@
         "type": {
           "const": "hierarchy",
           "default": "hierarchy",
-          "description": "Two routing calls: the first picks toolsets from their descriptions, the second picks tools among the tools of the chosen toolsets. Cheapest on large catalogs, recall is limited by the toolset choice.",
+          "description": "Two routing calls: the first picks toolsets from their descriptions, the second picks tools among the tools of the chosen toolsets. Cheapest on large catalogs, recall is limited by the toolset choice. score_threshold applies to both calls.",
           "title": "Type",
           "type": "string"
         },
@@ -3018,7 +3018,7 @@
         },
         "score_threshold": {
           "default": 0.5,
-          "description": "Minimum relevance score (0..1, reported by the routing model) for a tool to be returned. Tools scored lower are dropped; the hierarchy strategy applies the same threshold to toolsets in its first call.",
+          "description": "Minimum relevance score (0..1, reported by the routing model) for a pick to be kept. Picks scored lower are dropped.",
           "maximum": 1.0,
           "minimum": 0.0,
           "title": "Score Threshold",
@@ -4273,7 +4273,7 @@
         },
         "score_threshold": {
           "default": 0.5,
-          "description": "Minimum relevance score (0..1, reported by the routing model) for a tool to be returned. Tools scored lower are dropped; the hierarchy strategy applies the same threshold to toolsets in its first call.",
+          "description": "Minimum relevance score (0..1, reported by the routing model) for a pick to be kept. Picks scored lower are dropped.",
           "maximum": 1.0,
           "minimum": 0.0,
           "title": "Score Threshold",

@@ -7,11 +7,7 @@ from quickapp.common import StagedBaseTool
 from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
 from quickapp.common.deferred_tool_types import DeferredToolCatalogEntry, DeferredToolsetSummary
 from quickapp.config.application import ApplicationConfig
-from quickapp.config.tool_discovery import (
-    HierarchySearchStrategyConfig,
-    PlainSearchStrategyConfig,
-    WindowSearchStrategyConfig,
-)
+from quickapp.config.tool_discovery import HierarchySearchStrategyConfig, WindowSearchStrategyConfig
 from quickapp.tool_discovery._anonymous_agent import _AnonymousAgent
 from quickapp.tool_discovery._tool_configs import TOOL_SEARCH_TOOL_CONFIG
 from quickapp.tool_discovery._tool_search_hint_prompt_provider import _ToolSearchHintPromptProvider
@@ -52,7 +48,8 @@ class ToolDiscoveryModule(Module):
         toolset_summaries: list[DeferredToolsetSummary],
     ) -> ToolSearchStrategy:
         discovery = config.orchestrator.tool_discovery
-        strategy_config = discovery.strategy if discovery else PlainSearchStrategyConfig()
+        assert discovery is not None, "search strategy requested while tool_discovery is unset"
+        strategy_config = discovery.strategy
         if isinstance(strategy_config, WindowSearchStrategyConfig):
             return WindowStrategy(agent, strategy_config, catalog)
         if isinstance(strategy_config, HierarchySearchStrategyConfig):

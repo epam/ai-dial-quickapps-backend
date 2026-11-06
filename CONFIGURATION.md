@@ -380,7 +380,9 @@ Search strategies (`tool_discovery.strategy`). All routing calls use `service_mo
 | `window`    | The catalog is split into windows searched in parallel, then one final call filters the union. Best recall on large catalogs; reads the whole catalog on every search. | `window_size_chars` (`40000`, window size in characters of rendered catalog text), `per_window_top_k` (`3`) |
 | `hierarchy` | First call picks toolsets from their descriptions, second picks tools among the chosen toolsets. Cheapest on large catalogs; recall is bounded by the toolset choice. | `toolset_top_k` (`3`) |
 
-Every strategy also accepts `top_k` (default `10`, maximum tools returned) and `score_threshold` (default `0.5`, tools scored lower are dropped; `hierarchy` also applies it to toolsets in its first call).
+Every strategy also accepts `top_k` (default `10`, maximum tools returned) and `score_threshold` (default `0.5`, picks scored lower are dropped; `hierarchy` also applies it to toolsets in its first call).
+
+> **Behaviour change for existing apps with `tool_discovery.enabled`:** even with the default `plain` strategy, `internal_tool_search` now returns at most `top_k` (10) tools, drops picks scored below `0.5`, uses a scoring routing prompt, and returns tool names only (`["name", ...]`) to the model instead of `{name, description}` objects. `service_model` now takes effect for the routing call (it was previously ignored).
 
 <details>
 <summary><b>Tool discovery configuration JSON sample</b></summary>

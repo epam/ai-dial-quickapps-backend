@@ -2,9 +2,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import openai
 import pytest
+from injector import Binder, Injector
 from openai.types import CompletionUsage
 
+from quickapp.common import DEPLOYMENT_AZURE_CLIENT, ORCHESTRATOR_AZURE_CLIENT
 from quickapp.common.deployment_usage import ModelUsage
+from quickapp.config.application import ApplicationConfig
 from quickapp.tool_discovery._anonymous_agent import _AnonymousAgent
 
 
@@ -175,19 +178,36 @@ async def test_route_returns_no_usage_on_openai_error():
     assert result.usage is None
 
 
-def test_agent_resolves_deployment_client_not_orchestrator_client():
-    from injector import Binder, Injector
-
-    from quickapp.common import DEPLOYMENT_AZURE_CLIENT, ORCHESTRATOR_AZURE_CLIENT
-    from quickapp.config.application import ApplicationConfig
-
-    deployment_client, orchestrator_client = MagicMock(), MagicMock()
+@pytest.mark.asyncio
+async def test_route_uses_deployment_client_not_orchestrator_client():
+    deployment_client, orchestrator_client = AsyncMock(), AsyncMock()
+    deployment_client.chat.completions.create.return_value = _make_response('["tool_a"]')
 
     def configure(binder: Binder) -> None:
         binder.bind(DEPLOYMENT_AZURE_CLIENT, to=deployment_client)
         binder.bind(ORCHESTRATOR_AZURE_CLIENT, to=orchestrator_client)
-        binder.bind(ApplicationConfig, to=_make_config())
+        binder.bind(ApplicationConfig, to=_make_config(tool_discovery=True))
 
     agent = Injector([configure]).get(_AnonymousAgent)
 
-    assert agent._AnonymousAgent__client is deployment_client
+    result = await _route(agent, CATALOG)
+
+    assert result.names == ["tool_a"]
+    deployment_client.chat.completions.create.assert_awaited_once()
+    orchestrator_client.chat.completions.create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_route_fails_open_when_response_has_no_choices():
+    client = AsyncMock()
+    response = _make_response("", _USAGE)
+    response.choices = []
+    client.chat.completions.create.return_value = response
+    agent = _AnonymousAgent(client=client, config=_make_config(tool_discovery=True))
+
+    result = await _route(agent, CATALOG)
+
+    assert result.names == []
+    assert result.usage == ModelUsage(
+        model="orchestrator-model", prompt_tokens=120, completion_tokens=8
+    )

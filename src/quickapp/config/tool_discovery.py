@@ -44,9 +44,8 @@ class BaseSearchStrategyConfig(BaseModel):
         ge=0.0,
         le=1.0,
         description=(
-            "Minimum relevance score (0..1, reported by the routing model) for a tool to be "
-            "returned. Tools scored lower are dropped; the hierarchy strategy applies the same "
-            "threshold to toolsets in its first call."
+            "Minimum relevance score (0..1, reported by the routing model) for a pick to be "
+            "kept. Picks scored lower are dropped."
         ),
     )
 
@@ -88,7 +87,7 @@ class HierarchySearchStrategyConfig(BaseSearchStrategyConfig):
         description=(
             "Two routing calls: the first picks toolsets from their descriptions, the second "
             "picks tools among the tools of the chosen toolsets. Cheapest on large catalogs, "
-            "recall is limited by the toolset choice."
+            "recall is limited by the toolset choice. score_threshold applies to both calls."
         ),
     )
     toolset_top_k: int = Field(
