@@ -138,6 +138,7 @@ class BaseDeploymentTool(StagedBaseTool):
             history=history,
             supports_url_attachments=tool_config.supports_url_attachments,
             parent_stage=parent_stage,
+            system_prompt=tool_config.system_prompt.content if tool_config.system_prompt else None,
         )
         if is_first_call and session_id:
             result.content = result.content + f"\n\n[session_id: {session_id}]"

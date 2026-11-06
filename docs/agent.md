@@ -86,7 +86,10 @@ skills) are visible to transformers:
 - **Tool and skill construction**: Each tool module's initializer constructs tool instances based
   on the application configuration (REST API, DIAL deployment, MCP, internal). The
   `_DialPromptSkillInitializer` eagerly fetches DIAL-prompt skills so the merged skill set is
-  available to the system-prompt transformer.
+  available to the system-prompt transformer. The `_DialSystemPromptInitializer` fetches the
+  orchestrator's `dial` system prompt and fails the request if it cannot be loaded; the deployment
+  tool initializer fetches each deployment tool's `dial` prompt the same way, but records a failure
+  as an initialization issue instead.
 - **Message preprocessing**: after initializers, `_RequestContextSetup.setup_messages()` calls
   `_MessagesSetup.extract_tool_calls()` to expand packed tool-call state, then runs all
   `MessagesTransformer` instances (adding system prompts, injecting context notifications). After
