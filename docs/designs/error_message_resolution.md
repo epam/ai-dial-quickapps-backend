@@ -557,8 +557,11 @@ and internal error message at the matching record.
 
 **`dial_deployment_tooling/deployment_stage_wrapper.py`**
 
-- Changed: a 429 from the deployment (`openai` error, before or mid-stream) shows the upstream `display_message`
-  or the resolver's rate-limit wording, plus the status code, instead of the generic exception text.
+- Changed: an error from the deployment that carries a status or `display_message` (`openai` error, before or
+  mid-stream) shows the upstream `display_message` or a status-class message (429 uses the resolver's rate-limit
+  wording; other 4xx and 5xx use tool wording), plus the status code when known, instead of the generic exception
+  text. The `message` of these errors is not shown in the stage. Failures with neither field keep the generic
+  text. The `DialException` branch (attachment metadata lookups) is unchanged and still shows its message.
 
 **Tests**
 
