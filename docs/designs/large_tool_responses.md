@@ -194,9 +194,9 @@ Specified separately in [DIAL Files Tools](dial_files_tools.md). Relevant facts 
 **What:** Offload has **no standalone module**. `DialFilesToolingModule` (which already wires the file tools) also owns the offload wiring, reflecting that offload is a sub-feature of DIAL Files. On top of binding the file tools, it:
 
 - Binds `ToolCallResultOffloadProcessor` (request-scoped).
-- Provides a request-scoped `ResolvedOffloadConfig` via `_provide_offload_config`, reading `features.dial_files.tool_call_result_offload` **and applying the read-back availability gate** — forcing `enabled = False` when `dial_files` is absent, the offload section's `enabled` flag is `false`, or `read_lines` / `search` are not in the resolved `enabled_tools`.
+- Provides a request-scoped `ResolvedOffloadConfig` via `_provide_offload_config`, reading `features.dial_files.tool_call_result_offload` **and applying the read-back availability gate** — forcing `enabled = False` when `features` is null (an absent or `null` `dial_files` block resolves to the default config at parse time, so it does not disable offload), the offload section's `enabled` flag is `false`, or `read_lines` / `search` are not in the resolved `enabled_tools`.
 - Provides the processor into the `list[ToolCallResultProcessor]` multiprovider (`_provide_offload_processors`).
-- Contributes an `OffloadConfigurationException` via `_provide_initialization_exceptions` → `list[InitializationException]` when offload is `enabled` but read-back tools are missing. Returns `[]` when offload was never requested (no `dial_files` / `enabled: false`).
+- Contributes an `OffloadConfigurationException` via `_provide_initialization_exceptions` → `list[InitializationException]` when offload is `enabled` but read-back tools are missing. Returns `[]` when offload is disabled (null `features` / `enabled: false` / preview off).
 - `ToolCallResultOffloadSettings` (pydantic-settings) is read directly by `DialFilesConfig`'s field defaults; it is not bound in the container.
 
 **Preview gating:** `DialFilesToolingModule` itself is generally available. Only the nested `features.dial_files.tool_call_result_offload` field is a `PreviewField`: when preview is off it is nullified and offload resolves to disabled, while the file tools stay available.

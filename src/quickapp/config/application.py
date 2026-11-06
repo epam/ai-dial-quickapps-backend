@@ -2,7 +2,7 @@ import logging
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic.fields import FieldInfo
 
 from quickapp.common.base_config import (
@@ -217,11 +217,12 @@ class Features(BaseModel):
         description="Controls which stage levels are rendered to the user.",
     )
     dial_files: DialFilesConfig | None = Field(
-        default=None,
+        default_factory=DialFilesConfig,
         description=(
             "Built-in DIAL files tools (list / read / search / write / edit / delete / copy / move). "
-            "When omitted or null, all tools are exposed (same as an empty block); use "
-            "`enabled_tools: read_only` to expose only the non-mutating ones."
+            "When omitted, null or empty, all tools are exposed; use "
+            "`enabled_tools: read_only` to expose only the non-mutating ones. "
+            "`null` is accepted for backward compatibility only and is treated as the default."
         ),
     )
     web_fetch: WebFetchConfig | None = Field(
@@ -241,6 +242,15 @@ class Features(BaseModel):
             "disable specific tools while keeping the section enabled."
         ),
     )
+
+    @field_validator("dial_files", mode="after")
+    @classmethod
+    def _null_dial_files_means_default(cls, value: DialFilesConfig | None) -> DialFilesConfig:
+        # `null` stays in the field type only so manifests written when `null` meant "file
+        # tools off" (and the published schema) keep validating. It is resolved here, at
+        # parse time, rather than at runtime: the preview gate (`nullify_preview_fields`)
+        # runs on the parsed config, so a runtime-built default would bypass it.
+        return DialFilesConfig() if value is None else value
 
 
 class ToolDefaults(BaseModel):

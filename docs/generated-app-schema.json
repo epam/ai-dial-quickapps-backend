@@ -1836,8 +1836,7 @@
               "type": "null"
             }
           ],
-          "default": null,
-          "description": "Built-in DIAL files tools (list / read / search / write / edit / delete / copy / move). When omitted or null, all tools are exposed (same as an empty block); use `enabled_tools: read_only` to expose only the non-mutating ones."
+          "description": "Built-in DIAL files tools (list / read / search / write / edit / delete / copy / move). When omitted, null or empty, all tools are exposed; use `enabled_tools: read_only` to expose only the non-mutating ones. `null` is accepted for backward compatibility only and is treated as the default."
         },
         "web_fetch": {
           "anyOf": [

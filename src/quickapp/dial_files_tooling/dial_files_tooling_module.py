@@ -98,7 +98,7 @@ class DialFilesToolingModule(Module):
 
     @staticmethod
     def _effective_config(app_config: ApplicationConfig) -> DialFilesConfig:
-        """The app's `dial_files` block, or the all-tools default when it is absent."""
+        """The app's `dial_files` block, or the all-tools default when `features` is null."""
         cfg = app_config.features.dial_files if app_config.features else None
         if cfg is None:
             return DialFilesConfig()
@@ -167,12 +167,14 @@ class DialFilesToolingModule(Module):
     @request_scope
     @provider
     def _provide_offload_config(self, app_config: ApplicationConfig) -> ResolvedOffloadConfig:
-        # Offload is a dial-files sub-feature: it only exists when the feature is
-        # configured. Checks the actual config — not the defaulted DialFilesConfig()
-        # — so an absent feature can never re-enable offload.
+        # Offload is a dial-files sub-feature. An absent or null `dial_files` block is
+        # already resolved to the default config at parse time (so the preview gate has
+        # been applied to it); the only way to get None here is a null `features`
+        # section. Read the parsed config — not a runtime-built `DialFilesConfig()` —
+        # which would bypass the preview gate.
         cfg = app_config.features.dial_files if app_config.features else None
         if cfg is None:
-            # No dial-files: the feature was never requested.
+            # `features` is null: nothing was parsed, so offload stays off.
             return ResolvedOffloadConfig(
                 enabled=False, size_threshold=0, excluded_tools=frozenset()
             )

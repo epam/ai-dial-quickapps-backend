@@ -38,10 +38,10 @@ def _built_tool_names(dial_files: DialFilesConfig | None) -> set[str]:
 
 
 class TestDefaultToolResolution:
-    def test_absent_block_exposes_all_tools(self):
+    def test_unresolved_block_exposes_all_tools(self):
         assert _built_tool_names(None) == set(_TOOL_NAMES)
 
-    def test_absent_features_exposes_all_tools(self):
+    def test_null_features_exposes_all_tools(self):
         app_config = MagicMock()
         app_config.features = None
         result = DialFilesToolingModule()._provide_dial_files_tools(
@@ -66,9 +66,9 @@ class TestDefaultToolResolution:
         assert cfg.enabled_tools == "all"
         assert cfg.agent_home_dir == ""
 
-    def test_absent_block_keeps_offload_disabled(self):
+    def test_null_features_keeps_offload_disabled(self):
         app_config = MagicMock()
-        app_config.features.dial_files = None
+        app_config.features = None
         offload = DialFilesToolingModule()._provide_offload_config(app_config)
         assert offload.enabled is False
 

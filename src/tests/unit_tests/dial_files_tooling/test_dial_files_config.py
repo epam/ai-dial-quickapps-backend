@@ -1,12 +1,14 @@
 import pytest
 from pydantic import ValidationError
 
+from quickapp.config.application import ApplicationConfig, Features
 from quickapp.config.dial_files import (
     DialFilesConfig,
     ToolCallResultOffloadConfig,
     ToolCallResultOffloadSettings,
 )
 from quickapp.config.tool_result_limit import ToolResultLimitSettings
+from tests.unit_tests.common.common import create_app_configuration
 
 
 class TestExpandedTools:
@@ -93,6 +95,37 @@ class TestDialFilesConfig:
     def test_rejects_empty_segment(self):
         with pytest.raises(ValidationError, match="empty"):
             DialFilesConfig(agent_home_dir="a//b/")
+
+
+class TestFeaturesDialFilesDefault:
+    @pytest.mark.parametrize("raw", [{}, {"dial_files": None}, {"dial_files": {}}])
+    def test_absent_null_and_empty_resolve_to_default_config(self, raw):
+        cfg = Features.model_validate(raw).dial_files
+        assert isinstance(cfg, DialFilesConfig)
+        assert cfg.enabled_tools == "all"
+
+    def test_explicit_settings_are_preserved(self):
+        cfg = Features.model_validate({"dial_files": {"enabled_tools": "read_only"}}).dial_files
+        assert cfg is not None
+        assert cfg.enabled_tools == "read_only"
+
+    @pytest.mark.parametrize("dial_files", [None, {}])
+    def test_preview_gate_applies_to_absent_and_null(self, monkeypatch, dial_files):
+        monkeypatch.delenv("ENABLE_PREVIEW_FEATURES", raising=False)
+        raw = create_app_configuration([]).model_dump(mode="json")
+        raw["features"]["dial_files"] = dial_files
+        cfg = ApplicationConfig.model_validate(raw).features.dial_files  # type: ignore[union-attr]
+        assert cfg is not None
+        assert cfg.tool_call_result_offload is None
+
+    def test_offload_follows_env_default_when_preview_enabled(self, monkeypatch):
+        monkeypatch.setenv("ENABLE_PREVIEW_FEATURES", "true")
+        raw = create_app_configuration([]).model_dump(mode="json")
+        raw["features"]["dial_files"] = None
+        cfg = ApplicationConfig.model_validate(raw).features.dial_files  # type: ignore[union-attr]
+        assert cfg is not None
+        assert cfg.tool_call_result_offload is not None
+        assert cfg.tool_call_result_offload.enabled is True
 
 
 class TestResultLimitConsistency:
