@@ -1715,7 +1715,8 @@
           "type": "string"
         },
         "path": {
-          "description": "Relative path to the the system prompt in DIAL, including bucket",
+          "description": "Relative prompt URL in DIAL (e.g. prompts/<bucket>/<path>)",
+          "dial:resource": true,
           "title": "Path",
           "type": "string"
         },

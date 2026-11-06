@@ -1,14 +1,17 @@
 import logging
 
+from aidial_client import AsyncDial
 from injector import AssistedBuilder, ProviderOf, inject
 
 from quickapp.common import StagedBaseTool
 from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.deferred_tools_accumulator import is_toolset_deferred
 from quickapp.common.deployment_tool_cache import DialDeploymentToolCacheService
+from quickapp.common.dial_system_prompt import DialSystemPromptError, fetch_dial_system_prompt
 from quickapp.common.exceptions import ToolInitializationException
 from quickapp.common.localized_string import resolve_localized
 from quickapp.config.application import ApplicationConfig
+from quickapp.config.prompt import DialSystemPromptConfig
 from quickapp.config.tools.deployment import DialDeploymentTool
 from quickapp.config.tools.deployment_simple import DialDeploymentSimpleTool
 from quickapp.config.toolsets.deployment import DeploymentToolSet
@@ -35,7 +38,9 @@ class _DeploymentToolInitializer(CompletionInitializer):
         dial_tools_provider: ProviderOf[list[DialDeploymentTool]],
         app_config: ApplicationConfig,
         access_filter: ToolAccessFilter,
+        dial_client: AsyncDial,
     ):
+        self.__dial_client: AsyncDial = dial_client
         self.__deployment_context: _DeploymentToolingContext = context
         self.__deferred_context: _DeploymentDeferredToolsContext = deferred_context
         self.__tool_config_service: ToolConfigCoreService = tool_config_service
@@ -82,6 +87,7 @@ class _DeploymentToolInitializer(CompletionInitializer):
                         "Skipping a deployment tool the user cannot access: %s", deployment_id
                     )
                     continue
+                await self.__resolve_system_prompt(tool_config)
                 tools.append(self.__build_deployment_tool(tool_config))
             elif isinstance(tool_config, DialDeploymentSimpleTool) and tool_config.enabled:
                 # Checked before the metadata fetch, so inaccessible simple tools cost no round-trips.
@@ -95,6 +101,24 @@ class _DeploymentToolInitializer(CompletionInitializer):
                 if built_simple_tool is not None:
                     tools.append(built_simple_tool)
         return tools
+
+    async def __resolve_system_prompt(self, tool: DialDeploymentTool) -> None:
+        system_prompt = tool.system_prompt
+        if not isinstance(system_prompt, DialSystemPromptConfig):
+            return
+        try:
+            system_prompt.content = await fetch_dial_system_prompt(
+                self.__dial_client, system_prompt.path
+            )
+        except DialSystemPromptError as e:
+            # Only the prompt is dropped: the tool still works without it.
+            tool.system_prompt = None
+            self.__deployment_context.append_exception(
+                ToolInitializationException(
+                    message=f"Failed to load system prompt '{system_prompt.path}': {e}",
+                    tool_name=tool.open_ai_tool.function.name,
+                )
+            )
 
     def __build_deployment_tool(self, tool: DialDeploymentTool) -> StagedBaseTool:
         return self.__builder.build(
