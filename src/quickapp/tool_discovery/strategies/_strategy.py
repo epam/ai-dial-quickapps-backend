@@ -1,18 +1,14 @@
 from typing import Protocol
 
-from quickapp.common.deferred_tool_types import DeferredToolCatalogEntry, DeferredToolsetSummary
+from quickapp.common.deferred_tool_types import DeferredToolCatalogEntry
 from quickapp.common.deployment_usage import ModelUsage
 from quickapp.config.tool_discovery import BaseSearchStrategyConfig
-from quickapp.tool_discovery._anonymous_agent import RoutingResult, _AnonymousAgent
+from quickapp.tool_discovery._anonymous_agent import _AnonymousAgent
+from quickapp.tool_discovery.routing_result import RoutingResult
 
 
 class ToolSearchStrategy(Protocol):
-    async def search(
-        self,
-        query: str,
-        catalog: list[DeferredToolCatalogEntry],
-        toolset_summaries: list[DeferredToolsetSummary],
-    ) -> RoutingResult:
+    async def search(self, query: str) -> RoutingResult:
         """Return the catalog tools that best match the query (best first) and the routing usage."""
         ...
 
@@ -30,11 +26,17 @@ def sum_routing_usage(*results: RoutingResult) -> ModelUsage | None:
 
 
 class BaseStrategy[ConfigT: BaseSearchStrategyConfig]:
-    """Holds the routing agent and the strategy config, and runs the shared plain routing call."""
+    """Holds the routing agent, the strategy config and the request's deferred catalog."""
 
-    def __init__(self, agent: _AnonymousAgent, config: ConfigT) -> None:
+    def __init__(
+        self,
+        agent: _AnonymousAgent,
+        config: ConfigT,
+        catalog: list[DeferredToolCatalogEntry],
+    ) -> None:
         self._agent = agent
         self._config = config
+        self._catalog = catalog
 
     async def _route_tools(
         self,
@@ -47,6 +49,6 @@ class BaseStrategy[ConfigT: BaseSearchStrategyConfig]:
             query,
             entries,
             kind="tool",
-            limit=limit or self._config.top_k,
+            limit=self._config.top_k if limit is None else limit,
             threshold=self._config.score_threshold,
         )

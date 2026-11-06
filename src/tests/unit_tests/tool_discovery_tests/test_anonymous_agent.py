@@ -173,3 +173,21 @@ async def test_route_returns_no_usage_on_openai_error():
     result = await _route(agent, CATALOG)
 
     assert result.usage is None
+
+
+def test_agent_resolves_deployment_client_not_orchestrator_client():
+    from injector import Binder, Injector
+
+    from quickapp.common import DEPLOYMENT_AZURE_CLIENT, ORCHESTRATOR_AZURE_CLIENT
+    from quickapp.config.application import ApplicationConfig
+
+    deployment_client, orchestrator_client = MagicMock(), MagicMock()
+
+    def configure(binder: Binder) -> None:
+        binder.bind(DEPLOYMENT_AZURE_CLIENT, to=deployment_client)
+        binder.bind(ORCHESTRATOR_AZURE_CLIENT, to=orchestrator_client)
+        binder.bind(ApplicationConfig, to=_make_config())
+
+    agent = Injector([configure]).get(_AnonymousAgent)
+
+    assert agent._AnonymousAgent__client is deployment_client

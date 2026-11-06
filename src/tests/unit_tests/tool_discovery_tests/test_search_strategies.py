@@ -12,10 +12,9 @@ from quickapp.config.tool_discovery import (
     ToolDiscoveryConfig,
     WindowSearchStrategyConfig,
 )
-from quickapp.tool_discovery._anonymous_agent import RoutingResult
-from quickapp.tool_discovery.strategies._hierarchy import HierarchyStrategy
-from quickapp.tool_discovery.strategies._plain import PlainStrategy
-from quickapp.tool_discovery.strategies._window import WindowStrategy, split_into_windows
+from quickapp.tool_discovery.routing_result import RoutingResult
+from quickapp.tool_discovery.strategies import HierarchyStrategy, PlainStrategy, WindowStrategy
+from quickapp.tool_discovery.strategies._window import split_into_windows
 
 
 def _entry(name: str, toolset: str = "ts", description: str = "d") -> DeferredToolCatalogEntry:
@@ -60,8 +59,10 @@ class TestPlainStrategy:
     @pytest.mark.asyncio
     async def test_passes_settings(self):
         agent = _stub_agent(["tool_a"])
-        strategy = PlainStrategy(agent, PlainSearchStrategyConfig(top_k=4, score_threshold=0.7))
-        assert (await strategy.search("q", CANDIDATES, [])).names == ["tool_a"]
+        strategy = PlainStrategy(
+            agent, PlainSearchStrategyConfig(top_k=4, score_threshold=0.7), CANDIDATES
+        )
+        assert (await strategy.search("q")).names == ["tool_a"]
         kwargs = agent.route.call_args.kwargs
         assert (kwargs["limit"], kwargs["threshold"], kwargs["kind"]) == (4, 0.7, "tool")
 
@@ -70,8 +71,8 @@ class TestWindowStrategy:
     @pytest.mark.asyncio
     async def test_single_window_makes_one_call(self):
         agent = _stub_agent(["tool_a"])
-        strategy = WindowStrategy(agent, WindowSearchStrategyConfig(top_k=5))
-        assert (await strategy.search("q", CANDIDATES, [])).names == ["tool_a"]
+        strategy = WindowStrategy(agent, WindowSearchStrategyConfig(top_k=5), CANDIDATES)
+        assert (await strategy.search("q")).names == ["tool_a"]
         assert agent.route.await_count == 1
         assert agent.route.call_args.kwargs["limit"] == 5
 
@@ -81,8 +82,8 @@ class TestWindowStrategy:
         settings = WindowSearchStrategyConfig(window_size_chars=1000, per_window_top_k=2, top_k=3)
         # one entry per window; the window results overlap on t1
         agent = _stub_agent(["t0"], ["t1"], ["t1", "t2"], ["t2", "t0"])
-        strategy = WindowStrategy(agent, settings)
-        result = await strategy.search("q", catalog, [])
+        strategy = WindowStrategy(agent, settings, catalog)
+        result = await strategy.search("q")
         assert result.names == ["t2", "t0"]
         assert result.usage == ModelUsage(model="m", prompt_tokens=40, completion_tokens=4)
         assert agent.route.await_count == 4
@@ -94,11 +95,38 @@ class TestWindowStrategy:
     async def test_no_candidates_skips_final_call(self):
         catalog = [_entry(f"t{i}", description="x" * 600) for i in range(2)]
         agent = _stub_agent([], [])
-        strategy = WindowStrategy(agent, WindowSearchStrategyConfig(window_size_chars=1000))
-        result = await strategy.search("q", catalog, [])
+        strategy = WindowStrategy(
+            agent, WindowSearchStrategyConfig(window_size_chars=1000), catalog
+        )
+        result = await strategy.search("q")
         assert result.names == []
         assert result.usage == ModelUsage(model="m", prompt_tokens=20, completion_tokens=2)
         assert agent.route.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_single_candidate_skips_final_call(self):
+        catalog = [_entry(f"t{i}", description="x" * 600) for i in range(2)]
+        agent = _stub_agent(["t1"], [])
+        strategy = WindowStrategy(
+            agent, WindowSearchStrategyConfig(window_size_chars=1000), catalog
+        )
+        result = await strategy.search("q")
+        assert result.names == ["t1"]
+        assert result.usage == ModelUsage(model="m", prompt_tokens=20, completion_tokens=2)
+        assert agent.route.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_failed_window_is_treated_as_empty(self):
+        catalog = [_entry(f"t{i}", description="x" * 600) for i in range(2)]
+        agent = MagicMock()
+        agent.route = AsyncMock(
+            side_effect=[IndexError("no choices"), RoutingResult(names=["t1"], usage=_usage(10))]
+        )
+        strategy = WindowStrategy(
+            agent, WindowSearchStrategyConfig(window_size_chars=1000), catalog
+        )
+        result = await strategy.search("q")
+        assert result.names == ["t1"]
 
 
 class TestHierarchyStrategy:
@@ -108,8 +136,10 @@ class TestHierarchyStrategy:
     @pytest.mark.asyncio
     async def test_scopes_second_stage_to_chosen_toolsets(self):
         agent = _stub_agent(["B"], ["b1"])
-        strategy = HierarchyStrategy(agent, HierarchySearchStrategyConfig(toolset_top_k=1))
-        result = await strategy.search("q", self.CATALOG, self.SUMMARIES)
+        strategy = HierarchyStrategy(
+            agent, HierarchySearchStrategyConfig(toolset_top_k=1), self.CATALOG, self.SUMMARIES
+        )
+        result = await strategy.search("q")
         assert result.names == ["b1"]
         assert result.usage == ModelUsage(model="m", prompt_tokens=20, completion_tokens=2)
         first, second = agent.route.call_args_list
@@ -119,15 +149,19 @@ class TestHierarchyStrategy:
     @pytest.mark.asyncio
     async def test_falls_back_to_whole_catalog_when_no_toolset(self):
         agent = _stub_agent([], ["a1"])
-        strategy = HierarchyStrategy(agent, HierarchySearchStrategyConfig())
-        assert (await strategy.search("q", self.CATALOG, self.SUMMARIES)).names == ["a1"]
+        strategy = HierarchyStrategy(
+            agent, HierarchySearchStrategyConfig(), self.CATALOG, self.SUMMARIES
+        )
+        assert (await strategy.search("q")).names == ["a1"]
         assert len(agent.route.call_args_list[1].args[1]) == 3
 
     @pytest.mark.asyncio
     async def test_single_toolset_skips_first_stage(self):
         agent = _stub_agent(["a1"])
-        strategy = HierarchyStrategy(agent, HierarchySearchStrategyConfig())
-        assert (await strategy.search("q", self.CATALOG, [{"name": "A"}])).names == ["a1"]
+        strategy = HierarchyStrategy(
+            agent, HierarchySearchStrategyConfig(), self.CATALOG, [{"name": "A"}]
+        )
+        assert (await strategy.search("q")).names == ["a1"]
         assert agent.route.await_count == 1
 
 

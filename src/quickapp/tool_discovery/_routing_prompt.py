@@ -1,13 +1,17 @@
 import json
 import logging
-from collections.abc import Mapping, Sequence
+import math
+from collections.abc import Sequence
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from quickapp.common.deferred_tool_types import DeferredToolCatalogEntry, DeferredToolsetSummary
+
 logger = logging.getLogger(__name__)
 
 SelectionKind = Literal["tool", "toolset"]
+CatalogItem = DeferredToolCatalogEntry | DeferredToolsetSummary
 
 _SYSTEM_PROMPT = (
     "You are a routing assistant. Given a user request, pick the {kind}s from the catalog below "
@@ -31,13 +35,11 @@ class ScoredName(BaseModel):
     score: float
 
 
-def render_catalog_line(entry: Mapping[str, object]) -> str:
+def render_catalog_line(entry: CatalogItem) -> str:
     return f"- {entry['name']}: {entry.get('description') or ''}"
 
 
-def build_system_prompt(
-    catalog: Sequence[Mapping[str, object]], kind: SelectionKind, limit: int
-) -> str:
+def build_system_prompt(catalog: Sequence[CatalogItem], kind: SelectionKind, limit: int) -> str:
     return _SYSTEM_PROMPT.format(
         kind=kind,
         limit=limit,
@@ -81,7 +83,9 @@ def _read_item(item: object) -> tuple[str | None, float]:
     if isinstance(item, dict) and isinstance(item.get("name"), str):
         try:
             score = float(item.get("score", 1.0))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             return item["name"], 1.0
+        if math.isnan(score):
+            return None, 0.0
         return item["name"], min(max(score, 0.0), 1.0)
     return None, 0.0

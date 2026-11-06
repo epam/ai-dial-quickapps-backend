@@ -2,14 +2,15 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from quickapp.common.deferred_tool_types import DeferredToolDefinition
 from quickapp.common.deployment_usage import DeploymentUsage, ModelUsage
 from quickapp.config.tools.base import (
     OpenAiToolConfig,
     OpenAiToolFunction,
     OpenAiToolFunctionParameters,
 )
-from quickapp.tool_discovery._anonymous_agent import RoutingResult
 from quickapp.tool_discovery._tool_search_tool import _ToolSearchTool
+from quickapp.tool_discovery.routing_result import RoutingResult
 
 
 def _make_open_ai_tool(description: str = "Search for additional tools.") -> OpenAiToolConfig:
@@ -134,3 +135,50 @@ class TestRoutingUsage:
         result = await tool._run_in_stage_async(None, query="find a tool")
 
         assert result.usage is None
+
+
+class TestRunInStage:
+    @staticmethod
+    def _tool(routed: list[str]) -> tuple[_ToolSearchTool, MagicMock]:
+        lazy_holder = MagicMock()
+        strategy = MagicMock()
+        strategy.search = AsyncMock(return_value=RoutingResult(names=routed))
+        tool = _ToolSearchTool(
+            stage_wrapper_builder=MagicMock(),
+            tool_config=MagicMock(),
+            perf_timer=MagicMock(),
+            catalog=[{"name": "tool_a", "description": "A", "toolset": "ts"}],
+            definitions=[DeferredToolDefinition(name="tool_a", definition={"type": "function"})],
+            toolset_summaries=[],
+            lazy_holder=lazy_holder,
+            strategy=strategy,
+        )
+        return tool, lazy_holder
+
+    @pytest.mark.asyncio
+    async def test_returns_matched_names_as_json_list(self):
+        tool, lazy_holder = self._tool(["tool_a"])
+
+        result = await tool._run_in_stage_async(query="q")
+
+        assert result.content == '["tool_a"]'
+        assert result.content_type == "application/json"
+        lazy_holder.add.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_skips_unknown_names(self):
+        tool, lazy_holder = self._tool(["ghost", "tool_a"])
+
+        result = await tool._run_in_stage_async(query="q")
+
+        assert result.content == '["tool_a"]'
+
+    @pytest.mark.asyncio
+    async def test_no_match_returns_text(self):
+        tool, lazy_holder = self._tool(["ghost"])
+
+        result = await tool._run_in_stage_async(query="q")
+
+        assert result.content == "No matching tools found for the given query."
+        assert result.content_type == "text/plain"
+        lazy_holder.add.assert_not_called()

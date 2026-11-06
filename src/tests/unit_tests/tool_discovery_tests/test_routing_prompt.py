@@ -43,3 +43,11 @@ class TestParseSelection:
 
     def test_unreadable_score_counts_as_perfect_fit(self):
         assert _parse('[{"name": "tool_a", "score": "high"}]') == ["tool_a"]
+
+    def test_overflowing_score_counts_as_unreadable(self):
+        assert _parse('[{"name": "tool_a", "score": 1' + "0" * 400 + "}]") == ["tool_a"]
+
+    def test_nan_score_is_rejected(self):
+        assert _parse('[{"name": "tool_a", "score": NaN}, {"name": "tool_b", "score": 0.9}]') == [
+            "tool_b"
+        ]

@@ -8,9 +8,7 @@ from quickapp.config.tool_discovery import (
     WindowSearchStrategyConfig,
 )
 from quickapp.tool_discovery._tool_search_hint_prompt_provider import _ToolSearchHintPromptProvider
-from quickapp.tool_discovery.strategies._hierarchy import HierarchyStrategy
-from quickapp.tool_discovery.strategies._plain import PlainStrategy
-from quickapp.tool_discovery.strategies._window import WindowStrategy
+from quickapp.tool_discovery.strategies import HierarchyStrategy, PlainStrategy, WindowStrategy
 from quickapp.tool_discovery.tool_discovery_module import ToolDiscoveryModule
 
 
@@ -83,11 +81,13 @@ class TestProvideSearchStrategy:
         config = _make_config(True)
         config.orchestrator.tool_discovery.strategy = strategy_config
 
-        result = ToolDiscoveryModule()._provide_search_strategy(config, MagicMock())
+        result = ToolDiscoveryModule()._provide_search_strategy(config, MagicMock(), [], [])
 
         assert type(result) is expected
 
     def test_falls_back_to_plain_when_discovery_unset(self):
-        result = ToolDiscoveryModule()._provide_search_strategy(_make_config(None), MagicMock())
+        result = ToolDiscoveryModule()._provide_search_strategy(
+            _make_config(None), MagicMock(), [], []
+        )
 
         assert type(result) is PlainStrategy

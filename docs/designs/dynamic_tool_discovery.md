@@ -399,7 +399,8 @@ returns the matched names plus the summed routing usage.
 | `hierarchy` | `HierarchyStrategy` | First call picks up to `toolset_top_k` toolsets from their summaries, second call picks tools among the chosen toolsets. Skipped when there is one toolset; falls back to the whole catalog when no toolset is chosen. `score_threshold` applies to both calls. Cheapest on large catalogs; recall is bounded by the toolset choice |
 
 Catalog entries carry their toolset's localized display name (`toolset`), which is the join key
-of the hierarchy strategy.
+of the hierarchy strategy. Limitation: two toolsets sharing a display name are treated as one, so
+choosing either pulls in the tools of both.
 
 Default behaviour change: with tool discovery on, apps now get at most `top_k=10` tools per search
 and picks scored below `0.5` are dropped; before there was no cap and no score filter.

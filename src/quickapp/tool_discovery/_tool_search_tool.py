@@ -20,7 +20,7 @@ from quickapp.config.tools.internal import InternalTool
 from quickapp.core.agent.lazy_loaded_tools_holder import LazyLoadedToolsHolder
 from quickapp.tool_discovery._tool_search_stage_wrapper import _ToolSearchStageWrapper
 from quickapp.tool_discovery._toolset_summary_format import format_toolset_summaries
-from quickapp.tool_discovery.strategies._strategy import ToolSearchStrategy
+from quickapp.tool_discovery.strategies import ToolSearchStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +90,7 @@ class _ToolSearchTool(StagedBaseTool):
                 stage_wrapper.add_result(result)
             return result
 
-        routing = await self.__strategy.search(query, catalog, self.__toolset_summaries)
+        routing = await self.__strategy.search(query)
 
         discovered: list[str] = []
         new_definitions = []

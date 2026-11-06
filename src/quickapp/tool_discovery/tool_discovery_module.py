@@ -5,6 +5,7 @@ from injector import AssistedBuilder, Binder, Module, multiprovider, provider
 
 from quickapp.common import StagedBaseTool
 from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
+from quickapp.common.deferred_tool_types import DeferredToolCatalogEntry, DeferredToolsetSummary
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.tool_discovery import (
     HierarchySearchStrategyConfig,
@@ -16,10 +17,12 @@ from quickapp.tool_discovery._tool_configs import TOOL_SEARCH_TOOL_CONFIG
 from quickapp.tool_discovery._tool_search_hint_prompt_provider import _ToolSearchHintPromptProvider
 from quickapp.tool_discovery._tool_search_stage_wrapper import _ToolSearchStageWrapper
 from quickapp.tool_discovery._tool_search_tool import _ToolSearchTool
-from quickapp.tool_discovery.strategies._hierarchy import HierarchyStrategy
-from quickapp.tool_discovery.strategies._plain import PlainStrategy
-from quickapp.tool_discovery.strategies._strategy import ToolSearchStrategy
-from quickapp.tool_discovery.strategies._window import WindowStrategy
+from quickapp.tool_discovery.strategies import (
+    HierarchyStrategy,
+    PlainStrategy,
+    ToolSearchStrategy,
+    WindowStrategy,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -42,15 +45,19 @@ class ToolDiscoveryModule(Module):
 
     @provider
     def _provide_search_strategy(
-        self, config: ApplicationConfig, agent: _AnonymousAgent
+        self,
+        config: ApplicationConfig,
+        agent: _AnonymousAgent,
+        catalog: list[DeferredToolCatalogEntry],
+        toolset_summaries: list[DeferredToolsetSummary],
     ) -> ToolSearchStrategy:
         discovery = config.orchestrator.tool_discovery
         strategy_config = discovery.strategy if discovery else PlainSearchStrategyConfig()
         if isinstance(strategy_config, WindowSearchStrategyConfig):
-            return WindowStrategy(agent, strategy_config)
+            return WindowStrategy(agent, strategy_config, catalog)
         if isinstance(strategy_config, HierarchySearchStrategyConfig):
-            return HierarchyStrategy(agent, strategy_config)
-        return PlainStrategy(agent, strategy_config)
+            return HierarchyStrategy(agent, strategy_config, catalog, toolset_summaries)
+        return PlainStrategy(agent, strategy_config, catalog)
 
     @multiprovider
     def _provide_tool_search_tools(
