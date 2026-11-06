@@ -189,35 +189,33 @@ sequenceDiagram
 
 ### Concern 5: File tool presets — `read_only` and `all` (deferred)
 
-**Status:** Out of scope for v1.
+**Status:** Implemented outside folder context (see `dial_files_tools.md`).
 
-**What (future):** Add a `"read_only"` preset to `DialFilesConfig.enabled_tools` alongside `"all"` and explicit tool lists.
+**What:** `DialFilesConfig.enabled_tools` accepts the `"read_only"` preset alongside `"all"` and explicit tool lists. An absent or `null` `dial_files` block behaves as `"all"` (same as `{}`).
 
 **Note:** Folder expansion does **not** require `features.dial_files` regardless of preset design.
 
-### Concern 6: Preview gating (folder + dial-files)
+### Concern 6: Preview gating (folder; dial-files is GA)
 
-**What:** Both folder contexts and dial-files remain preview-gated for v1.
+**What:** Folder contexts were preview-gated for v1. Dial-files is generally available (promoted in 073a7517) and is no longer gated; only its nested `tool_call_result_offload` field is still preview.
 
-**Owner:** `config/context.py`, `common/base_config.py` (`@preview_model`), `config/application.py` (`nullify_preview_fields`), `dial_files_tooling/dial_files_tooling_module.py`, schema generation
+**Owner:** `config/context.py`, `common/base_config.py` (`@preview_model`), `config/application.py` (`nullify_preview_fields`), schema generation
 
 **Semantics:**
 
 | Feature | Gating mechanism |
 |---------|------------------|
 | `FolderContextConfig` in `contexts` | `@preview_model` on the class; schema strips the `folder` discriminator when preview off; runtime removal via `nullify_preview_fields()` list filtering + warning |
-| `features.dial_files` | Existing `PreviewField` on `Features.dial_files` |
-| `DialFilesToolingModule` | Existing `@preview_module` |
+| `features.dial_files` | None (GA). An absent block exposes all file tools (same as `{}`) |
+| `DialFilesToolingModule` | None (GA), always wired |
+| `features.dial_files.tool_call_result_offload` | `PreviewField` (see `large_tool_responses.md`) |
 
 When `ENABLE_PREVIEW_FEATURES=false`:
 
 - `FolderContextConfig` entries in `contexts` are removed by `nullify_preview_fields()` (with warning naming the field, e.g. `contexts`).
-- `features.dial_files` nullified (existing behaviour).
-- `DialFilesToolingModule` not wired (existing behaviour).
+- Dial-files tools are unaffected; only the nested offload config is nullified.
 
-When preview is enabled, both features are fully functional.
-
-**Graduation path (future):** Remove `@preview_model` from `FolderContextConfig` and/or remove `@preview_module` / `PreviewField` when stable — independent decisions.
+**Graduation path (future):** Remove `@preview_model` from `FolderContextConfig` when stable.
 
 ### Concern 7: UI — folder context picker
 

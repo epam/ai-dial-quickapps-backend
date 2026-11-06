@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Literal, get_args
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -6,18 +6,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from quickapp.common.base_config import PreviewField
 from quickapp.config.tool_result_limit import ToolResultLimitSettings
 
-DialFilesToolName = Literal[
-    "list",
-    "read_lines",
-    "read_chars",
-    "search",
-    "find",
-    "write",
-    "edit",
-    "delete",
-    "copy",
-    "move",
-]
+DialFilesReadToolName = Literal["list", "read_lines", "read_chars", "search", "find"]
+DialFilesWriteToolName = Literal["write", "edit", "delete", "copy", "move"]
+DialFilesToolName = Literal[DialFilesReadToolName, DialFilesWriteToolName]
+
+DialFilesToolPreset = Literal["all", "read_only"]
+
+_READ_ONLY_TOOLS: frozenset[DialFilesToolName] = frozenset(get_args(DialFilesReadToolName))
+_ALL_TOOLS: frozenset[DialFilesToolName] = frozenset(get_args(DialFilesToolName))
 
 
 class ToolCallResultOffloadSettings(BaseSettings):
@@ -89,11 +85,13 @@ class ToolCallResultOffloadConfig(BaseModel):
 
 
 class DialFilesConfig(BaseModel):
-    enabled_tools: Literal["all"] | list[DialFilesToolName] = Field(
+    enabled_tools: DialFilesToolPreset | list[DialFilesToolName] = Field(
         default="all",
         description=(
-            "Which file tools to expose. Use 'all' for every tool, "
-            "or a list to restrict (e.g. ['read_lines', 'search'])."
+            "Which file tools to expose. Use 'all' for every tool, 'read_only' for the "
+            "non-mutating ones (list, read_lines, read_chars, search, find), or a list to "
+            "restrict (e.g. ['read_lines', 'search']). When the whole `dial_files` block is "
+            "omitted, 'all' applies."
         ),
     )
     agent_home_dir: str = Field(
@@ -123,6 +121,15 @@ class DialFilesConfig(BaseModel):
             "notice. Bounds worst-case egress on large subtrees."
         ),
     )
+
+    @property
+    def expanded_tools(self) -> frozenset[DialFilesToolName]:
+        """`enabled_tools` (preset or explicit list) resolved to short tool names."""
+        if self.enabled_tools == "all":
+            return _ALL_TOOLS
+        if self.enabled_tools == "read_only":
+            return _READ_ONLY_TOOLS
+        return frozenset(self.enabled_tools)
 
     @field_validator("agent_home_dir")
     @classmethod
