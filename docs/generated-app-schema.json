@@ -1444,7 +1444,10 @@
         "enabled_tools": {
           "anyOf": [
             {
-              "const": "all",
+              "enum": [
+                "all",
+                "read_only"
+              ],
               "type": "string"
             },
             {
@@ -1467,7 +1470,7 @@
             }
           ],
           "default": "all",
-          "description": "Which file tools to expose. Use 'all' for every tool, or a list to restrict (e.g. ['read_lines', 'search']).",
+          "description": "Which file tools to expose. Use 'all' for every tool, 'read_only' for the non-mutating ones (list, read_lines, read_chars, search, find), or a list to restrict (e.g. ['read_lines', 'search']). When the whole `dial_files` block is omitted, 'all' applies.",
           "title": "Enabled Tools"
         },
         "agent_home_dir": {
@@ -1833,8 +1836,7 @@
               "type": "null"
             }
           ],
-          "default": null,
-          "description": "Built-in DIAL files tools (list / read / search / write / edit / delete / copy / move)."
+          "description": "Built-in DIAL files tools (list / read / search / write / edit / delete / copy / move). When omitted, null or empty, all tools are exposed; use `enabled_tools: read_only` to expose only the non-mutating ones. `null` is accepted for backward compatibility only and is treated as the default."
         },
         "web_fetch": {
           "anyOf": [

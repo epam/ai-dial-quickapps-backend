@@ -96,13 +96,18 @@ class DialFilesToolingModule(Module):
         }
     )
 
-    @request_scope
-    @provider
-    def _provide_dial_files_config(self, app_config: ApplicationConfig) -> DialFilesConfig:
+    @staticmethod
+    def _effective_config(app_config: ApplicationConfig) -> DialFilesConfig:
+        """The app's `dial_files` block, or the all-tools default when `features` is null."""
         cfg = app_config.features.dial_files if app_config.features else None
         if cfg is None:
             return DialFilesConfig()
         return cfg
+
+    @request_scope
+    @provider
+    def _provide_dial_files_config(self, app_config: ApplicationConfig) -> DialFilesConfig:
+        return self._effective_config(app_config)
 
     @multiprovider
     def _provide_dial_files_tools(
@@ -121,9 +126,7 @@ class DialFilesToolingModule(Module):
         global_transformers: list[ToolArgumentTransformer],
         path_transformer: _AppdataHomePathTransformer,
     ) -> list[StagedBaseTool]:
-        cfg = app_config.features.dial_files if app_config.features else None
-        if cfg is None:
-            return []
+        enabled_names = self._effective_config(app_config).expanded_tools
 
         tools: list[tuple[AssistedBuilder[Any], InternalTool]] = [
             (list_builder, LIST_FILES_TOOL_CONFIG),
@@ -139,12 +142,10 @@ class DialFilesToolingModule(Module):
         ]
 
         def _is_enabled(config: InternalTool) -> bool:
-            if cfg.enabled_tools == "all":
-                return True
             short_name = config.open_ai_tool.function.name.removeprefix(
                 INTERNAL_FILE_TOOL_NAME_PREFIX
             )
-            return short_name in cfg.enabled_tools
+            return short_name in enabled_names
 
         # The new path transformer runs last so a file-reference already resolved to a
         # `files/...` URL by the global transformers is relativized too. Injected only
@@ -166,12 +167,14 @@ class DialFilesToolingModule(Module):
     @request_scope
     @provider
     def _provide_offload_config(self, app_config: ApplicationConfig) -> ResolvedOffloadConfig:
-        # Offload is a dial-files sub-feature: it only exists when the feature is
-        # configured. Checks the actual config — not the defaulted DialFilesConfig()
-        # — so an absent feature can never re-enable offload.
+        # Offload is a dial-files sub-feature. An absent or null `dial_files` block is
+        # already resolved to the default config at parse time (so the preview gate has
+        # been applied to it); the only way to get None here is a null `features`
+        # section. Read the parsed config — not a runtime-built `DialFilesConfig()` —
+        # which would bypass the preview gate.
         cfg = app_config.features.dial_files if app_config.features else None
         if cfg is None:
-            # No dial-files: the feature was never requested.
+            # `features` is null: nothing was parsed, so offload stays off.
             return ResolvedOffloadConfig(
                 enabled=False, size_threshold=0, excluded_tools=frozenset()
             )
@@ -217,6 +220,4 @@ class DialFilesToolingModule(Module):
         ]
 
     def _missing_read_back_tools(self, cfg: DialFilesConfig) -> list[str]:
-        if cfg.enabled_tools == "all":
-            return []
-        return sorted(self._REQUIRED_READ_BACK_TOOLS - set(cfg.enabled_tools))
+        return sorted(self._REQUIRED_READ_BACK_TOOLS - cfg.expanded_tools)
