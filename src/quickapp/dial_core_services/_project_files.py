@@ -7,8 +7,9 @@ with aidial-client's project API once that exists.
 
 Core behaviour this relies on:
 
-- ``If-Match`` on a file PUT is checked against the *project* ETag
-  (``GET /v2/metadata/projects/{b}/{p}``), while a file GET returns the file's own ETag.
+- ``If-Match`` / ``If-None-Match`` on a file PUT are checked against the *project* ETag,
+  while a file GET returns the file's own ETag. So callers check a file's own state with
+  ``file_etag`` and then send a plain PUT.
 - There is no per-file metadata endpoint, and listings carry no sizes.
 - Listing a missing folder returns 200 with no items, never 404.
 """
@@ -66,9 +67,8 @@ class ProjectFilesClient:
     async def download(self, url: str) -> tuple[bytes, FileMetadata]:
         """Download a project file with a synthesized ``FileMetadata``.
 
-        ``etag`` is the file's own ETag, not the project's (see the module doc). Callers
-        check the size limit after the download: projects have no metadata endpoint that
-        gives a file's size up front.
+        ``etag`` is the file's own ETag, not the project's (see the module doc). No size
+        limit here: callers check it after the download.
         """
         response = await self._request("GET", f"v2/{url}")
         data = response.content
@@ -104,40 +104,10 @@ class ProjectFilesClient:
             return e.etag
         return response.headers.get("etag")
 
-    async def project_etag(self, project_url: str) -> str:
-        """The aggregate ETag of the project ``projects/{b}/{p}``."""
-        response = await self._request("GET", f"v2/metadata/{project_url}")
-        etag = response.json().get("etag")
-        if not etag:
-            raise DialException(
-                message=f"DIAL Core returned no ETag for the project {project_url}",
-                status_code=502,
-            )
-        return etag
-
-    async def put(
-        self, url: str, content: bytes, content_type: str, if_match: str | None = None
-    ) -> None:
-        """Upload a file; with ``if_match``, conditionally on the project ETag.
-
-        A conditional PUT is sent once: the HTTP client's retry after a timeout or a
-        connection error could resend a write that already landed, and the resend then
-        fails with 412 against the ETag that write changed. The caller's own 412 loop
-        re-reads the state instead. An unconditional PUT keeps the client's retries.
-        """
+    async def put(self, url: str, content: bytes, content_type: str) -> None:
+        """Upload a file unconditionally (create or replace)."""
         filename = url.rsplit("/", 1)[-1]
-        if if_match is None:
-            await self._request(
-                "PUT", f"v2/{url}", files={"file": (filename, content, content_type)}
-            )
-            return
-        await self._request(
-            "PUT",
-            f"v2/{url}",
-            files={"file": (filename, content, content_type)},
-            headers={"If-Match": if_match},
-            max_retries=0,
-        )
+        await self._request("PUT", f"v2/{url}", files={"file": (filename, content, content_type)})
 
     async def delete(self, url: str) -> None:
         await self._request("DELETE", f"v2/{url}")
@@ -171,7 +141,6 @@ class ProjectFilesClient:
         files: dict | None = None,
         params: dict | None = None,
         headers: dict[str, str] | None = None,
-        max_retries: int | None = None,
         on_http_error: ErrorHandler = _storage_error_processor,
     ) -> httpx.Response:
         # Defence in depth: callers only pass URLs of the request's project, which are
@@ -185,8 +154,6 @@ class ProjectFilesClient:
             params=params,
             headers=headers or {},
         )
-        if max_retries is not None:
-            options.max_retries = max_retries
         return await self._http.request(
             cast_to=httpx.Response, options=options, on_http_error=on_http_error
         )

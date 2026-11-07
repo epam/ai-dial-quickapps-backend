@@ -5,6 +5,7 @@ import pytest
 from quickapp.common.project_context import ProjectContext
 from quickapp.dial_core_services._project_files import ProjectFilesClient
 from quickapp.dial_core_services.dial_downloader import DialDownloader
+from quickapp.dial_core_services.exceptions import FileTooLargeError
 from quickapp.shared.config_resolvers.file_loading_size_limit_resolver import (
     FileLoadingSizeLimitResolver,
 )
@@ -101,6 +102,7 @@ async def test_fetch_project_file_goes_to_v2():
 
     assert data == b"project"
     assert result_metadata is metadata
+    project_files.download.assert_awaited_once_with("projects/b/p/files/context/a.csv")
     client.files.get_metadata.assert_not_awaited()
     client.files.download.assert_not_awaited()
 
@@ -115,7 +117,7 @@ async def test_fetch_project_file_over_the_limit_is_rejected():
         project=ProjectContext(url="projects/b/p"),
     )
 
-    with pytest.raises(ValueError, match="exceeds the limit"):
+    with pytest.raises(FileTooLargeError, match="exceeds the limit"):
         await downloader.fetch("projects/b/p/files/context/a.csv")
 
 

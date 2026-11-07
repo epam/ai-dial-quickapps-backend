@@ -15,20 +15,12 @@ from quickapp.config.application import StageDisplayLevel
 from quickapp.config.dial_files import DialFilesConfig
 from quickapp.config.tools.internal import InternalTool
 from quickapp.dial_core_services.dial_file_service import DialFileService, FolderEntry
-from quickapp.dial_core_services.exceptions import (
-    PartialMoveException,
-    ProjectWriteConflictException,
-)
 from quickapp.dial_files_tooling._dial_files_tool_error_exception import DialFilesToolErrorException
 from quickapp.dial_files_tooling._stage_wrapper import _FileStageWrapper
 from quickapp.dial_files_tooling._utils import is_root_reference
 from quickapp.shared.home_path.home_path_resolver import HomePathResolver
 
 logger = logging.getLogger(__name__)
-
-# Project write failures the agent can't fix by changing the arguments: surfaced as a
-# tool error (see `_DialFileTool._tool_error`), not as an invalid parameter.
-PROJECT_WRITE_ERRORS = (ProjectWriteConflictException, PartialMoveException)
 
 # Ceiling of the LLM-facing `max_depth` parameter, and the single source for the
 # "Range: [1, N]" bound interpolated into the tool schema descriptions (see _tool_configs.py).

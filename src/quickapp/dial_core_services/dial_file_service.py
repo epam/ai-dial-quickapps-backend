@@ -1,17 +1,16 @@
-import asyncio
 import logging
-import random
 from collections import deque
 from pathlib import PurePosixPath
 from typing import Literal, NoReturn
 
 from aidial_client import AsyncDial
 from aidial_client._exception import DialException, EtagMismatchError, ResourceNotFoundError
+from aidial_client.helpers.storage_resource import _percent_encode_relative_url
 from aidial_client.types.metadata import FileItem, FileMetadata
 from injector import inject
 from pydantic import BaseModel, ConfigDict
 
-from quickapp.common.project_context import PROJECT_CONTEXT, canonical_resource_url
+from quickapp.common.project_context import PROJECT_CONTEXT
 from quickapp.common.state_holder import StateHolder
 from quickapp.common.url_sanitization import sanitize_url
 from quickapp.dial_core_services._project_files import ProjectFilesClient
@@ -21,7 +20,6 @@ from quickapp.dial_core_services.exceptions import (
     PartialMoveException,
     ProjectFileOperationException,
     ProjectFileTooLargeException,
-    ProjectWriteConflictException,
     SameSourceAndDestinationException,
 )
 from quickapp.shared.config_resolvers.file_loading_size_limit_resolver import (
@@ -29,13 +27,6 @@ from quickapp.shared.config_resolvers.file_loading_size_limit_resolver import (
 )
 
 logger = logging.getLogger(__name__)
-
-# Conditional project file writes: each 412 means another write to the same project (e.g. a
-# parallel tool call) changed the project ETag in between. Retry with exponential backoff
-# and full jitter so concurrent writers spread out.
-_PROJECT_WRITE_ATTEMPTS = 5
-_PROJECT_WRITE_BACKOFF_BASE_SECONDS = 0.05
-_PROJECT_WRITE_BACKOFF_CAP_SECONDS = 1.0
 
 
 class FolderEntry(BaseModel):
@@ -63,18 +54,13 @@ class DialFileService:
         self.__project_files: ProjectFilesClient = project_files
         self.__project: PROJECT_CONTEXT = project
 
-    def _project_of(self, url: str) -> str | None:
-        """The request's project URL when ``url`` belongs to it, else ``None``.
-
-        Only files of the request's own project go to the v2 project API. Any other URL,
-        ``projects/…`` included, takes the v1 path unchanged.
-        """
-        if self.__project is not None and self.__project.contains(url):
-            return self.__project.url
-        return None
-
     def _in_project(self, url: str) -> bool:
-        return self._project_of(url) is not None
+        """Whether ``url`` is a file or folder of the request's project.
+
+        Only those go to the v2 project API. Any other URL, ``projects/…`` included, takes
+        the v1 path unchanged.
+        """
+        return self.__project is not None and self.__project.contains(url)
 
     async def my_appdata_home(self) -> PurePosixPath | None:
         return await self.__dial_client.my_appdata_home()
@@ -114,7 +100,9 @@ class DialFileService:
         try:
             logger.debug("Downloading file: %s", safe_url)
             if self._in_project(file_url):
-                # Projects have no metadata endpoint for size: check after the download.
+                # No per-file metadata endpoint: the size is known only after the download.
+                # Check it before the download once aidial-client's stream() maps error
+                # statuses correctly.
                 file_data, metadata = await self.__project_files.download(file_url)
                 ensure_within_size_limit(len(file_data), self.__content_size_limit)
             else:
@@ -207,10 +195,8 @@ class DialFileService:
         if_none_match: Literal["*"] | None = None,
         if_match: str | None = None,
     ) -> str:
-        project_url = self._project_of(url)
-        if project_url is not None:
+        if self._in_project(url):
             await self._upload_project_file(
-                project_url,
                 url,
                 content,
                 content_type,
@@ -218,7 +204,7 @@ class DialFileService:
                 if_match=if_match,
             )
             # Same form v1 returns in `metadata.url`.
-            return canonical_resource_url(url)
+            return _percent_encode_relative_url(url)
         filename = url.split("/")[-1]
         metadata = await self.__dial_client.files.upload(
             url=url,
@@ -230,7 +216,6 @@ class DialFileService:
 
     async def _upload_project_file(
         self,
-        project_url: str,
         url: str,
         content: bytes,
         content_type: str,
@@ -238,39 +223,19 @@ class DialFileService:
         if_none_match: Literal["*"] | None,
         if_match: str | None,
     ) -> None:
-        """Write a file of the request's project.
+        """Write a file of the request's project: check the precondition, then one plain PUT.
 
-        - Unconditional (no precondition): one PUT, no ``If-Match``, no retry.
-        - Create-only (``if_none_match="*"``) and conditional overwrite (``if_match``): Core
-          checks ``If-Match`` against the project ETag, so, as Chat does: read the project
-          ETag, check the precondition on the file's own state (absent / own ETag), then PUT
-          with ``If-Match: <project ETag>``. A failed precondition raises
-          ``EtagMismatchError``, as v1 does. A 412 on the PUT means another write to the
-          project got in between: retry with backoff, then raise
-          ``ProjectWriteConflictException``.
+        Core checks ``If-Match`` / ``If-None-Match`` on a project file against the ETag of
+        the whole project, which any write to the project changes. So the file's own state
+        is checked here, and a failed check raises ``EtagMismatchError`` as v1 does. Not
+        atomic: a write to the same file between the check and the PUT wins. Follow-up: one
+        conditional PUT once Core checks preconditions per file (epic I#656).
         """
-        if if_none_match is None and if_match is None:
-            await self.__project_files.put(url, content, content_type)
-            return
-        for attempt in range(_PROJECT_WRITE_ATTEMPTS):
-            if attempt:
-                await asyncio.sleep(_project_write_backoff(attempt))
-            project_etag = await self.__project_files.project_etag(project_url)
-            current_etag = await self.__project_files.file_etag(url)
-            if if_none_match == "*" and current_etag is not None:
-                raise EtagMismatchError(message=f"File already exists: {url}")
-            if if_match is not None and current_etag != if_match:
-                raise EtagMismatchError(message=f"File has changed: {url}")
-            try:
-                await self.__project_files.put(url, content, content_type, if_match=project_etag)
-                return
-            except EtagMismatchError:
-                logger.debug(
-                    "Project changed during a write (attempt %d): %s",
-                    attempt + 1,
-                    sanitize_url(url),
-                )
-        raise ProjectWriteConflictException(url, _PROJECT_WRITE_ATTEMPTS)
+        if if_none_match == "*" and await self.__project_files.file_etag(url) is not None:
+            raise EtagMismatchError(message=f"File already exists: {url}")
+        if if_match is not None and await self.__project_files.file_etag(url) != if_match:
+            raise EtagMismatchError(message=f"File has changed: {url}")
+        await self.__project_files.put(url, content, content_type)
 
     async def delete(self, file_url: str) -> None:
         if self._in_project(file_url):
@@ -289,42 +254,38 @@ class DialFileService:
         at the depth bound are listed but not expanded. Project listings carry no sizes,
         and a missing project folder lists as empty (Core returns no 404 for it).
         """
-        if self._in_project(folder_url):
-            return await self._list_project_folder(folder_url, max_depth)
+        list_level = (
+            self._list_project_level if self._in_project(folder_url) else self._list_files_level
+        )
         results: list[FolderEntry] = []
         queue: deque[tuple[str, int]] = deque([(folder_url, 1)])
         while queue:
             current_url, depth = queue.popleft()
-            metadata = await self._get_metadata(current_url)
-            if metadata.node_type != "FOLDER":
-                raise ValueError(f"not a folder: {current_url}")
-            items: list[FileItem] = metadata.items or []
-            for item in items:
-                is_folder = item.node_type == "FOLDER"
-                item_url = item.url
-                if is_folder and not item_url.endswith("/"):
-                    item_url = item_url + "/"
-                results.append(
-                    FolderEntry(
-                        url=item_url,
-                        is_folder=is_folder,
-                        size=item.content_length,
-                    )
-                )
-                if is_folder and depth < max_depth:
-                    queue.append((item_url, depth + 1))
+            for entry in await list_level(current_url):
+                results.append(entry)
+                if entry.is_folder and depth < max_depth:
+                    queue.append((entry.url, depth + 1))
         return results
 
-    async def _list_project_folder(self, folder_url: str, max_depth: int) -> list[FolderEntry]:
-        results: list[FolderEntry] = []
-        queue: deque[tuple[str, int]] = deque([(folder_url, 1)])
-        while queue:
-            current_url, depth = queue.popleft()
-            for item in await self.__project_files.list(current_url):
-                results.append(FolderEntry(url=item.url, is_folder=item.is_folder, size=None))
-                if item.is_folder and depth < max_depth:
-                    queue.append((item.url, depth + 1))
-        return results
+    async def _list_files_level(self, folder_url: str) -> list[FolderEntry]:
+        metadata = await self._get_metadata(folder_url)
+        if metadata.node_type != "FOLDER":
+            raise ValueError(f"not a folder: {folder_url}")
+        items: list[FileItem] = metadata.items or []
+        entries: list[FolderEntry] = []
+        for item in items:
+            is_folder = item.node_type == "FOLDER"
+            item_url = item.url
+            if is_folder and not item_url.endswith("/"):
+                item_url = item_url + "/"
+            entries.append(FolderEntry(url=item_url, is_folder=is_folder, size=item.content_length))
+        return entries
+
+    async def _list_project_level(self, folder_url: str) -> list[FolderEntry]:
+        return [
+            FolderEntry(url=item.url, is_folder=item.is_folder, size=None)
+            for item in await self.__project_files.list(folder_url)
+        ]
 
     async def _copy_via_download(
         self, source_url: str, destination_url: str, overwrite: bool
@@ -338,7 +299,9 @@ class DialFileService:
             raise ProjectFileOperationException(
                 "copying or moving folders in a project is not supported"
             )
-        if canonical_resource_url(source_url) == canonical_resource_url(destination_url):
+        if _percent_encode_relative_url(source_url) == _percent_encode_relative_url(
+            destination_url
+        ):
             raise SameSourceAndDestinationException(source_url)
         try:
             data, metadata = await self.download_file(source_url)
@@ -399,11 +362,3 @@ class DialFileService:
                 "Failed to grant permissions to the files %s", files_to_share, exc_info=True
             )
             raise e
-
-
-def _project_write_backoff(attempt: int) -> float:
-    """Full-jitter exponential backoff before retry ``attempt`` (1-based)."""
-    ceiling = min(
-        _PROJECT_WRITE_BACKOFF_CAP_SECONDS, _PROJECT_WRITE_BACKOFF_BASE_SECONDS * 2 ** (attempt - 1)
-    )
-    return random.uniform(0, ceiling)

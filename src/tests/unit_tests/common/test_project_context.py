@@ -3,7 +3,6 @@ from pydantic import ValidationError
 
 from quickapp.common.project_context import (
     ProjectContext,
-    canonical_resource_url,
     extract_project_context,
     has_unsafe_segments,
 )
@@ -86,15 +85,6 @@ class TestProjectContext:
 )
 def test_has_unsafe_segments(url: str, expected: bool) -> None:
     assert has_unsafe_segments(url) is expected
-
-
-def test_canonical_resource_url() -> None:
-    assert canonical_resource_url("projects/b/My Project/files/ä.md") == (
-        "projects/b/My%20Project/files/%C3%A4.md"
-    )
-    assert canonical_resource_url("projects/b/My%20Project/files/") == (
-        "projects/b/My%20Project/files/"
-    )
 
 
 class TestExtractProjectContext:
