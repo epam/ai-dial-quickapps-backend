@@ -1,11 +1,8 @@
+from aidial_client.helpers.storage_resource import _percent_encode_relative_url
 from injector import inject
 
 from quickapp.common.exceptions import InvalidToolCallParameterException
-from quickapp.common.project_context import (
-    PROJECT_CONTEXT,
-    canonical_resource_url,
-    has_unsafe_segments,
-)
+from quickapp.common.project_context import PROJECT_CONTEXT, has_unsafe_segments
 from quickapp.config.dial_files import DialFilesConfig
 from quickapp.dial_core_services.dial_file_service import DialFileService
 
@@ -80,7 +77,7 @@ class HomePathResolver:
             return path
         if self._project is not None:
             if self._project.contains(path):
-                return canonical_resource_url(path)
+                return _percent_encode_relative_url(path)
             _validate_relative_path(path)
             # Canonicalizing decodes each segment, so check the decoded form first:
             # `%2e%2e` or an encoded `/` would otherwise turn into a real `..` or `/`.
@@ -90,7 +87,7 @@ class HomePathResolver:
                     "path must not contain '.', '..' or empty segments, or an encoded '/'",
                 )
             # Canonical, like the URLs Core lists, so prefix math against listings works.
-            return canonical_resource_url(f"{await self.resolve_home_dir()}{path}")
+            return _percent_encode_relative_url(f"{await self.resolve_home_dir()}{path}")
         _validate_relative_path(path)
         home = await self.resolve_home_dir()
         return f"{home}{path}"
@@ -123,7 +120,7 @@ class HomePathResolver:
             return url
         if self._project is not None and self._project.contains(url):
             # The model may spell a project URL decoded (``My Project``); compare canonically.
-            canonical = canonical_resource_url(url)
+            canonical = _percent_encode_relative_url(url)
             return canonical[len(home) :] if canonical.startswith(home) else url
         if url.startswith(home):
             return url[len(home) :]

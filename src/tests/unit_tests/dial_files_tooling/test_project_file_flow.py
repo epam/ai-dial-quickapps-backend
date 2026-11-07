@@ -25,7 +25,6 @@ from tests.unit_tests.dial_files_tooling._helpers import make_config, make_tool
 BASE_URL = "http://test-dial"
 PROJECT = ProjectContext(url="projects/b/My Project")
 FILE_URL = f"{BASE_URL}/v2/projects/b/My%20Project/files/artifacts/notes.md"
-PROJECT_METADATA_URL = f"{BASE_URL}/v2/metadata/projects/b/My%20Project"
 
 
 def _service() -> DialFileService:
@@ -43,8 +42,7 @@ def _service() -> DialFileService:
 
 @pytest.mark.asyncio
 async def test_write_then_read_a_relative_path_lands_in_artifacts(httpx_mock):
-    # Create-only write: project ETag -> the file is absent -> PUT with the project ETag.
-    httpx_mock.add_response(method="GET", url=PROJECT_METADATA_URL, json={"etag": "p-etag"})
+    # Create-only write: the file is absent -> one plain PUT.
     httpx_mock.add_response(method="GET", url=FILE_URL, status_code=404)
     httpx_mock.add_response(method="PUT", url=FILE_URL, json={})
     httpx_mock.add_response(
@@ -74,7 +72,7 @@ async def test_write_then_read_a_relative_path_lands_in_artifacts(httpx_mock):
     assert written.content == "File written: notes.md"
     assert result.content == "line 1\nline 2"
     put = httpx_mock.get_requests(method="PUT")[0]
-    assert put.headers["If-Match"] == "p-etag"
+    assert "If-Match" not in put.headers
     assert b"line 1\nline 2\n" in put.content
     # Nothing went to the v1 files API or the appdata lookup.
     assert all("/v1/" not in str(request.url) for request in httpx_mock.get_requests())
