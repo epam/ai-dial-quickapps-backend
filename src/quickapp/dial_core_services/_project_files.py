@@ -104,6 +104,15 @@ class ProjectFilesClient:
             return e.etag
         return response.headers.get("etag")
 
+    async def project_metadata(self, project_url: str) -> dict:
+        """Metadata of the project ``projects/{b}/{p}``.
+
+        Raises ``ResourceNotFoundError`` for a missing project and ``DialException`` (with
+        ``status_code``) for other failures, e.g. 403 without access.
+        """
+        response = await self._request("GET", f"v2/metadata/{project_url}")
+        return response.json()
+
     async def put(self, url: str, content: bytes, content_type: str) -> None:
         """Upload a file unconditionally (create or replace)."""
         filename = url.rsplit("/", 1)[-1]
