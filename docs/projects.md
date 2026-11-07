@@ -37,13 +37,19 @@ A project lives under Core's `projects/{bucket}/{path}/files/`:
 3. **Working folder.** The agent home is the project's `artifacts/`, shared by every chat **and every app** used in the
    project. `features.dial_files.agent_home_dir` is ignored. Relative paths in the file tools and `web_fetch`
    `save_path` resolve there; the app's appdata is reachable only by full `files/...` URL.
-4. **Project URLs.** The DIAL files tools and `web_fetch` accept full URLs of the current project
-   (`projects/{bucket}/{path}/files/...`) wherever they accept a `files/...` URL. Any other `projects/...` string is
-   an ordinary relative path, as outside projects. Other consumers (`get_content`, attachments, DIAL deployments, the
-   code interpreter) don't take project URLs yet: see [Known issues](#known-issues).
+4. **Project URLs.** The DIAL files tools, `web_fetch`, `get_content` and message attachments accept full URLs of the
+   current project (`projects/{bucket}/{path}/files/...`) wherever they accept a `files/...` URL. Any other
+   `projects/...` string is an ordinary relative path, as outside projects. In attachments, the absolute Core form
+   (`{DIAL_URL}/v1/projects/...` of the current project) is turned into the relative form first. DIAL deployments and
+   the code interpreter don't read project URLs yet: see **Downstream** below and [Known issues](#known-issues).
 5. **Read-only files.** Write-side tools (`write_file`, `edit_file`, `delete_file`, the `move_file` source,
-   `copy_file` / `move_file` destinations, `web_fetch` `save_path`) accept relative paths only. Given a project file outside `artifacts/`, they
-   answer "read-only project file; write under the working folder with a relative path".
+   `copy_file` / `move_file` destinations, `web_fetch` `save_path`) accept relative paths only. Given a project file
+   outside `artifacts/`, they answer "read-only project file; write under the working folder with a relative path".
+
+6. **Downstream.** Project files and home-relative paths go to DIAL deployments as `url` attachments as is; a
+   deployment that can't read `projects/` URLs answers with its own error, shown as a tool error. The code
+   interpreter refuses project files at once ("project files can't be passed to the interpreter yet"). Nested apps and
+   MCP servers receive `x-project-id` as before; REST API tools don't.
 
 In every chat (not only projects), a 403 from Core on a file tool is reported as a permission error that the agent
 should not retry with other paths. It goes through the tool's fallback strategies.

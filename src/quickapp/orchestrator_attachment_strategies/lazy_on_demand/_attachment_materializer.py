@@ -6,7 +6,13 @@ from aidial_sdk.chat_completion import Attachment
 from injector import inject
 
 from quickapp.common.dial_settings import DialSettings
-from quickapp.common.url_classification import UrlScheme, classify_url
+from quickapp.common.project_context import PROJECT_CONTEXT
+from quickapp.common.url_classification import (
+    UrlScheme,
+    classify_url,
+    is_dial_storage_path,
+    to_relative_project_url,
+)
 from quickapp.dial_core_services.dial_file_promoter import DialFilePromoter
 
 logger = logging.getLogger(__name__)
@@ -24,12 +30,24 @@ class _AttachmentMaterializer:
         self,
         dial_promoter: DialFilePromoter,
         dial_settings: DialSettings,
+        project: PROJECT_CONTEXT,
     ) -> None:
         self.__dial_promoter: DialFilePromoter = dial_promoter
         self.__dial_url: str = dial_settings.url
+        self.__project: PROJECT_CONTEXT = project
 
     def classify(self, url: str) -> UrlScheme:
-        return classify_url(url, self.__dial_url)
+        return classify_url(url, self.__dial_url, self.__project)
+
+    def to_relative(self, url: str) -> str:
+        """A host-matched absolute URL of the request's project in its relative form;
+        any other ``url`` unchanged."""
+        return to_relative_project_url(url, self.__dial_url, self.__project)
+
+    def is_storage_path(self, url: str) -> bool:
+        """Whether ``url`` is a relative DIAL storage path (``files/...`` or a file of the
+        request's project)."""
+        return is_dial_storage_path(url, self.__project)
 
     async def materialize_external(self, url: str) -> Attachment:
         """Promote an external url to a DIAL file and return it as an attachment.

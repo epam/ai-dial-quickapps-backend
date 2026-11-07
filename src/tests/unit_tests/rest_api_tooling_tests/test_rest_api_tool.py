@@ -411,6 +411,50 @@ async def test_forwarded_x_headers_passed_to_rest_api_request(mock_async_client)
     assert actual_headers["X-Custom-Header"] == "custom-value"
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("header_name", ["x-project-id", "X-Project-Id"])
+@patch("httpx.AsyncClient")
+async def test_project_header_not_forwarded_to_rest_api(mock_async_client, header_name):
+    """x-project-id (any case) is stripped; the other forwarded X-* headers still go out."""
+    mock_response = AsyncMock(text='{"ok": true}', headers={"Content-Type": "application/json"})
+    mock_response.raise_for_status = MagicMock()
+    mock_async_client.return_value.__aenter__.return_value.request.return_value = mock_response
+
+    rest_api_toolset = RestApiToolSet(
+        name="rest-api",
+        authorization=BearerAuthorization(token="test_token"),
+        tools=[_make_rest_api_tool("https://example.com/api", ToolEndpointInfoMethodType.get)],
+    )
+    forwarded = {"X-Request-Id": "req-123", header_name: "projects/bucket/My%20Project"}
+
+    def configure(binder: Binder):
+        binder.bind(DialSettings, DialSettings(url="https://core"))
+        binder.bind(DIAL_BEARER, to=InstanceProvider(SecretStr("some_token")))
+        binder.bind(DIAL_API_KEY, SecretStr("some_api_key"))
+        binder.bind(AsyncDial, to=InstanceProvider(MagicMock(spec=AsyncDial)))
+        binder.bind(Stage, to=MagicMock(spec=Stage))
+        binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
+        binder.bind(StageDisplayLevel, to=InstanceProvider(StageDisplayLevel.INFO))
+        binder.bind(ForwardedHeaders, to=InstanceProvider(forwarded))
+        binder.bind(ACCEPT_LANGUAGE, to=InstanceProvider(None))
+        binder.multibind(list[ToolArgumentTransformer], to=[])
+
+    app = create_test_app([RestApiToolingModule, configure])
+
+    @app.get("/")
+    async def get_method(tools: list[StagedBaseTool] = Injected(list[StagedBaseTool])):
+        await tools[0].arun("call-1", None, **{"query_key": "query_value"})
+        return {"message": "success"}
+
+    assert TestClient(app).get("/").status_code == 200
+
+    actual_headers = mock_async_client.return_value.__aenter__.return_value.request.call_args[1][
+        "headers"
+    ]
+    assert actual_headers["X-Request-Id"] == "req-123"
+    assert all(key.lower() != "x-project-id" for key in actual_headers)
+
+
 def test_openai_tools_names():
     toolset_name = "rest-api-toolset"
     tool_name = "rest-tool"

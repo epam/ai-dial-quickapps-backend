@@ -116,6 +116,39 @@ def classify_url(url: str, dial_base_url: str, project: ProjectContext | None = 
     return UrlScheme.EXTERNAL
 
 
+def is_dial_storage_path(url: str, project: ProjectContext | None = None) -> bool:
+    """Whether ``url`` is a relative DIAL storage path: ``files/...`` or, in a project chat, a
+    file of the request's ``project``. Host-matched absolute URLs are not (see
+    :func:`to_relative_project_url`)."""
+    return url.startswith("files/") or (project is not None and project.contains(url))
+
+
+def to_relative_project_url(url: str, dial_base_url: str, project: ProjectContext | None) -> str:
+    """The relative form of a host-matched absolute Core URL of the request's ``project``.
+
+    ``{DIAL_URL}/v1/projects/{b}/{p}/files/x`` → ``projects/{b}/{p}/files/x``, so it routes
+    like the relative form. Any other URL (no project, another host, another project, a query
+    or fragment, ``files/...``) is returned unchanged.
+    """
+    if project is None:
+        return url
+    try:
+        split = urlsplit(url)
+        base_path = urlsplit(dial_base_url).path.rstrip("/")
+    except ValueError:
+        return url
+    if (split.scheme or "").lower() not in ("http", "https") or split.query or split.fragment:
+        return url
+    dial_host = _dial_host(dial_base_url)
+    if not dial_host or (split.hostname or "").lower() != dial_host:
+        return url
+    prefix = f"{base_path}/v1/"
+    if not split.path.startswith(prefix):
+        return url
+    relative = split.path[len(prefix) :]
+    return relative if project.contains(relative) else url
+
+
 def unsupported_scheme_error(url: str, parameter_name: str) -> InvalidToolCallParameterException:
     """Build the canonical "URL scheme not supported" exception.
 
