@@ -130,17 +130,20 @@ flowchart LR
 - **What:** `DialFileService` routes URLs under the current project's root to a small v2 client
   (`dial_core_services/_project_files.py`). It covers read, list, write, delete, and copy/move (download + upload).
   `DialDownloader` routes the same way. Everything else, including other `projects/…` URLs, takes the v1 path.
-- **Writes:** Core checks `If-Match` / `If-None-Match` against the **project** ETag, which every write changes.
+- **Reads:** projects have no per-file metadata call, so the size limit is checked after the download. A streamed GET
+  (check `Content-Length` first) replaces it once aidial-client's `stream()` maps error statuses.
+- **Writes:** Core checks `If-Match` / `If-None-Match` against the **project** ETag, which every write anywhere in the
+  project changes (Chat saving `conversations/`, parallel tool calls). So QuickApps checks the file's own state and
+  then sends a plain `PUT`, with no project ETag and no 412 loop.
 
   | Write | Flow |
   |---|---|
-  | Unconditional (`overwrite=True`, no ETag; uploads) | one `PUT`, no `If-Match`, no retry |
-  | Conditional overwrite (file ETag given) | project ETag (`GET /v2/metadata/projects/{b}/{p}`) → file ETag matches → `PUT If-Match: <project ETag>` |
-  | Create-only (`write_file` default, `write_bytes`, copy/move with `overwrite=False`) | project ETag → file absent (404) → `PUT If-Match: <project ETag>`; file exists → the same "already exists" error as v1 |
+  | Unconditional (`overwrite=True`, no ETag; uploads) | one `PUT` |
+  | Conditional overwrite (file ETag given) | file ETag matches (ranged GET) → `PUT`; otherwise the same "file changed" error as v1 |
+  | Create-only (`write_file` default, `write_bytes`, copy/move with `overwrite=False`) | file absent → `PUT`; otherwise the same "already exists" error as v1 |
 
-  - A 412 retries the loop: 5 attempts, exponential backoff with full jitter (50 ms base, ×2, capped at 1 s).
-    Parallel tool calls in one turn (`asyncio.gather`) contend for the one project ETag. After the fifth 412 →
-    `ProjectWriteConflictException`, non-retryable for the LLM.
+  - Accepted: the check and the `PUT` aren't atomic. Only the agent writes `artifacts/`, so the window matters only
+    for two parallel writes of the same path. One conditional `PUT` replaces this once Core checks per file (C3).
   - Move = copy + delete, not atomic. If the delete fails after the copy, the error says the destination was written
     and the source still exists.
 - **Change:** the v2 client reuses AsyncDial's HTTP client (base URL, auth, timeouts, typed 404/412). It is replaced by
@@ -217,7 +220,7 @@ Status checked on 2026-11-05.
 |---|---|---|---|---|
 | C1 | Core | #1930: `projects` as a declarable target type (`projects/{current-user}/`) | The stack is not on `development`: rd/1–rd/3 are open ([PR#1940](https://github.com/epam/ai-dial-core/pull/1940)–[1942](https://github.com/epam/ai-dial-core/pull/1942)), rd/4–rd/9 are merged into rd/3. `projects` is not declarable until the stack is rebased ([PR#1946](https://github.com/epam/ai-dial-core/pull/1946)). | Any project access through Core: PR2 end to end, PR4 |
 | C2 | Admin UI | Resource Dependencies tab + `projects` targets | [admin-frontend PR#5313](https://github.com/epam/ai-dial-admin-frontend/pull/5313) open. Consent works only for apps the admin can see (public). | Rollout |
-| C3 | Core | Per-file ETags (today `If-Match` is checked against the project ETag) | Not planned | Performance only (3 calls per conditional write) |
+| C3 | Core | Per-file `If-Match` / `If-None-Match` on project file writes (today checked against the project ETag) | Issue drafted, not filed | Atomic conditional writes (one `PUT` instead of check + `PUT`) |
 | C4 | Ecosystem | `projects/` v2 URLs in adapter-dial, RAG, code interpreter, aidial-client | Nothing started | Sub-agents and interpreter on project files (out of scope) |
 | C5 | Memory | User vs project scope (the server receives the header but ignores it) | Undecided | Project-scoped memory (out of scope) |
 
@@ -326,7 +329,7 @@ None for non-project chats. Project behaviour is preview-gated and triggered onl
 | `common/project_context.py` (new), `core/application/` (`AppModule`, request context) | `ProjectContext`, `PROJECT_CONTEXT` |
 | `shared/project/` (new, PR2) | `ProjectModule` (`@preview_module`): project prompt provider, access preflight |
 | `shared/home_path/` | home = `artifacts/` in a project |
-| `dial_core_services/` | `_project_files.py` (v2 client); write flows in `DialFileService`; `ProjectWriteConflictException`, `PartialMoveException` in `exceptions.py`; current-project routing in `DialFileService`, `DialDownloader`; `AttachmentService` split into home-rooted and appdata-rooted uploads |
+| `dial_core_services/` | `_project_files.py` (v2 client); write flows in `DialFileService`; `PartialMoveException` in `exceptions.py`; current-project routing in `DialFileService`, `DialDownloader`; `AttachmentService` split into home-rooted and appdata-rooted uploads |
 | `dial_files_tooling/` (`_base_file_tool.py`, `_utils.py`, `_path_argument_transformer.py`), `web_tooling/`, `common/url_classification.py` | current-project URLs as absolute; read-only message; `DialFilePermissionException` on 403 |
 | `rest_api_tooling/`, `dial_deployment_tooling/_attachment_resolver.py`, `dial_core_services/dial_file_promoter.py`, `internal_tooling/…/input_file_handler.py` | REST strip; project URLs pass through; interpreter input error |
 | `internal_tooling/py_interpreter_tooling/handlers/display_content_processor.py` | `_publish_to_bucket` folded into `AttachmentService` |
