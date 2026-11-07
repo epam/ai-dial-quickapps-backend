@@ -1,15 +1,18 @@
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from quickapp.common.media_types import MediaTypes
+from quickapp.common.project_context import ProjectContext
+from quickapp.dial_core_services.attachment_service import AttachmentService
+from quickapp.dial_core_services.dial_file_service import DialFileService
 from quickapp.internal_tooling.py_interpreter_tooling.handlers.display_content_processor import (
     DisplayContentProcessor,
 )
 from quickapp.internal_tooling.py_interpreter_tooling.model.response import CodeExecutionResponse
 
 
-def _make_processor(file_url: str = "http://test/bucket/file.png") -> DisplayContentProcessor:
+def _make_dial_client(file_url: str) -> MagicMock:
     dial_client = MagicMock()
 
     bucket_resp = MagicMock()
@@ -20,8 +23,63 @@ def _make_processor(file_url: str = "http://test/bucket/file.png") -> DisplayCon
     metadata = MagicMock()
     metadata.url = file_url
     dial_client.files.upload = AsyncMock(return_value=metadata)
+    return dial_client
 
-    return DisplayContentProcessor(dial_client=dial_client)
+
+def _make_processor(
+    file_url: str = "http://test/bucket/file.png",
+    project: ProjectContext | None = None,
+    file_service: MagicMock | None = None,
+    dial_client: MagicMock | None = None,
+) -> DisplayContentProcessor:
+    attachment_service = AttachmentService(
+        dial_client=dial_client or _make_dial_client(file_url),
+        file_service=file_service or MagicMock(spec=DialFileService),
+        project=project,
+    )
+    return DisplayContentProcessor(attachment_service=attachment_service)
+
+
+@pytest.mark.asyncio
+async def test_chart_without_project_goes_to_appdata_root():
+    dial_client = _make_dial_client("files/appdata_bucket/chart.png")
+    processor = _make_processor(dial_client=dial_client)
+
+    with patch(
+        "quickapp.internal_tooling.py_interpreter_tooling.handlers.display_content_processor"
+        ".generate_attachment_filename",
+        return_value="chart.png",
+    ):
+        result = await processor.process_display_content([{MediaTypes.PNG: "dGVzdA=="}])
+
+    dial_client.files.upload.assert_awaited_once_with(
+        url="files/appdata_bucket/chart.png", file=("chart.png", b"test", MediaTypes.PNG)
+    )
+    assert result[0].url == "files/appdata_bucket/chart.png"
+
+
+@pytest.mark.asyncio
+async def test_chart_in_project_goes_to_artifacts():
+    file_service = MagicMock(spec=DialFileService)
+    file_service.write_bytes = AsyncMock(side_effect=lambda url, *_, **__: url)
+    processor = _make_processor(
+        project=ProjectContext(url="projects/user-bucket/p"), file_service=file_service
+    )
+
+    with patch(
+        "quickapp.internal_tooling.py_interpreter_tooling.handlers.display_content_processor"
+        ".generate_attachment_filename",
+        return_value="chart.png",
+    ):
+        result = await processor.process_display_content([{MediaTypes.PNG: "dGVzdA=="}])
+
+    file_service.write_bytes.assert_awaited_once_with(
+        "projects/user-bucket/p/files/artifacts/chart.png",
+        b"test",
+        content_type=MediaTypes.PNG,
+        overwrite=True,
+    )
+    assert result[0].url == "projects/user-bucket/p/files/artifacts/chart.png"
 
 
 @pytest.mark.asyncio

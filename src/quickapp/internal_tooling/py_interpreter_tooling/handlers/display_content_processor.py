@@ -3,12 +3,12 @@ import json
 import logging
 from typing import Any
 
-from aidial_client import AsyncDial
 from aidial_sdk.chat_completion import Attachment
 from injector import inject
 
 from quickapp.common.media_types import MediaTypes
 from quickapp.common.utils import generate_attachment_filename
+from quickapp.dial_core_services.attachment_service import AttachmentService
 from quickapp.internal_tooling.py_interpreter_tooling._constants import (
     SUPPORTED_DISPLAY_MEDIA_TYPES,
 )
@@ -27,8 +27,8 @@ logger = logging.getLogger(__name__)
 class DisplayContentProcessor:
     """Handles processing and sanitization of display content"""
 
-    def __init__(self, dial_client: AsyncDial):
-        self.__dial_client: AsyncDial = dial_client
+    def __init__(self, attachment_service: AttachmentService):
+        self.__attachment_service: AttachmentService = attachment_service
 
     async def process_display_content(
         self,
@@ -61,14 +61,11 @@ class DisplayContentProcessor:
         return attachments
 
     async def _publish_to_bucket(self, mime_type: str, data: str | dict[str, Any]) -> str:
-        filename = generate_attachment_filename(mime_type)
-        bucket_resp = await self.__dial_client.bucket.get_raw()
-        bucket = bucket_resp.appdata or bucket_resp.bucket
-        metadata = await self.__dial_client.files.upload(
-            url=f"files/{bucket}/{filename}",
-            file=(filename, self._prepare_content(mime_type, data), mime_type),
+        return await self.__attachment_service.upload_output_bytes(
+            data=self._prepare_content(mime_type, data),
+            content_type=mime_type,
+            filename=generate_attachment_filename(mime_type),
         )
-        return metadata.url
 
     @staticmethod
     def _prepare_content(mime_type: str, data: str | dict[str, Any]) -> bytes:
