@@ -45,8 +45,9 @@ class DialDownloader:
     async def fetch(self, file_url: str) -> tuple[bytes, FileMetadata]:
         logger.debug("Downloading DIAL file: %s", sanitize_url(file_url))
         if self.__project is not None and self.__project.contains(file_url):
-            # Only the request's own project goes to v2. No per-file metadata endpoint
-            # there: the size is known only after the download.
+            # Only the request's own project goes to v2. Projects have no per-file metadata
+            # endpoint, so the size is known only after the download. Check it before the
+            # download once aidial-client's stream() maps error statuses correctly.
             data, metadata = await self.__project_files.download(file_url)
             ensure_within_size_limit(len(data), self.__content_size_limit)
             return data, metadata

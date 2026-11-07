@@ -33,23 +33,6 @@ class ToolsetForbiddenException(Exception):
         super().__init__(message)
 
 
-class ProjectWriteConflictException(Exception):
-    """A conditional project file write kept losing to other writes in the same project.
-
-    Core checks a project file write against the project-wide ETag, which every write to
-    the project changes. Raised after the last retry; retrying the tool call right away
-    won't help.
-    """
-
-    def __init__(self, url: str, attempts: int):
-        self.url = url
-        self.attempts = attempts
-        super().__init__(
-            f"Could not write {url}: the project kept changing during {attempts} attempts. "
-            "Other writes to the same project are in progress; try again later."
-        )
-
-
 class PartialMoveException(Exception):
     """A move that copied the file but couldn't delete the source: both files now exist."""
 

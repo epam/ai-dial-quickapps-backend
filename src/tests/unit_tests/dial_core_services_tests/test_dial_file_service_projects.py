@@ -1,6 +1,6 @@
-"""``DialFileService`` with a project in the request: v2 dispatch and conditional writes."""
+"""``DialFileService`` with a project in the request: v2 dispatch and preconditions."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from aidial_client._exception import DialException, EtagMismatchError
@@ -8,12 +8,12 @@ from aidial_client._exception import DialException, EtagMismatchError
 from quickapp.common.project_context import ProjectContext
 from quickapp.common.state_holder import StateHolder
 from quickapp.dial_core_services._project_files import ProjectFilesClient, ProjectItem
-from quickapp.dial_core_services.dial_file_service import DialFileService, _project_write_backoff
+from quickapp.dial_core_services.dial_file_service import DialFileService
 from quickapp.dial_core_services.exceptions import (
+    FileTooLargeError,
     PartialMoveException,
     ProjectFileOperationException,
     ProjectFileTooLargeException,
-    ProjectWriteConflictException,
     SameSourceAndDestinationException,
 )
 from quickapp.shared.config_resolvers.file_loading_size_limit_resolver import (
@@ -44,7 +44,6 @@ def _make_dial_client(file_content: bytes = b"v1 data") -> MagicMock:
 def _make_project_files(
     data: bytes = b"project data",
     file_etag: str | None = "file-etag",
-    project_etag: str = "project-etag",
 ) -> MagicMock:
     project_files = MagicMock(spec=ProjectFilesClient)
     metadata = MagicMock()
@@ -52,7 +51,6 @@ def _make_project_files(
     metadata.etag = file_etag
     project_files.download = AsyncMock(return_value=(data, metadata))
     project_files.file_etag = AsyncMock(return_value=file_etag)
-    project_files.project_etag = AsyncMock(return_value=project_etag)
     project_files.put = AsyncMock(return_value=None)
     project_files.delete = AsyncMock(return_value=None)
     project_files.list = AsyncMock(return_value=[])
@@ -75,14 +73,6 @@ def _make_service(
         project_files=project_files,
         project=project,
     )
-
-
-@pytest.fixture
-def no_backoff():
-    with patch(
-        "quickapp.dial_core_services.dial_file_service.asyncio.sleep", new=AsyncMock()
-    ) as sleep:
-        yield sleep
 
 
 class TestDispatchGate:
@@ -144,7 +134,7 @@ class TestReadsAndListing:
     async def test_download_over_the_limit_is_rejected(self):
         svc = _make_service(_make_project_files(data=b"x" * 11), size_limit=10)
 
-        with pytest.raises(ValueError, match="exceeds the limit"):
+        with pytest.raises(FileTooLargeError, match="exceeds the limit"):
             await svc.download_file(PROJECT_FILE)
 
     @pytest.mark.asyncio
@@ -184,7 +174,7 @@ class TestReadsAndListing:
 
 class TestWrites:
     @pytest.mark.asyncio
-    async def test_unconditional_write_is_one_put_without_if_match(self):
+    async def test_unconditional_write_is_one_put_without_a_check(self):
         project_files = _make_project_files()
         project_files.put = AsyncMock(side_effect=EtagMismatchError(message="412"))
         svc = _make_service(project_files)
@@ -193,7 +183,6 @@ class TestWrites:
             await svc.write_file(PROJECT_FILE, "hi", overwrite=True)
 
         project_files.put.assert_awaited_once_with(PROJECT_FILE, b"hi", "text/plain")
-        project_files.project_etag.assert_not_awaited()
         project_files.file_etag.assert_not_awaited()
 
     @pytest.mark.asyncio
@@ -203,17 +192,14 @@ class TestWrites:
         assert await svc.write_file(PROJECT_FILE, "hi", overwrite=True) == PROJECT_FILE
 
     @pytest.mark.asyncio
-    async def test_create_only_checks_absence_then_puts_with_the_project_etag(self):
+    async def test_create_only_checks_absence_then_puts_once(self):
         project_files = _make_project_files(file_etag=None)
         svc = _make_service(project_files)
 
         await svc.write_file(PROJECT_FILE, "hi")
 
-        project_files.project_etag.assert_awaited_once_with("projects/b/p")
         project_files.file_etag.assert_awaited_once_with(PROJECT_FILE)
-        project_files.put.assert_awaited_once_with(
-            PROJECT_FILE, b"hi", "text/plain", if_match="project-etag"
-        )
+        project_files.put.assert_awaited_once_with(PROJECT_FILE, b"hi", "text/plain")
 
     @pytest.mark.asyncio
     async def test_create_only_fails_when_the_file_exists(self):
@@ -236,40 +222,17 @@ class TestWrites:
         project_files.put.assert_not_awaited()
 
         await svc.write_file(PROJECT_FILE, "hi", if_match="current")
-        project_files.put.assert_awaited_once_with(
-            PROJECT_FILE, b"hi", "text/plain", if_match="project-etag"
-        )
+        project_files.put.assert_awaited_once_with(PROJECT_FILE, b"hi", "text/plain")
 
     @pytest.mark.asyncio
-    async def test_412_retries_with_a_fresh_project_etag_after_a_backoff(self, no_backoff):
-        project_files = _make_project_files(file_etag=None)
-        project_files.project_etag = AsyncMock(side_effect=["e1", "e2"])
-        project_files.put = AsyncMock(side_effect=[EtagMismatchError(message="412"), None])
-        svc = _make_service(project_files)
-
-        await svc.write_file(PROJECT_FILE, "hi")
-
-        assert [c.kwargs["if_match"] for c in project_files.put.await_args_list] == ["e1", "e2"]
-        no_backoff.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_gives_up_after_five_attempts(self, no_backoff):
+    async def test_a_412_on_the_put_is_not_retried(self):
         project_files = _make_project_files(file_etag=None)
         project_files.put = AsyncMock(side_effect=EtagMismatchError(message="412"))
         svc = _make_service(project_files)
 
-        with pytest.raises(ProjectWriteConflictException, match="kept changing"):
+        with pytest.raises(EtagMismatchError):
             await svc.write_file(PROJECT_FILE, "hi")
-        assert project_files.put.await_count == 5
-        assert no_backoff.await_count == 4
-
-    def test_backoff_is_full_jitter_and_capped(self):
-        with patch("quickapp.dial_core_services.dial_file_service.random.uniform") as uniform:
-            uniform.side_effect = lambda low, high: high
-            delays = [_project_write_backoff(attempt) for attempt in range(1, 8)]
-
-        assert delays == [0.05, 0.1, 0.2, 0.4, 0.8, 1.0, 1.0]
-        assert all(call.args[0] == 0 for call in uniform.call_args_list)
+        project_files.put.assert_awaited_once()
 
 
 class TestCopyAndMove:
@@ -284,7 +247,6 @@ class TestCopyAndMove:
         dial_client.files.copy_to.assert_not_awaited()
         project_files.put.assert_awaited_once()
         assert project_files.put.await_args.args[1] == b"v1 data"
-        assert project_files.put.await_args.kwargs["if_match"] == "project-etag"
 
     @pytest.mark.asyncio
     async def test_copy_without_overwrite_fails_when_the_destination_exists(self):
