@@ -1,12 +1,13 @@
 import logging
 
 from aidial_client import AsyncDial
+from aidial_client.types.file import FileDownloadResponse
 from aidial_client.types.metadata import FileMetadata
 from injector import inject
 
 from quickapp.common.project_context import PROJECT_CONTEXT
 from quickapp.common.url_sanitization import sanitize_url
-from quickapp.dial_core_services._project_files import ProjectFilesClient
+from quickapp.dial_core_services._project_files import ProjectFilesClient, project_file_metadata
 from quickapp.dial_core_services.exceptions import FileTooLargeError
 from quickapp.shared.config_resolvers.file_loading_size_limit_resolver import (
     FileLoadingSizeLimitResolver,
@@ -45,12 +46,9 @@ class DialDownloader:
     async def fetch(self, file_url: str) -> tuple[bytes, FileMetadata]:
         logger.debug("Downloading DIAL file: %s", sanitize_url(file_url))
         if self.__project is not None and self.__project.contains(file_url):
-            # Only the request's own project goes to v2. Projects have no per-file metadata
-            # endpoint, so the size is known only after the download. Check it before the
-            # download once aidial-client's stream() maps error statuses correctly.
-            data, metadata = await self.__project_files.download(file_url)
-            ensure_within_size_limit(len(data), self.__content_size_limit)
-            return data, metadata
+            # Only the request's own project goes to v2.
+            async with self.__project_files.stream(file_url) as response:
+                return await read_within_size_limit(response, file_url, self.__content_size_limit)
         metadata = await self.__dial_client.files.get_metadata(file_url)
         ensure_within_size_limit(metadata.content_length or 0, self.__content_size_limit)
         data = await (await self.__dial_client.files.download(file_url)).aget_content()
@@ -61,3 +59,22 @@ def ensure_within_size_limit(size: int, limit: int) -> None:
     """Raise ``FileTooLargeError`` (a ``ValueError``) when ``size`` exceeds ``limit``."""
     if size > limit:
         raise FileTooLargeError(size, limit)
+
+
+async def read_within_size_limit(
+    response: FileDownloadResponse, url: str, limit: int
+) -> tuple[bytes, FileMetadata]:
+    """Read a streamed project file within ``limit``.
+
+    Projects have no per-file metadata call, so the size comes from ``Content-Length``,
+    checked before the body is read. Without the header, reading stops once the limit is
+    passed.
+    """
+    declared = response.headers.get("content-length")
+    if declared is not None:
+        ensure_within_size_limit(int(declared), limit)
+    data = bytearray()
+    async for chunk in response:
+        data += chunk
+        ensure_within_size_limit(len(data), limit)
+    return bytes(data), project_file_metadata(url, response.headers, len(data))

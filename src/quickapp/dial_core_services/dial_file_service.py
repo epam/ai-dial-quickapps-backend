@@ -14,7 +14,10 @@ from quickapp.common.project_context import PROJECT_CONTEXT
 from quickapp.common.state_holder import StateHolder
 from quickapp.common.url_sanitization import sanitize_url
 from quickapp.dial_core_services._project_files import ProjectFilesClient
-from quickapp.dial_core_services.dial_downloader import ensure_within_size_limit
+from quickapp.dial_core_services.dial_downloader import (
+    ensure_within_size_limit,
+    read_within_size_limit,
+)
 from quickapp.dial_core_services.exceptions import (
     FileTooLargeError,
     PartialMoveException,
@@ -100,11 +103,10 @@ class DialFileService:
         try:
             logger.debug("Downloading file: %s", safe_url)
             if self._in_project(file_url):
-                # No per-file metadata endpoint: the size is known only after the download.
-                # Check it before the download once aidial-client's stream() maps error
-                # statuses correctly.
-                file_data, metadata = await self.__project_files.download(file_url)
-                ensure_within_size_limit(len(file_data), self.__content_size_limit)
+                async with self.__project_files.stream(file_url) as response:
+                    file_data, metadata = await read_within_size_limit(
+                        response, file_url, self.__content_size_limit
+                    )
             else:
                 metadata = await self._get_metadata(file_url)
                 ensure_within_size_limit(metadata.content_length or 0, self.__content_size_limit)
