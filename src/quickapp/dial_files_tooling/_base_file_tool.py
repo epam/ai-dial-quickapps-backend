@@ -15,6 +15,7 @@ from quickapp.config.application import StageDisplayLevel
 from quickapp.config.dial_files import DialFilesConfig
 from quickapp.config.tools.internal import InternalTool
 from quickapp.dial_core_services.dial_file_service import DialFileService, FolderEntry
+from quickapp.dial_files_tooling._dial_files_tool_error_exception import DialFilesToolErrorException
 from quickapp.dial_files_tooling._stage_wrapper import _FileStageWrapper
 from quickapp.dial_files_tooling._utils import is_root_reference
 from quickapp.shared.home_path.home_path_resolver import HomePathResolver
@@ -138,6 +139,10 @@ class _DialFileTool(StagedBaseTool, ABC):
         if max_depth < 1 or max_depth > _MAX_DEPTH:
             raise InvalidToolCallParameterException("max_depth", f"must be in [1, {_MAX_DEPTH}]")
         return max_depth
+
+    def _tool_error(self, exc: Exception) -> DialFilesToolErrorException:
+        """A tool error carrying ``exc``'s message for the model, without retry framing."""
+        return DialFilesToolErrorException(self._resolve_tool_name(), str(exc))
 
     @staticmethod
     def _check_permission_denied(

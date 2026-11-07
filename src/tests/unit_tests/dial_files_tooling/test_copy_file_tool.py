@@ -2,6 +2,10 @@ import pytest
 from aidial_client._exception import DialException, EtagMismatchError, ResourceNotFoundError
 
 from quickapp.common.exceptions import InvalidToolCallParameterException
+from quickapp.dial_core_services.exceptions import (
+    ProjectFileTooLargeException,
+    SameSourceAndDestinationException,
+)
 from quickapp.dial_files_tooling._copy_file_tool import _CopyFileTool
 from quickapp.dial_files_tooling._tool_configs import COPY_FILE_TOOL_CONFIG
 from tests.unit_tests.dial_files_tooling._helpers import make_service, make_tool
@@ -84,3 +88,19 @@ class TestCopyFile:
         # The message shows the user-facing source, not the resolved internal appdata URL.
         assert "access denied: a.md" in exc.value.message
         assert "appbucket" not in exc.value.message
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        SameSourceAndDestinationException("projects/b/p/files/artifacts/a.md"),
+        ProjectFileTooLargeException("projects/b/p/files/artifacts/a.md", 10),
+    ],
+)
+@pytest.mark.asyncio
+async def test_project_refusal_reaches_the_agent(error):
+    tool = _make_tool(side_effect=error)
+    with pytest.raises(InvalidToolCallParameterException) as exc:
+        await tool._run_in_stage_async(stage_wrapper=None, source="a.md", destination="a.md")
+    assert exc.value.parameter_name == "source"
+    assert exc.value.message == error.message
