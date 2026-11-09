@@ -22,6 +22,7 @@ from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.presentation_settings import PresentationSettings
 from quickapp.common.project_context import PROJECT_CONTEXT
+from quickapp.common.tool_allowlist import ToolAllowlist
 from quickapp.common.tool_timeout_utils import build_async_dial_timeout
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.predefined_content_provider import (
@@ -74,6 +75,10 @@ class AppModule(Module):
     @provider
     def __provide_base_completion_runner(self, runner: CompletionRunner) -> BaseCompletionRunner:
         return runner
+
+    @provider
+    def __provide_tool_allowlist(self, context: _RequestContext) -> ToolAllowlist:
+        return context.tool_allowlist
 
     @provider
     def __provide_bearer(self, context: _RequestContext) -> DIAL_BEARER:
