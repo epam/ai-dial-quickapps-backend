@@ -15,7 +15,7 @@ def _client() -> ProjectFilesClient:
 
 
 @pytest.mark.asyncio
-async def test_download_returns_bytes_and_the_files_own_etag(httpx_mock) -> None:
+async def test_stream_returns_the_headers_and_the_body(httpx_mock) -> None:
     httpx_mock.add_response(
         method="GET",
         url=f"{BASE_URL}/v2/{FILE_URL}",
@@ -23,15 +23,11 @@ async def test_download_returns_bytes_and_the_files_own_etag(httpx_mock) -> None
         headers={"etag": "file-etag", "content-type": "text/markdown"},
     )
 
-    data, metadata = await _client().download(FILE_URL)
-
-    assert data == b"hello"
-    assert metadata.url == FILE_URL
-    assert metadata.name == "notes.md"
-    assert metadata.bucket == "b"
-    assert metadata.etag == "file-etag"
-    assert metadata.content_type == "text/markdown"
-    assert metadata.content_length == 5
+    async with _client().stream(FILE_URL) as response:
+        assert response.headers["etag"] == "file-etag"
+        assert response.headers["content-length"] == "5"
+        assert await response.aget_content() == b"hello"
+    assert response.filename == "notes.md"
 
 
 @pytest.mark.asyncio
@@ -42,11 +38,36 @@ async def test_file_etag_is_none_for_a_missing_file(httpx_mock) -> None:
 
 
 @pytest.mark.asyncio
-async def test_download_of_a_missing_file_is_not_found(httpx_mock) -> None:
-    httpx_mock.add_response(method="GET", url=f"{BASE_URL}/v2/{FILE_URL}", status_code=404)
+async def test_stream_of_a_missing_file_is_not_found(httpx_mock) -> None:
+    httpx_mock.add_response(
+        method="GET", url=f"{BASE_URL}/v2/{FILE_URL}", status_code=404, text="File not found"
+    )
 
     with pytest.raises(ResourceNotFoundError):
-        await _client().download(FILE_URL)
+        async with _client().stream(FILE_URL):
+            pass
+
+
+@pytest.mark.asyncio
+async def test_stream_without_permission_is_a_403(httpx_mock) -> None:
+    httpx_mock.add_response(
+        method="GET",
+        url=f"{BASE_URL}/v2/{FILE_URL}",
+        status_code=403,
+        json={"error": {"message": "Access denied"}},
+    )
+
+    with pytest.raises(DialException) as exc_info:
+        async with _client().stream(FILE_URL):
+            pass
+    assert exc_info.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_stream_rejects_a_path_that_leaves_the_project() -> None:
+    with pytest.raises(DialException, match="Invalid project resource path"):
+        async with _client().stream("projects/b/p/files/../../other/x"):
+            pass
 
 
 @pytest.mark.asyncio

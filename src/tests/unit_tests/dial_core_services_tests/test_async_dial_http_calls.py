@@ -25,7 +25,6 @@ from pydantic import SecretStr
 
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.state_holder import StateHolder
-from quickapp.dial_core_services._project_files import ProjectFilesClient
 from quickapp.dial_core_services.attachment_service import AttachmentService
 from quickapp.dial_core_services.dial_downloader import DialDownloader
 from quickapp.dial_core_services.dial_file_service import DialFileService
@@ -33,6 +32,7 @@ from quickapp.dial_core_services.exceptions import (
     ToolsetForbiddenException,
     ToolsetNotFoundException,
 )
+from quickapp.dial_core_services.storage._v1_file_storage import V1FileStorage
 from quickapp.dial_core_services.tool_config_service import ToolConfigCoreService
 from quickapp.shared.config_resolvers.file_loading_size_limit_resolver import (
     FileLoadingSizeLimitResolver,
@@ -295,10 +295,8 @@ class TestDialFileServiceHttpCalls:
         )
 
         downloader = DialDownloader(
-            dial_client=_dial_client(),
+            storage=V1FileStorage(_dial_client()),
             size_limit_resolver=_file_loading_size_limit_resolver(),
-            project_files=MagicMock(spec=ProjectFilesClient),
-            project=None,
         )
         data, metadata = await downloader.fetch("files/my-bucket/test.txt")
 
@@ -318,10 +316,8 @@ class TestDialFileServiceHttpCalls:
         )
 
         downloader = DialDownloader(
-            dial_client=_dial_client(),
+            storage=V1FileStorage(_dial_client()),
             size_limit_resolver=_file_loading_size_limit_resolver(),
-            project_files=MagicMock(spec=ProjectFilesClient),
-            project=None,
         )
         with pytest.raises(ValueError, match="exceeds the limit"):
             await downloader.fetch("files/my-bucket/large.bin")
@@ -338,12 +334,12 @@ class TestDialFileServiceHttpCalls:
             status_code=200,
         )
 
+        client = _dial_client()
         svc = DialFileService(
-            dial_client=_dial_client(),
+            dial_client=client,
+            storage=V1FileStorage(client),
             state_holder=StateHolder(),
             size_limit_resolver=_file_loading_size_limit_resolver(),
-            project_files=MagicMock(spec=ProjectFilesClient),
-            project=None,
         )
         await svc.grant_permissions_to_files(
             ["files/my-bucket/a.txt", "files/my-bucket/b.txt"],

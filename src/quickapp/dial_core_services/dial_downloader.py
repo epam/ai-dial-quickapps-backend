@@ -1,13 +1,10 @@
 import logging
 
-from aidial_client import AsyncDial
 from aidial_client.types.metadata import FileMetadata
 from injector import inject
 
-from quickapp.common.project_context import PROJECT_CONTEXT
 from quickapp.common.url_sanitization import sanitize_url
-from quickapp.dial_core_services._project_files import ProjectFilesClient
-from quickapp.dial_core_services.exceptions import FileTooLargeError
+from quickapp.dial_core_services.storage.file_storage import FileStorage
 from quickapp.shared.config_resolvers.file_loading_size_limit_resolver import (
     FileLoadingSizeLimitResolver,
 )
@@ -32,32 +29,12 @@ class DialDownloader:
 
     def __init__(
         self,
-        dial_client: AsyncDial,
+        storage: FileStorage,
         size_limit_resolver: FileLoadingSizeLimitResolver,
-        project_files: ProjectFilesClient,
-        project: PROJECT_CONTEXT,
     ) -> None:
-        self.__dial_client: AsyncDial = dial_client
+        self.__storage: FileStorage = storage
         self.__content_size_limit: int = size_limit_resolver.resolve()
-        self.__project_files: ProjectFilesClient = project_files
-        self.__project: PROJECT_CONTEXT = project
 
     async def fetch(self, file_url: str) -> tuple[bytes, FileMetadata]:
         logger.debug("Downloading DIAL file: %s", sanitize_url(file_url))
-        if self.__project is not None and self.__project.contains(file_url):
-            # Only the request's own project goes to v2. Projects have no per-file metadata
-            # endpoint, so the size is known only after the download. Check it before the
-            # download once aidial-client's stream() maps error statuses correctly.
-            data, metadata = await self.__project_files.download(file_url)
-            ensure_within_size_limit(len(data), self.__content_size_limit)
-            return data, metadata
-        metadata = await self.__dial_client.files.get_metadata(file_url)
-        ensure_within_size_limit(metadata.content_length or 0, self.__content_size_limit)
-        data = await (await self.__dial_client.files.download(file_url)).aget_content()
-        return data, metadata
-
-
-def ensure_within_size_limit(size: int, limit: int) -> None:
-    """Raise ``FileTooLargeError`` (a ``ValueError``) when ``size`` exceeds ``limit``."""
-    if size > limit:
-        raise FileTooLargeError(size, limit)
+        return await self.__storage.download(file_url, self.__content_size_limit)

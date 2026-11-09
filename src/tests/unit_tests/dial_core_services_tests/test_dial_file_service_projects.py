@@ -1,4 +1,5 @@
-"""``DialFileService`` with a project in the request: v2 dispatch and preconditions."""
+"""``DialFileService`` with a project in the request, over the real storages (as DI wires them):
+v2 dispatch and preconditions."""
 
 from unittest.mock import AsyncMock, MagicMock
 
@@ -16,9 +17,14 @@ from quickapp.dial_core_services.exceptions import (
     ProjectFileTooLargeException,
     SameSourceAndDestinationException,
 )
+from quickapp.dial_core_services.storage._project_file_storage import ProjectFileStorage
+from quickapp.dial_core_services.storage._routed_file_storage import RoutedFileStorage
+from quickapp.dial_core_services.storage._v1_file_storage import V1FileStorage
+from quickapp.dial_core_services.storage.file_storage import FileStorage
 from quickapp.shared.config_resolvers.file_loading_size_limit_resolver import (
     FileLoadingSizeLimitResolver,
 )
+from tests.unit_tests.dial_core_services_tests._project_stream import project_stream
 
 PROJECT = ProjectContext(url="projects/b/p")
 PROJECT_FILE = "projects/b/p/files/artifacts/notes.md"
@@ -34,6 +40,7 @@ def _make_dial_client(file_content: bytes = b"v1 data") -> MagicMock:
 
     client = MagicMock()
     client.metadata.get = AsyncMock(return_value=metadata)
+    client.files.get_metadata = client.metadata.get
     client.files.download = AsyncMock(return_value=download_result)
     client.files.upload = AsyncMock(return_value=metadata)
     client.files.delete = AsyncMock()
@@ -46,10 +53,7 @@ def _make_project_files(
     file_etag: str | None = "file-etag",
 ) -> MagicMock:
     project_files = MagicMock(spec=ProjectFilesClient)
-    metadata = MagicMock()
-    metadata.content_type = "text/markdown"
-    metadata.etag = file_etag
-    project_files.download = AsyncMock(return_value=(data, metadata))
+    project_files.stream = project_stream(data, etag=file_etag)
     project_files.file_etag = AsyncMock(return_value=file_etag)
     project_files.put = AsyncMock(return_value=None)
     project_files.delete = AsyncMock(return_value=None)
@@ -66,12 +70,18 @@ def _make_service(
 ) -> DialFileService:
     resolver = MagicMock(spec=FileLoadingSizeLimitResolver)
     resolver.resolve.return_value = size_limit
+    dial_client = dial_client or _make_dial_client()
+    v1 = V1FileStorage(dial_client)
+    storage: FileStorage = (
+        v1
+        if project is None
+        else RoutedFileStorage(v1, ProjectFileStorage(project_files, resolver), project, size_limit)
+    )
     return DialFileService(
-        dial_client=dial_client or _make_dial_client(),
+        dial_client=dial_client,
+        storage=storage,
         state_holder=StateHolder(),
         size_limit_resolver=resolver,
-        project_files=project_files,
-        project=project,
     )
 
 
@@ -87,7 +97,7 @@ class TestDispatchGate:
         await svc.write_file(PROJECT_FILE, "x", overwrite=True)
         await svc.delete(PROJECT_FILE)
 
-        project_files.download.assert_not_awaited()
+        project_files.stream.assert_not_called()
         project_files.put.assert_not_awaited()
         project_files.delete.assert_not_awaited()
         dial_client.files.download.assert_awaited_once()
@@ -102,7 +112,7 @@ class TestDispatchGate:
 
         await svc.download_file("files/bucket/a.txt")
 
-        project_files.download.assert_not_awaited()
+        project_files.stream.assert_not_called()
         dial_client.files.download.assert_awaited_once()
 
     @pytest.mark.asyncio
@@ -112,7 +122,7 @@ class TestDispatchGate:
 
         await svc.download_file("projects/b/My Project/files/context/a.csv")
 
-        project_files.download.assert_awaited_once()
+        project_files.stream.assert_called_once()
 
 
 class TestReadsAndListing:
@@ -126,7 +136,7 @@ class TestReadsAndListing:
         second = await svc.download_file(PROJECT_FILE)
 
         assert first[0] == second[0] == b"project data"
-        project_files.download.assert_awaited_once_with(PROJECT_FILE)
+        project_files.stream.assert_called_once_with(PROJECT_FILE)
         dial_client.files.download.assert_not_awaited()
         dial_client.metadata.get.assert_not_awaited()
 
@@ -296,7 +306,7 @@ class TestReviewFixes:
 
         with pytest.raises(ProjectFileOperationException, match="folders in a project"):
             await getattr(svc, operation)(source, destination, overwrite=True)
-        project_files.download.assert_not_awaited()
+        project_files.stream.assert_not_called()
         dial_client.files.download.assert_not_awaited()
         project_files.put.assert_not_awaited()
         project_files.delete.assert_not_awaited()
@@ -321,7 +331,7 @@ class TestReviewFixes:
 
         with pytest.raises(SameSourceAndDestinationException):
             await getattr(svc, operation)(source, destination, overwrite=True)
-        project_files.download.assert_not_awaited()
+        project_files.stream.assert_not_called()
         project_files.put.assert_not_awaited()
         project_files.delete.assert_not_awaited()
 
@@ -358,4 +368,4 @@ class TestReviewFixes:
 
         await svc.download_file("projects/b/p/files/../../Other/files/x.md")
 
-        project_files.download.assert_not_awaited()
+        project_files.stream.assert_not_called()

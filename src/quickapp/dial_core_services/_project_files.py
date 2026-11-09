@@ -14,6 +14,8 @@ Core behaviour this relies on:
 - Listing a missing folder returns 200 with no items, never 404.
 """
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from http import HTTPStatus
 from typing import Literal
 
@@ -26,6 +28,7 @@ from aidial_client.helpers.storage_resource import (
     _percent_encode_relative_url,
     _storage_error_processor,
 )
+from aidial_client.types.file import FileDownloadResponse
 from aidial_client.types.metadata import FileMetadata
 from injector import inject
 from pydantic import BaseModel, ConfigDict
@@ -64,25 +67,18 @@ class ProjectFilesClient:
     def __init__(self, dial_client: AsyncDial) -> None:
         self._http = dial_client.deployments.http_client
 
-    async def download(self, url: str) -> tuple[bytes, FileMetadata]:
-        """Download a project file with a synthesized ``FileMetadata``.
+    @asynccontextmanager
+    async def stream(self, url: str) -> AsyncIterator[FileDownloadResponse]:
+        """A project file as an open GET: the headers first, the body on iteration.
 
-        ``etag`` is the file's own ETag, not the project's (see the module doc). No size
-        limit here: callers check it after the download.
+        The caller checks the size from ``Content-Length`` before reading the body (see
+        ``read_within_size_limit``). The ETag in the headers is the file's own, not the
+        project's (see the module doc).
         """
-        response = await self._request("GET", f"v2/{url}")
-        data = response.content
-        metadata = FileMetadata(
-            name=url.rsplit("/", 1)[-1],
-            bucket=url.split("/")[1],
-            url=url,
-            node_type="ITEM",
-            resource_type="FILE",
-            content_length=len(data),
-            content_type=response.headers.get("content-type"),
-            etag=response.headers.get("etag"),
-        )
-        return data, metadata
+        async with self._http.stream(
+            options=self._options("GET", f"v2/{url}"), on_http_error=_storage_error_processor
+        ) as response:
+            yield FileDownloadResponse(response=response, filename=url.rsplit("/", 1)[-1])
 
     async def file_etag(self, url: str) -> str | None:
         """The file's own ETag, or ``None`` when the file doesn't exist.
@@ -143,17 +139,43 @@ class ProjectFilesClient:
         headers: dict[str, str] | None = None,
         on_http_error: ErrorHandler = _storage_error_processor,
     ) -> httpx.Response:
+        return await self._http.request(
+            cast_to=httpx.Response,
+            options=self._options(method, url, files=files, params=params, headers=headers),
+            on_http_error=on_http_error,
+        )
+
+    @staticmethod
+    def _options(
+        method: Literal["GET", "PUT", "DELETE"],
+        url: str,
+        *,
+        files: dict | None = None,
+        params: dict | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> FinalRequestOptions:
         # Defence in depth: callers only pass URLs of the request's project, which are
         # checked already; never send a path that could leave it.
         if has_unsafe_segments(url):
             raise DialException(message=f"Invalid project resource path: {url}", status_code=400)
-        options = FinalRequestOptions(
+        return FinalRequestOptions(
             method=method,
             url=_percent_encode_relative_url(url),
             files=files,
             params=params,
             headers=headers or {},
         )
-        return await self._http.request(
-            cast_to=httpx.Response, options=options, on_http_error=on_http_error
-        )
+
+
+def project_file_metadata(url: str, headers: httpx.Headers, size: int) -> FileMetadata:
+    """``FileMetadata`` for a project file, built from its GET response headers."""
+    return FileMetadata(
+        name=url.rsplit("/", 1)[-1],
+        bucket=url.split("/")[1],
+        url=url,
+        node_type="ITEM",
+        resource_type="FILE",
+        content_length=size,
+        content_type=headers.get("content-type"),
+        etag=headers.get("etag"),
+    )
