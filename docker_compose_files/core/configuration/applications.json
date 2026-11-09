@@ -264,6 +264,64 @@
         ]
       }
     },
+    "run_task_demo": {
+      "displayName": "Run Task Demo",
+      "description": "QuickApp that delegates self-contained tasks with internal_run_task. Each task runs in an isolated context and returns only its final answer. Requires ENABLE_PREVIEW_FEATURES=true on the QuickApps backend.",
+      "applicationTypeSchemaId": "https://mydial.epam.com/custom_application_schemas/quickapps2",
+      "inputAttachmentTypes": [
+        "*/*"
+      ],
+      "applicationProperties": {
+        "orchestrator": {
+          "deployment": {
+            "deployment_id": "gpt-4.1-2025-04-14"
+          },
+          "system_prompt": {
+            "type": "custom",
+            "variables": {},
+            "content": "You delegate work with the internal_run_task tool. When a request breaks into independent pieces, run one task per piece, all in the same turn so they run in parallel. A task sees only the prompt you write, so state the full task and the answer you want back. Give each task only the tools it needs, or [\"inherit\"] when unsure. Combine the results yourself and answer the user in markdown."
+          },
+          "max_iterations": 20
+        },
+        "contexts": [],
+        "tool_sets": [
+          {
+            "type": "predefined",
+            "template_name": "location"
+          },
+          {
+            "type": "predefined",
+            "template_name": "weather"
+          },
+          {
+            "type": "predefined",
+            "template_name": "py_interpreter"
+          }
+        ],
+        "features": {
+          "stage_display": {
+            "level": "info"
+          },
+          "run_task": {
+            "enabled": true,
+            "max_iterations": 8
+          }
+        },
+        "conversation_starters": {
+          "intro_text": "Each of these fans out into tasks — watch the stages",
+          "starters": [
+            {
+              "title": "Three cities, three tasks",
+              "text": "Compare the current weather in Lisbon, Reykjavik and Singapore. Run a separate task per city, giving each only the location and weather tools, then rank the cities by temperature."
+            },
+            {
+              "title": "Fan out, then compute",
+              "text": "Get the current temperature in Warsaw, Cairo and Oslo with one task per city. Then run one more task with only the Python interpreter to compute the mean and the spread."
+            }
+          ]
+        }
+      }
+    },
     "quickapp_with_code_interpreter": {
       "displayName": "QuickApp with code interpreter",
       "description": "Sample QuickApp that has access to PyInterpreter tool",
