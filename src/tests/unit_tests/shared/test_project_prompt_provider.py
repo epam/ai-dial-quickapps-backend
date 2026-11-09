@@ -3,7 +3,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from aidial_client._exception import DialException, ResourceNotFoundError
+from aidial_client import DialException, ResourceNotFoundError
 
 from quickapp.common.project_context import ProjectContext
 from quickapp.config.dial_files import DialFilesConfig

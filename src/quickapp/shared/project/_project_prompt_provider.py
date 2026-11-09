@@ -3,7 +3,7 @@ import re
 from collections import deque
 
 import yaml
-from aidial_client._exception import DialException, ResourceNotFoundError
+from aidial_client import DialException, ResourceNotFoundError
 from injector import inject
 
 from quickapp.common.abstract.base_prompt_provider import PromptPartProvider

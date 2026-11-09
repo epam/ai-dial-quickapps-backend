@@ -11,6 +11,9 @@ from quickapp.common.state_holder import StateHolder
 from quickapp.config.application import StageDisplayLevel
 from quickapp.dial_core_services._project_files import ProjectFilesClient
 from quickapp.dial_core_services.dial_file_service import DialFileService
+from quickapp.dial_core_services.storage._project_file_storage import ProjectFileStorage
+from quickapp.dial_core_services.storage._routed_file_storage import RoutedFileStorage
+from quickapp.dial_core_services.storage._v1_file_storage import V1FileStorage
 from quickapp.dial_files_tooling._read_file_lines_tool import _ReadFileLinesTool
 from quickapp.dial_files_tooling._tool_configs import (
     READ_FILE_LINES_TOOL_CONFIG,
@@ -31,13 +34,12 @@ def _service() -> DialFileService:
     dial = AsyncDial(base_url=BASE_URL, api_key="per-request", max_retries=0)
     size_limit = MagicMock(spec=FileLoadingSizeLimitResolver)
     size_limit.resolve.return_value = 1024 * 1024
-    return DialFileService(
-        dial_client=dial,
-        state_holder=StateHolder(),
-        size_limit_resolver=size_limit,
-        project_files=ProjectFilesClient(dial),
-        project=PROJECT,
+    storage = RoutedFileStorage(
+        V1FileStorage(dial, size_limit),
+        ProjectFileStorage(ProjectFilesClient(dial), size_limit),
+        PROJECT,
     )
+    return DialFileService(dial_client=dial, storage=storage, state_holder=StateHolder())
 
 
 @pytest.mark.asyncio
