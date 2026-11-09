@@ -142,8 +142,8 @@ class TestProjectPromptProvider:
         part = await _provider(service).get_prompt_part()
 
         assert "## Project files" in part
-        assert "`projects/b/My%20Project/files/artifacts/`" in part
-        assert "`projects/b/My%20Project/files/context/`" in part
+        assert "`projects/b/My Project/files/artifacts/`" in part
+        assert "`projects/b/My Project/files/context/`" in part
         service.list_folder.assert_not_called()
 
     @pytest.mark.asyncio

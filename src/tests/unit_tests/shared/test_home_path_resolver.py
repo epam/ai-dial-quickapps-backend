@@ -166,8 +166,23 @@ class TestProjectHome:
         assert await resolver.to_display_path(decoded) == "a.md"
 
     @pytest.mark.asyncio
-    async def test_display_path_keeps_other_project_files(self):
-        assert await _resolver(project=_PROJECT).to_display_path(_CONTEXT_FILE) == _CONTEXT_FILE
+    async def test_display_path_shows_project_files_decoded(self):
+        resolver = _resolver(project=_PROJECT)
+        decoded = "projects/user-bucket/My Project/files/context/tickets.csv"
+        assert await resolver.to_display_path(_CONTEXT_FILE) == decoded
+        assert await resolver.to_display_path(f"{_ARTIFACTS}my%20notes/a.md") == "my notes/a.md"
+
+    @pytest.mark.asyncio
+    async def test_display_path_keeps_names_that_dont_round_trip_encoded(self):
+        # A literal `%41` in a name would decode to `A` when passed back.
+        url = f"{_ARTIFACTS}100%2541.md"
+        assert await _resolver(project=_PROJECT).to_display_path(url) == "100%2541.md"
+
+    @pytest.mark.asyncio
+    async def test_decoded_display_path_resolves_back(self):
+        resolver = _resolver(project=_PROJECT)
+        display = await resolver.to_display_path(_CONTEXT_FILE)
+        assert await resolver.resolve_appdata_url(display) == _CONTEXT_FILE
 
     @pytest.mark.parametrize("path", ["%2e%2e/PROJECT.md", ".%2e/x", "a%2F..%2Fb", "a//b"])
     @pytest.mark.asyncio

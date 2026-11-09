@@ -4,6 +4,7 @@ from injector import inject
 
 from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
 from quickapp.common.project_context import PROJECT_CONTEXT, ProjectContext
+from quickapp.common.utils import readable_url
 from quickapp.shared.project._project_instructions import _ProjectInstructions
 from quickapp.shared.project._settings import ProjectSettings
 
@@ -64,9 +65,9 @@ def _files_section(project: ProjectContext) -> str:
         [
             "## Project files",
             "",
-            f"Your working folder is the project's `{project.artifacts_root}`: relative "
+            f"Your working folder is the project's `{readable_url(project.artifacts_root)}`: relative "
             "paths resolve there, and it holds files from earlier chats in this project.",
-            f"The project's context files are in `{project.context_root}`, read-only: list "
+            f"The project's context files are in `{readable_url(project.context_root)}`, read-only: list "
             "them with the file tools and read them by their full path.",
         ]
     )

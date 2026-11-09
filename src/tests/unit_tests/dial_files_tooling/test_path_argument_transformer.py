@@ -89,11 +89,11 @@ class TestProjectPaths:
         assert result["path"] == "notes.md"
 
     @pytest.mark.asyncio
-    async def test_context_url_left_absolute(self):
+    async def test_context_url_left_absolute_and_decoded(self):
         url = "projects/user-bucket/My%20Project/files/context/tickets.csv"
         transformer = _make_transformer(project=_PROJECT)
         result = await transformer.transform({"path": url})
-        assert result["path"] == url
+        assert result["path"] == "projects/user-bucket/My Project/files/context/tickets.csv"
 
     @pytest.mark.asyncio
     async def test_other_project_url_untouched(self):

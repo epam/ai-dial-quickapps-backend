@@ -158,6 +158,18 @@ def canonical_url(url: str) -> str:
     return "/".join(quote(unquote(segment), safe="") for segment in url.split("/"))
 
 
+def readable_url(url: str) -> str:
+    """A relative DIAL URL with each segment decoded (``My Project``), for the model and the
+    stage titles.
+
+    ``canonical_url`` turns it back into the same URL. When it can't (a name with ``%``
+    escapes or an encoded ``/``), the canonical form is returned.
+    """
+    canonical = canonical_url(url)
+    decoded = "/".join(unquote(segment) for segment in canonical.split("/"))
+    return decoded if canonical_url(decoded) == canonical else canonical
+
+
 def to_plain_dict(obj: Any, _seen: set[int] | None = None) -> Any:
     """
     Recursively convert an object into plain JSON-serializable structures.
