@@ -2,7 +2,6 @@ import pytest
 
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.project_context import ProjectContext
-from quickapp.dial_files_tooling._utils import reject_absolute_path
 from quickapp.shared.home_path.home_path_resolver import HomePathResolver
 from tests.unit_tests.dial_files_tooling._helpers import make_config, make_service
 
@@ -107,17 +106,6 @@ class TestToDisplayPath:
         assert display == ""
 
 
-class TestRejectAbsolutePath:
-    def test_absolute_url_rejected(self):
-        with pytest.raises(InvalidToolCallParameterException) as exc:
-            reject_absolute_path("path", "write_file", "files/x/a.md")
-        assert exc.value.parameter_name == "path"
-        assert "relative" in exc.value.message
-
-    def test_relative_path_allowed(self):
-        reject_absolute_path("path", "write_file", "reports/a.md")  # no raise
-
-
 _PROJECT = ProjectContext(url="projects/user-bucket/My Project")
 _ARTIFACTS = "projects/user-bucket/My%20Project/files/artifacts/"
 _CONTEXT_FILE = "projects/user-bucket/My%20Project/files/context/tickets.csv"
@@ -146,17 +134,24 @@ class TestProjectHome:
         url = "projects/user-bucket/My Project/files/context/tickets.csv"
         assert await _resolver(project=_PROJECT).resolve_appdata_url(url) == _CONTEXT_FILE
 
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "projects/user-bucket/Other/files/x.md",
+            "projects/user-bucket/",
+            "projects/user-bucket/My Project/x.md",
+        ],
+    )
     @pytest.mark.asyncio
-    async def test_other_project_url_is_home_relative(self):
-        url = await _resolver(project=_PROJECT).resolve_appdata_url(
-            "projects/user-bucket/Other/files/x.md"
-        )
-        assert url == f"{_ARTIFACTS}projects/user-bucket/Other/files/x.md"
+    async def test_other_projects_url_is_rejected(self, path):
+        with pytest.raises(InvalidToolCallParameterException) as excinfo:
+            await _resolver(project=_PROJECT).resolve_appdata_url(path)
+        assert "current project" in excinfo.value.message
 
     @pytest.mark.asyncio
-    async def test_projects_path_is_home_relative_without_project(self):
-        url = await _resolver().resolve_appdata_url("projects/user-bucket/My Project/files/x.md")
-        assert url == "files/appbucket/projects/user-bucket/My Project/files/x.md"
+    async def test_projects_url_is_rejected_without_project(self):
+        with pytest.raises(InvalidToolCallParameterException):
+            await _resolver().resolve_appdata_url("projects/user-bucket/My Project/files/x.md")
 
     @pytest.mark.asyncio
     async def test_files_url_still_absolute_in_project(self):
@@ -185,36 +180,31 @@ class TestProjectHome:
         resolver = _resolver(project=_PROJECT)
         assert resolver.is_absolute("files/appbucket/x.md")
         assert resolver.is_absolute(_CONTEXT_FILE)
-        assert not resolver.is_absolute("projects/user-bucket/Other/files/x.md")
-        assert not _resolver().is_absolute(_CONTEXT_FILE)
+        assert resolver.is_absolute("projects/user-bucket/Other/files/x.md")
+        assert _resolver().is_absolute(_CONTEXT_FILE)
+        assert not resolver.is_absolute("reports/projects/a.md")
 
 
-class TestRejectAbsolutePathInProject:
-    def test_context_file_is_read_only(self):
+class TestRequireRelative:
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "files/x/a.md",
+            _CONTEXT_FILE,
+            _PROJECT.instructions_url,
+            f"{_ARTIFACTS}a.md",
+            "projects/user-bucket/Other/files/a.md",
+        ],
+    )
+    def test_absolute_url_rejected(self, path):
         with pytest.raises(InvalidToolCallParameterException) as exc:
-            reject_absolute_path("path", "write_file", _CONTEXT_FILE, _PROJECT)
-        assert "read-only project file" in exc.value.message
-        assert "working folder" in exc.value.message
-
-    def test_project_md_is_read_only(self):
-        with pytest.raises(InvalidToolCallParameterException) as exc:
-            reject_absolute_path("path", "edit_file", _PROJECT.instructions_url, _PROJECT)
-        assert "read-only project file" in exc.value.message
-
-    def test_artifacts_url_gets_generic_message(self):
-        with pytest.raises(InvalidToolCallParameterException) as exc:
-            reject_absolute_path("path", "write_file", f"{_ARTIFACTS}a.md", _PROJECT)
-        assert "read-only" not in exc.value.message
+            _resolver(project=_PROJECT).require_relative("destination", path)
+        assert exc.value.parameter_name == "destination"
         assert "relative path" in exc.value.message
 
-    def test_files_url_rejected_in_project(self):
+    def test_absolute_url_rejected_without_project(self):
         with pytest.raises(InvalidToolCallParameterException):
-            reject_absolute_path("path", "write_file", "files/x/a.md", _PROJECT)
+            _resolver().require_relative("path", "files/x/a.md")
 
-    def test_other_project_path_allowed(self):
-        reject_absolute_path(
-            "path", "write_file", "projects/user-bucket/Other/files/context/a.md", _PROJECT
-        )  # no raise: an ordinary home-relative path
-
-    def test_project_path_allowed_without_project(self):
-        reject_absolute_path("path", "write_file", _CONTEXT_FILE)  # no raise
+    def test_relative_path_allowed(self):
+        _resolver(project=_PROJECT).require_relative("path", "reports/a.md")  # no raise

@@ -10,7 +10,6 @@ from quickapp.dial_core_services.exceptions import (
     ProjectFileOperationException,
 )
 from quickapp.dial_files_tooling._base_file_tool import _DialFileTool
-from quickapp.dial_files_tooling._utils import reject_absolute_path
 
 
 class _MoveFileTool(_DialFileTool):
@@ -25,8 +24,8 @@ class _MoveFileTool(_DialFileTool):
         destination: str = kwargs["destination"]
         overwrite: bool = bool(kwargs.get("overwrite", False))
 
-        reject_absolute_path("source", "move_file", source, self._home_resolver.project)
-        reject_absolute_path("destination", "move_file", destination, self._home_resolver.project)
+        self._home_resolver.require_relative("source", source)
+        self._home_resolver.require_relative("destination", destination)
 
         source_url = await self._home_resolver.resolve_appdata_url(source)
         dest_url = await self._home_resolver.resolve_appdata_url(destination)

@@ -7,7 +7,6 @@ from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.tool_call_result import ToolCallResult
 from quickapp.dial_core_services.exceptions import ProjectFileOperationException
 from quickapp.dial_files_tooling._base_file_tool import _DialFileTool
-from quickapp.dial_files_tooling._utils import reject_absolute_path
 
 
 class _CopyFileTool(_DialFileTool):
@@ -22,7 +21,7 @@ class _CopyFileTool(_DialFileTool):
         destination: str = kwargs["destination"]
         overwrite: bool = bool(kwargs.get("overwrite", False))
 
-        reject_absolute_path("destination", "copy_file", destination, self._home_resolver.project)
+        self._home_resolver.require_relative("destination", destination)
 
         source_url = await self._home_resolver.resolve_appdata_url(source)
         dest_url = await self._home_resolver.resolve_appdata_url(destination)

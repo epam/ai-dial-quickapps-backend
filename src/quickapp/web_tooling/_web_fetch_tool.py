@@ -140,22 +140,9 @@ class _WebFetchTool(StagedBaseTool):
         return compose_truncated_content(notice, head)
 
     async def __save_to_workspace(self, save_path: str, fetched: FetchedBytes) -> ToolCallResult:
-        # An absolute path (``files/...``, or a URL of the request's project) would be
-        # returned verbatim by ``resolve_appdata_url``, escaping the agent home. Require a
-        # home-relative one.
-        project = self.__home_resolver.project
-        if project is not None and project.is_read_only(save_path):
-            raise InvalidToolCallParameterException(
-                "save_path",
-                f"{save_path} is a read-only project file; write under the working folder "
-                "with a relative path",
-            )
-        if self.__home_resolver.is_absolute(save_path):
-            raise InvalidToolCallParameterException(
-                "save_path",
-                "save_path must be a workspace-relative path under the agent home "
-                "(e.g. 'data.py' or 'docs/readme.md'), not an absolute 'files/...' URL.",
-            )
+        # An absolute URL would be returned verbatim by ``resolve_appdata_url``, escaping
+        # the agent home. Require a home-relative one.
+        self.__home_resolver.require_relative("save_path", save_path)
 
         content_type = fetched.content_type or "application/octet-stream"
         display_path = await self.__write_unique(save_path, fetched.data, content_type)

@@ -4,8 +4,6 @@ These have no dependency on `self`/DI, so they live here rather than on the
 `_DialFileTool` base class (which holds the download/resolution behaviour).
 """
 
-from quickapp.common.exceptions import InvalidToolCallParameterException
-from quickapp.common.project_context import ProjectContext
 from quickapp.common.tool_names import INTERNAL_FILE_READ_CHARS_TOOL_NAME
 from quickapp.common.utils import fenced_code_block
 from quickapp.dial_core_services.storage.file_storage import FolderEntry
@@ -46,37 +44,6 @@ def cap_output(text: str, limit: int = MAX_OUTPUT_CHARS) -> tuple[str, bool]:
 def is_root_reference(path: str) -> bool:
     """Whether the path denotes the agent home directory itself ('', '.', './', '/')."""
     return path.strip() in ("", ".", "./", "/")
-
-
-def reject_absolute_path(
-    parameter_name: str, tool_name: str, value: str, project: ProjectContext | None = None
-) -> None:
-    """Reject an absolute URL for tools that only accept home-relative paths.
-
-    Absolute is ``files/...`` and, in a project, a URL of that project. A project file
-    outside ``artifacts/`` (``PROJECT.md``, ``context/``, ...) gets a read-only message:
-    home confinement is what keeps the agent from writing there.
-    """
-    if project is None:
-        if value.startswith("files/"):
-            raise InvalidToolCallParameterException(
-                parameter_name,
-                f"{tool_name} requires a relative path under agent_home_dir; "
-                "do not pass an absolute files/... URL",
-            )
-        return
-    if project.is_read_only(value):
-        raise InvalidToolCallParameterException(
-            parameter_name,
-            f"{value} is a read-only project file; write under the working folder "
-            "with a relative path",
-        )
-    if value.startswith("files/") or project.contains(value):
-        raise InvalidToolCallParameterException(
-            parameter_name,
-            f"{tool_name} requires a relative path under the working folder; "
-            "do not pass an absolute URL",
-        )
 
 
 def relative_to(url: str, folder_url: str) -> str:
