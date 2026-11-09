@@ -6,6 +6,15 @@ from quickapp.common.utils import canonical_url
 from quickapp.config.dial_files import DialFilesConfig
 from quickapp.dial_core_services.dial_file_service import DialFileService
 
+_PROJECTS_PREFIX = "projects/"
+
+
+def is_absolute_url(path: str) -> bool:
+    """Whether ``path`` is an absolute DIAL URL (``files/...`` or ``projects/...``) rather
+    than a path relative to the agent home. Like ``files``, ``projects`` is a Core resource
+    type, so a home folder of that name can't be addressed by a relative path."""
+    return path.startswith(("files/", _PROJECTS_PREFIX))
+
 
 def _validate_relative_path(path: str) -> None:
     """Reject relative paths that are unsafe or malformed (leading '/', '..', etc.).
@@ -40,8 +49,8 @@ class HomePathResolver:
     tools, the path-argument transformer, and any other agent-home consumer so the home is
     resolved a single time per request.
 
-    Absolute URLs are ``files/...`` and, in a project, URLs of that project; any other
-    ``projects/...`` string is an ordinary home-relative path.
+    Absolute URLs are ``files/...`` and ``projects/...`` (see ``is_absolute_url``); a
+    ``projects/...`` URL resolves only to a file of the request's project.
     """
 
     def __init__(
@@ -55,16 +64,20 @@ class HomePathResolver:
         self._project = project
         self._resolved_home: str | None = None
 
-    @property
-    def project(self) -> PROJECT_CONTEXT:
-        """The request's project, or ``None`` outside a project."""
-        return self._project
-
     def is_absolute(self, path: str) -> bool:
-        """Whether ``path`` is an absolute URL: ``files/...`` or a file of the request's project."""
-        return path.startswith("files/") or (
-            self._project is not None and self._project.contains(path)
-        )
+        return is_absolute_url(path)
+
+    def require_relative(self, parameter_name: str, path: str) -> None:
+        """Reject an absolute URL where only a path under the agent home is accepted
+        (a write target): files outside the home, the project's read-only ones included,
+        are never written."""
+        if is_absolute_url(path):
+            raise InvalidToolCallParameterException(
+                parameter_name,
+                f"{parameter_name} must be a relative path, resolved under the agent home "
+                "(e.g. 'report.md' or 'docs/notes.md'), not an absolute files/... or "
+                "projects/... URL",
+            )
 
     async def resolve_appdata_url(self, path: str) -> str:
         if not isinstance(path, str) or path == "":
@@ -75,10 +88,15 @@ class HomePathResolver:
             )
         if path.startswith("files/"):
             return path
+        if path.startswith(_PROJECTS_PREFIX):
+            if self._project is None or not self._project.contains(path):
+                raise InvalidToolCallParameterException(
+                    "path",
+                    "only files of the current project can be accessed by a projects/... URL",
+                )
+            return canonical_url(path)
+        _validate_relative_path(path)
         if self._project is not None:
-            if self._project.contains(path):
-                return canonical_url(path)
-            _validate_relative_path(path)
             # Canonicalizing decodes each segment, so check the decoded form first:
             # `%2e%2e` or an encoded `/` would otherwise turn into a real `..` or `/`.
             if has_unsafe_segments(path):
@@ -88,7 +106,6 @@ class HomePathResolver:
                 )
             # Canonical, like the URLs Core lists, so prefix math against listings works.
             return canonical_url(f"{await self.resolve_home_dir()}{path}")
-        _validate_relative_path(path)
         home = await self.resolve_home_dir()
         return f"{home}{path}"
 
@@ -119,9 +136,8 @@ class HomePathResolver:
         except InvalidToolCallParameterException:
             return url
         if self._project is not None and self._project.contains(url):
-            # The model may spell a project URL decoded (``My Project``); compare canonically.
-            canonical = canonical_url(url)
-            return canonical[len(home) :] if canonical.startswith(home) else url
+            # The home is canonical; the model may spell the URL decoded (``My Project``).
+            url = canonical_url(url)
         if url.startswith(home):
             return url[len(home) :]
         return url

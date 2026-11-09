@@ -258,7 +258,7 @@ class TestSaveInProject:
         assert "Saved docs/x.txt" in result.content
 
     @pytest.mark.asyncio
-    async def test_context_save_path_is_read_only(self):
+    async def test_context_save_path_is_rejected(self):
         fetched = FetchedBytes(data=b"x", content_type="text/plain", filename="x.txt")
         tool, service = _make_tool(fetched, project=_PROJECT)
         with pytest.raises(InvalidToolCallParameterException) as exc:
@@ -267,7 +267,7 @@ class TestSaveInProject:
                 url="https://x.com/x.txt",
                 save_path="projects/user-bucket/My Project/files/context/x.txt",
             )
-        assert "read-only project file" in exc.value.message
+        assert "relative path" in exc.value.message
         service.write_bytes.assert_not_awaited()
 
     @pytest.mark.asyncio
@@ -283,17 +283,16 @@ class TestSaveInProject:
         service.write_bytes.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_other_project_save_path_is_home_relative(self):
+    async def test_other_project_save_path_is_rejected(self):
         fetched = FetchedBytes(data=b"x", content_type="text/plain", filename="x.txt")
         tool, service = _make_tool(fetched, project=_PROJECT)
-        await tool._run_in_stage_async(
-            stage_wrapper=None,
-            url="https://x.com/x.txt",
-            save_path="projects/user-bucket/Other/files/x.txt",
-        )
-        assert service.write_bytes.await_args.kwargs["url"] == (
-            f"{_ARTIFACTS}projects/user-bucket/Other/files/x.txt"
-        )
+        with pytest.raises(InvalidToolCallParameterException):
+            await tool._run_in_stage_async(
+                stage_wrapper=None,
+                url="https://x.com/x.txt",
+                save_path="projects/user-bucket/Other/files/x.txt",
+            )
+        service.write_bytes.assert_not_awaited()
 
 
 class TestSplitTruncationNotice:

@@ -6,7 +6,6 @@ from aidial_client.types.metadata import FileMetadata
 
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import InvalidToolCallParameterException
-from quickapp.common.project_context import ProjectContext
 from quickapp.common.state_holder import StateHolder
 from quickapp.dial_core_services.dial_downloader import DialDownloader
 from quickapp.file_transfer._file_loader_service import FileLoaderService
@@ -36,14 +35,12 @@ def _make_loader(
     dial_downloader: MagicMock | None = None,
     fetcher: MagicMock | None = None,
     state_holder: StateHolder | None = None,
-    project: ProjectContext | None = None,
 ) -> FileLoaderService:
     return FileLoaderService(
         dial_downloader=dial_downloader or MagicMock(spec=DialDownloader),
         external_fetcher=fetcher or MagicMock(spec=ExternalUrlFetcher),
         state_holder=state_holder or StateHolder(),
         dial_settings=_settings(),
-        project=project,
     )
 
 
@@ -276,24 +273,12 @@ async def test_external_disabled_error_translated_to_invalid_param():
 
 
 @pytest.mark.asyncio
-async def test_current_project_url_dispatches_to_dial_downloader():
+async def test_project_url_dispatches_to_dial_downloader():
     dial_dl = MagicMock(spec=DialDownloader)
     dial_dl.fetch = AsyncMock(return_value=(b"csv", _metadata()))
-    loader = _make_loader(dial_downloader=dial_dl, project=ProjectContext(url="projects/b/p"))
+    loader = _make_loader(dial_downloader=dial_dl)
 
     result = await loader.load("projects/b/p/files/context/tickets.csv")
 
     assert result == b"csv"
     dial_dl.fetch.assert_awaited_once_with("projects/b/p/files/context/tickets.csv")
-
-
-@pytest.mark.parametrize("project", [None, ProjectContext(url="projects/b/other")])
-@pytest.mark.asyncio
-async def test_project_url_outside_the_request_project_is_not_a_dial_url(project):
-    dial_dl = MagicMock(spec=DialDownloader)
-    dial_dl.fetch = AsyncMock()
-    loader = _make_loader(dial_downloader=dial_dl, project=project)
-
-    with pytest.raises(InvalidToolCallParameterException):
-        await loader.load("projects/b/p/files/context/tickets.csv")
-    dial_dl.fetch.assert_not_awaited()

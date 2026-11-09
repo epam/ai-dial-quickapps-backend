@@ -1,6 +1,5 @@
 import pytest
 
-from quickapp.common.project_context import ProjectContext
 from quickapp.common.url_classification import UrlScheme, classify_url, is_appdir_relative
 
 DIAL_URL = "https://dial.example.com"
@@ -153,31 +152,17 @@ def test_dial_base_url_without_host_treats_http_url_as_external():
     assert classify_url("https://example.com/x", "not-a-real-url") == UrlScheme.EXTERNAL
 
 
-class TestCurrentProjectUrls:
-    PROJECT = ProjectContext(url="projects/b/My Project")
-
+class TestProjectUrls:
     @pytest.mark.parametrize(
         "url",
         [
             "projects/b/My%20Project/files/context/tickets.csv",
-            "projects/b/My Project/files/artifacts/notes.md",
             "projects/b/My Project/files/PROJECT.md",
+            "projects/b/",
         ],
     )
-    def test_current_project_url_is_dial(self, url: str):
-        assert classify_url(url, DIAL_URL, self.PROJECT) == UrlScheme.DIAL
+    def test_projects_url_is_dial(self, url: str):
+        assert classify_url(url, DIAL_URL) == UrlScheme.DIAL
 
-    @pytest.mark.parametrize(
-        "url",
-        [
-            "projects/b/Other/files/x.md",
-            "projects/notes.md",
-            "projects/b/My Project/files/../../Other/files/x.md",
-        ],
-    )
-    def test_other_projects_paths_classify_as_before(self, url: str):
-        assert classify_url(url, DIAL_URL, self.PROJECT) == classify_url(url, DIAL_URL)
-
-    def test_project_url_without_project_is_appdir_relative(self):
-        url = "projects/b/My Project/files/context/tickets.csv"
-        assert classify_url(url, DIAL_URL) == UrlScheme.DIAL_APPDIR_RELATIVE
+    def test_projects_folder_inside_a_relative_path_stays_relative(self):
+        assert classify_url("reports/projects/a.md", DIAL_URL) == UrlScheme.DIAL_APPDIR_RELATIVE

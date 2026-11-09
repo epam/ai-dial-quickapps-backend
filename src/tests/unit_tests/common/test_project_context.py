@@ -76,22 +76,6 @@ class TestProjectContext:
         project = ProjectContext(url="projects/b/p")
         assert not project.contains("https://dial.example.com/v1/projects/b/p/files/a.md")
 
-    @pytest.mark.parametrize(
-        "url, expected",
-        [
-            ("projects/b/My Project/files/PROJECT.md", True),
-            ("projects/b/My%20Project/files/context/tickets.csv", True),
-            ("projects/b/My Project/files/conversations/c.json", True),
-            ("projects/b/My Project/files/artifacts/notes.md", False),
-            ("projects/b/My%20Project/files/artifacts/", False),
-            ("projects/b/Other/files/context/x.md", False),
-            ("files/b/x.md", False),
-            ("notes.md", False),
-        ],
-    )
-    def test_is_read_only(self, url: str, expected: bool) -> None:
-        assert ProjectContext(url="projects/b/My Project").is_read_only(url) is expected
-
 
 @pytest.mark.parametrize(
     "url, expected",
