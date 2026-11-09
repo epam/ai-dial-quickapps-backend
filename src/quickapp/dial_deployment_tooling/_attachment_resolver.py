@@ -2,7 +2,6 @@ import asyncio
 import logging
 
 from aidial_client import AsyncDial
-from aidial_client.helpers.storage_resource import _percent_encode_relative_url
 from aidial_client.resources import AsyncMetadata
 from aidial_client.types.chat.request_param import AttachmentParam
 from injector import inject
@@ -17,7 +16,7 @@ from quickapp.common.url_classification import (
     to_relative_project_url,
     unsupported_scheme_error,
 )
-from quickapp.common.utils import filename_from_url_path
+from quickapp.common.utils import canonical_url, filename_from_url_path
 from quickapp.dial_core_services.dial_file_promoter import DialFilePromoter
 from quickapp.shared.home_path.home_path_resolver import HomePathResolver
 
@@ -96,7 +95,7 @@ class AttachmentResolver:
             if scheme == UrlScheme.DIAL_APPDIR_RELATIVE:
                 return _pass_through(await self.__home_resolver.resolve_appdata_url(bare))
             if scheme == UrlScheme.DIAL and self.__project.contains(bare):
-                return _pass_through(_percent_encode_relative_url(bare))
+                return _pass_through(canonical_url(bare))
 
         if scheme == UrlScheme.DIAL:
             metadata: AsyncMetadata = self.__dial_client.metadata
