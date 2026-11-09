@@ -185,7 +185,7 @@ Specified separately in [DIAL Files Tools](dial_files_tools.md). Relevant facts 
 
 - The read-back tools are named `internal_file_read_lines`, `internal_file_read_chars` and `internal_file_search`; these names are always in `ToolCallResultOffloadProcessor`'s resolved `excluded_tools` (a mandatory, non-overridable exclusion folded in by `_provide_offload_config`) so read-back results are never re-offloaded.
 - Both tools address files by `path`, which may be a path relative to the agent's home dir **or** an absolute `files/...` URL. Offloaded files live under `files/{bucket}/offloaded-responses/`, outside the agent home dir, so the LLM reads them back via the absolute URL carried in the notice.
-- They are wired by `DialFilesToolingModule` (preview-gated), which **also owns the offload wiring** (see Component 5). Offload has a **hard dependency** on these tools being exposed: when they are not, it self-disables. Because offload config nests under `dial_files`, offload cannot exist without the module that provides read-back.
+- They are wired by `DialFilesToolingModule` (generally available; all tools exposed by default), which **also owns the offload wiring** (see Component 5). Offload has a **hard dependency** on these tools being exposed: when they are not, it self-disables. Because offload config nests under `dial_files`, offload cannot exist without the module that provides read-back.
 
 ---
 
@@ -194,12 +194,12 @@ Specified separately in [DIAL Files Tools](dial_files_tools.md). Relevant facts 
 **What:** Offload has **no standalone module**. `DialFilesToolingModule` (which already wires the file tools) also owns the offload wiring, reflecting that offload is a sub-feature of DIAL Files. On top of binding the file tools, it:
 
 - Binds `ToolCallResultOffloadProcessor` (request-scoped).
-- Provides a request-scoped `ResolvedOffloadConfig` via `_provide_offload_config`, reading `features.dial_files.tool_call_result_offload` **and applying the read-back availability gate** — forcing `enabled = False` when `dial_files` is absent, the offload section's `enabled` flag is `false`, or `read_lines` / `search` are not in the resolved `enabled_tools`.
+- Provides a request-scoped `ResolvedOffloadConfig` via `_provide_offload_config`, reading `features.dial_files.tool_call_result_offload` **and applying the read-back availability gate** — forcing `enabled = False` when `features` is null (an absent or `null` `dial_files` block resolves to the default config at parse time, so it does not disable offload), the offload section's `enabled` flag is `false`, or `read_lines` / `search` are not in the resolved `enabled_tools`.
 - Provides the processor into the `list[ToolCallResultProcessor]` multiprovider (`_provide_offload_processors`).
-- Contributes an `OffloadConfigurationException` via `_provide_initialization_exceptions` → `list[InitializationException]` when offload is `enabled` but read-back tools are missing. Returns `[]` when offload was never requested (no `dial_files` / `enabled: false`).
+- Contributes an `OffloadConfigurationException` via `_provide_initialization_exceptions` → `list[InitializationException]` when offload is `enabled` but read-back tools are missing. Returns `[]` when offload is disabled (null `features` / `enabled: false` / preview off).
 - `ToolCallResultOffloadSettings` (pydantic-settings) is read directly by `DialFilesConfig`'s field defaults; it is not bound in the container.
 
-**Preview gating:** `DialFilesToolingModule` is already **preview-feature-gated** (`@preview_module`). When preview is off, the module is skipped entirely and `features.dial_files` is nullified — so offload, being nested under it, is invisible too. No separate gating needed.
+**Preview gating:** `DialFilesToolingModule` itself is generally available. Only the nested `features.dial_files.tool_call_result_offload` field is a `PreviewField`: when preview is off it is nullified and offload resolves to disabled, while the file tools stay available.
 
 **Owner:** `src/quickapp/dial_files_tooling/dial_files_tooling_module.py`
 
@@ -379,7 +379,7 @@ None. Existing tool responses smaller than the threshold pass through unchanged.
 ### Non-breaking changes
 
 - New optional DI binding `list[ToolCallResultProcessor]`. Defaults to an empty list when no module provides processors — confirmed by the baseline empty `@multiprovider` in `agent/agent_module.py`.
-- Feature is **preview-gated** by `ENABLE_PREVIEW_FEATURES`. When disabled (the production default today), `DialFilesToolingModule` is skipped and `features.dial_files` is nullified — so neither the file tools nor the offload processor are bound, and the LLM sees no change.
+- Offload is **preview-gated** by `ENABLE_PREVIEW_FEATURES` (the nested `tool_call_result_offload` field). When disabled (the production default today), that config is nullified and offload resolves to disabled, so the LLM sees no change. The file tools themselves are not preview-gated.
 - **Toggled by `enabled` under `dial_files`.** Offload is on when `features.dial_files.tool_call_result_offload.enabled` is `true` (an app that sets it to `false`, or omits `dial_files` entirely, gets no offload). The `enabled` default is governed by `TOOL_CALL_RESULT_OFFLOAD__ENABLED_BY_DEFAULT`.
 - **Hard dependency on DIAL Files Tools.** Offload cannot be configured without `dial_files`, and self-disables when `enabled_tools` excludes `read_lines`/`search`. No broken intermediate state: either offload + read-back both work, or content stays inline.
 
