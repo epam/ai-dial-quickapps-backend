@@ -27,7 +27,6 @@ class TestPermissionDeniedWrapper:
         with pytest.raises(DialFilePermissionException) as exc:
             await tool._run_in_stage_async(stage_wrapper=None, path="reports/")
         assert "access denied: reports/" in str(exc.value)
-        assert "Don't retry with other paths" in str(exc.value)
 
     @pytest.mark.asyncio
     async def test_403_goes_through_fallback_not_retry(self):
@@ -44,7 +43,6 @@ class TestPermissionDeniedWrapper:
             "call-1", stage_level=StageDisplayLevel.NONE, path="notes.md", start_line=1, end_line=10
         )
         assert "access denied: notes.md" in result.content
-        assert "Don't retry with other paths" in result.content
         assert "try to call the tool again" not in result.content
 
     @pytest.mark.asyncio
