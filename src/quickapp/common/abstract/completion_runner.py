@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 
+from quickapp.common.abstract.completed_run import CompletedRun
 from quickapp.common.completion_inputs import CompletionInputs
 
 
@@ -10,6 +11,6 @@ class BaseCompletionRunner(ABC):
     """
 
     @abstractmethod
-    async def run(self, inputs: CompletionInputs) -> object | None:
+    async def run(self, inputs: CompletionInputs) -> CompletedRun | None:
         """Run the completion; ``None`` when the manifest could not be resolved."""
         ...

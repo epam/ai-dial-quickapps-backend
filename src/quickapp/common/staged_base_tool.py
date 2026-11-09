@@ -241,6 +241,9 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
                 e,
                 error_reference,
             )
+        except FallbackAgentStopException:
+            # A hard stop inside a delegated task stops the delegating turn too.
+            raise
         except Exception as e:
             fallback = self._tool_config.fallback_configuration
             if fallback.display_error_in_stage or isinstance(e, ToolTimeoutError):

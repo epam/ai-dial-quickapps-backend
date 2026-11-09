@@ -86,7 +86,7 @@ class CompletionRunner(BaseCompletionRunner):
         self.__perf_timer.add_milestone(TIMER_PERIOD, "messages finalized")
         self.__error_handler.handle_initialization_issues()
         self.__perf_timer.add_milestone(TIMER_PERIOD, "initialization issues")
-        self.__log_request_initialized()
+        self.__log_request_initialized(inputs)
         orchestrator = self.__orchestrator_provider.get()
         await orchestrator.invoke()
         self.__perf_timer.add_milestone(TIMER_PERIOD, "orchestrator_invoked")
@@ -105,10 +105,11 @@ class CompletionRunner(BaseCompletionRunner):
                 deployment=app_config.orchestrator.deployment.deployment_id,
                 messages=len(inputs.messages),
                 attachments=attachment_count,
+                task=True if inputs.is_task else None,
             )
         )
 
-    def __log_request_initialized(self) -> None:
+    def __log_request_initialized(self, inputs: CompletionInputs) -> None:
         app_config = self.__config_provider.get()
         tools = self.__tools_provider.get()
         model_hidden_tools = self.__model_hidden_tools_provider.get()
@@ -127,5 +128,6 @@ class CompletionRunner(BaseCompletionRunner):
                 model_hidden_tools=len(model_hidden_tools) or None,
                 skills=skill_count,
                 contexts=len(app_config.contexts),
+                task=True if inputs.is_task else None,
             )
         )

@@ -42,6 +42,7 @@ from quickapp.config.dial_deployment import DialDeploymentConfig, DialDeployment
 from quickapp.config.dial_files import DialFilesConfig
 from quickapp.config.orchestrator_attachment_strategy import LazyOnDemandAttachmentStrategy
 from quickapp.config.prompt import CustomSystemPromptConfig
+from quickapp.config.run_task import RunTaskConfig
 from quickapp.config.timestamp import ToolCallTimestampConfig
 from quickapp.config.tool_discovery import ToolDiscoveryConfig
 from quickapp.config.tools.const import ALL_MIME_TYPES
@@ -85,6 +86,7 @@ def build_dump_application_config() -> ApplicationConfig:
             dial_files=DialFilesConfig(),
             web_fetch=WebFetchConfig(enabled=True),
             representation_tooling=RepresentationToolingConfig(),
+            run_task=RunTaskConfig(enabled=True),
         ),
     )
 
