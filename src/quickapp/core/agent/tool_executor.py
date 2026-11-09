@@ -18,6 +18,7 @@ from quickapp.common.deferred_tool_types import DeferredToolName
 from quickapp.common.model_hidden_tool import ModelHiddenTool
 from quickapp.common.payload_logging import log_payload
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
+from quickapp.common.tool_allowlist import ToolAllowlist
 from quickapp.common.tool_fallback.processor import FallbackProcessor
 from quickapp.common.tool_names import INTERNAL_TOOL_SEARCH_TOOL_NAME
 from quickapp.config.tools.tool_fallback import ContinueStrategyModel
@@ -75,10 +76,14 @@ class ToolExecutor:
         processors: list[ToolCallResultProcessor],
         deferred_tool_names: list[DeferredToolName],
         lazy_loaded_tools_holder: LazyLoadedToolsHolder,
+        allowlist: ToolAllowlist,
     ):
         self.__deferred_names: frozenset[str] = frozenset(deferred_tool_names)
         self.__lazy_loaded_tools_holder = lazy_loaded_tools_holder
-        self.__tools: dict[str, StagedBaseTool] = self.__build_tool_dict(tools)
+        # A tool outside a delegated task's allowlist falls through to the unknown-tool result.
+        self.__tools: dict[str, StagedBaseTool] = self.__build_tool_dict(
+            allowlist.filter_tools(tools)
+        )
         self.__model_hidden_names: frozenset[str] = frozenset(
             self.__build_tool_dict(model_hidden_tools)
         )

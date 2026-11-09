@@ -12,6 +12,7 @@ from quickapp.common._di_types import (
     ForwardedHeaders,
 )
 from quickapp.common.forwarded_headers import extract_x_headers_from_request
+from quickapp.common.tool_allowlist import ToolAllowlist
 from quickapp.config.application import ApplicationConfig
 
 
@@ -38,6 +39,8 @@ class CompletionInputs(BaseModel):
     response_format: ResponseFormat | None = None
     tool_choice: TOOL_CHOICE = None
     extra_tools: list[Tool] = Field(default_factory=list)
+    # Never set from an HTTP request: only a delegated task narrows its own run.
+    tool_allowlist: ToolAllowlist = Field(default_factory=ToolAllowlist)
 
     @classmethod
     async def from_request(

@@ -68,6 +68,7 @@ class _RequestContextSetup:
             context.tool_choice = inputs.tool_choice
         if inputs.extra_tools:
             context.extra_tools = inputs.extra_tools
+        context.tool_allowlist = inputs.tool_allowlist
         if inputs.choice:
             context.choice = inputs.choice
 
