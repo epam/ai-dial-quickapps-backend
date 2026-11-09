@@ -20,18 +20,16 @@ class RoutedFileStorage(FileStorage):
         v1: FileStorage,
         project_storage: FileStorage,
         project: ProjectContext,
-        max_bytes: int,
     ) -> None:
         self.__v1: FileStorage = v1
         self.__project_storage: FileStorage = project_storage
         self.__project: ProjectContext = project
-        self.__max_bytes: int = max_bytes
 
     def _storage_for(self, url: str) -> FileStorage:
         return self.__project_storage if self.__project.contains(url) else self.__v1
 
-    async def download(self, url: str, max_bytes: int) -> tuple[bytes, FileMetadata]:
-        return await self._storage_for(url).download(url, max_bytes)
+    async def download(self, url: str) -> tuple[bytes, FileMetadata]:
+        return await self._storage_for(url).download(url)
 
     async def upload(
         self,
@@ -63,7 +61,6 @@ class RoutedFileStorage(FileStorage):
             destination,
             destination_url,
             overwrite=overwrite,
-            max_bytes=self.__max_bytes,
         )
 
     async def move(self, source_url: str, destination_url: str, overwrite: bool) -> None:
@@ -77,5 +74,4 @@ class RoutedFileStorage(FileStorage):
             destination,
             destination_url,
             overwrite=overwrite,
-            max_bytes=self.__max_bytes,
         )

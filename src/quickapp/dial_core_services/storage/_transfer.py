@@ -1,5 +1,4 @@
-from aidial_client.helpers.storage_resource import _percent_encode_relative_url
-
+from quickapp.common.utils import canonical_url
 from quickapp.dial_core_services.exceptions import (
     FileTooLargeError,
     PartialMoveException,
@@ -17,7 +16,6 @@ async def copy_via_download(
     destination_url: str,
     *,
     overwrite: bool,
-    max_bytes: int,
 ) -> None:
     """Copy a file into, out of or inside a project.
 
@@ -28,10 +26,10 @@ async def copy_via_download(
         raise ProjectFileOperationException(
             "copying or moving folders in a project is not supported"
         )
-    if _percent_encode_relative_url(source_url) == _percent_encode_relative_url(destination_url):
+    if canonical_url(source_url) == canonical_url(destination_url):
         raise SameSourceAndDestinationException(source_url)
     try:
-        data, metadata = await source.download(source_url, max_bytes)
+        data, metadata = await source.download(source_url)
     except FileTooLargeError as e:
         raise ProjectFileTooLargeException(source_url, e.limit) from e
     await destination.upload(
@@ -49,7 +47,6 @@ async def move_via_download(
     destination_url: str,
     *,
     overwrite: bool,
-    max_bytes: int,
 ) -> None:
     """Move a file as a copy followed by a delete of the source, which is not atomic.
 
@@ -63,7 +60,6 @@ async def move_via_download(
         destination,
         destination_url,
         overwrite=overwrite,
-        max_bytes=max_bytes,
     )
     try:
         await source.delete(source_url)

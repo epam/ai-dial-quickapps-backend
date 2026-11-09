@@ -1,7 +1,7 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from aidial_client._exception import DialException
+from aidial_client import DialException
 
 from quickapp.common.project_context import ProjectContext
 from quickapp.dial_core_services.exceptions import (
@@ -31,8 +31,8 @@ def _make_storage(data: bytes = b"data", content_type: str = "text/plain") -> Ma
     return storage
 
 
-def _make_router(v1: MagicMock, project: MagicMock, max_bytes: int = 100) -> RoutedFileStorage:
-    return RoutedFileStorage(v1, project, PROJECT, max_bytes)
+def _make_router(v1: MagicMock, project: MagicMock) -> RoutedFileStorage:
+    return RoutedFileStorage(v1, project, PROJECT)
 
 
 class TestSingleUrlRouting:
@@ -51,13 +51,13 @@ class TestSingleUrlRouting:
         v1, project = _make_storage(), _make_storage()
         router = _make_router(v1, project)
 
-        await router.download(url, 10)
+        await router.download(url)
         await router.upload(url, b"x", "text/plain", if_match="e")
         await router.delete(url)
         await router.list_level(url)
 
         chosen, other = (project, v1) if goes_to_project else (v1, project)
-        chosen.download.assert_awaited_once_with(url, 10)
+        chosen.download.assert_awaited_once_with(url)
         chosen.upload.assert_awaited_once_with(
             url, b"x", "text/plain", if_none_match=None, if_match="e"
         )
@@ -93,9 +93,9 @@ class TestCopyAndMove:
     async def test_copy_between_storages_downloads_then_uploads(self, overwrite, if_none_match):
         v1, project = _make_storage(data=b"v1 data", content_type="text/csv"), _make_storage()
 
-        await _make_router(v1, project, max_bytes=50).copy(V1_FILE, PROJECT_FILE, overwrite)
+        await _make_router(v1, project).copy(V1_FILE, PROJECT_FILE, overwrite)
 
-        v1.download.assert_awaited_once_with(V1_FILE, 50)
+        v1.download.assert_awaited_once_with(V1_FILE)
         project.upload.assert_awaited_once_with(
             PROJECT_FILE, b"v1 data", "text/csv", if_none_match=if_none_match
         )
@@ -142,7 +142,6 @@ class TestCopyAndMove:
                 storage,
                 "projects/b/p/files/artifacts/My%20Notes.md",
                 overwrite=True,
-                max_bytes=100,
             )
         storage.download.assert_not_awaited()
         storage.upload.assert_not_awaited()

@@ -19,9 +19,6 @@ from quickapp.dial_core_services.storage._routed_file_storage import RoutedFileS
 from quickapp.dial_core_services.storage._v1_file_storage import V1FileStorage
 from quickapp.dial_core_services.storage.file_storage import FileStorage
 from quickapp.dial_core_services.tool_config_service import ToolConfigCoreService
-from quickapp.shared.config_resolvers.file_loading_size_limit_resolver import (
-    FileLoadingSizeLimitResolver,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -52,9 +49,8 @@ class DialCoreServicesModule(Module):
         v1: V1FileStorage,
         project_storage: ProjectFileStorage,
         project: PROJECT_CONTEXT,
-        size_limit_resolver: FileLoadingSizeLimitResolver,
     ) -> FileStorage:
         """v1 only, unless the request has a project: then URLs of that project go to v2."""
         if project is None:
             return v1
-        return RoutedFileStorage(v1, project_storage, project, size_limit_resolver.resolve())
+        return RoutedFileStorage(v1, project_storage, project)

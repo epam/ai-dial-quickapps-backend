@@ -2,14 +2,12 @@ import logging
 from typing import Annotated
 from urllib.parse import unquote
 
-from aidial_client._exception import InvalidDialURLError
-from aidial_client.helpers.storage_resource import (
-    _percent_encode_relative_url,
-    split_relative_segments,
-)
+from aidial_client import InvalidDialURLError
+from aidial_client.helpers.storage_resource import split_relative_segments
 from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
 from quickapp.common._di_types import ForwardedHeaders
+from quickapp.common.utils import canonical_url
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +44,7 @@ class ProjectContext(BaseModel):
 
     url: str
     """``projects/{bucket}/{path}``, canonical (each segment percent-encoded, see
-    ``_percent_encode_relative_url``), no trailing slash."""
+    ``canonical_url``), no trailing slash."""
 
     @field_validator("url")
     @classmethod
@@ -60,7 +58,7 @@ class ProjectContext(BaseModel):
         ):
             raise ValueError("project url has an invalid path segment")
         # Chat sends spaces literal, Core returns them as %20: compare one encoded form.
-        return _percent_encode_relative_url(raw)
+        return canonical_url(raw)
 
     @property
     def _content_root(self) -> str:
@@ -74,7 +72,7 @@ class ProjectContext(BaseModel):
         """
         if has_unsafe_segments(url):
             return False
-        return _percent_encode_relative_url(url).startswith(self._content_root)
+        return canonical_url(url).startswith(self._content_root)
 
     @property
     def instructions_url(self) -> str:

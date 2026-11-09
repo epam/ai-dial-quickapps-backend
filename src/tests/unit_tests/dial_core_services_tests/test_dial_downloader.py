@@ -42,8 +42,9 @@ def _make_downloader(
     size_limit_resolver: MagicMock | None = None,
 ) -> DialDownloader:
     return DialDownloader(
-        storage=V1FileStorage(dial_client or _make_mock_dial_client()),
-        size_limit_resolver=size_limit_resolver or _make_resolver(),
+        storage=V1FileStorage(
+            dial_client or _make_mock_dial_client(), size_limit_resolver or _make_resolver()
+        )
     )
 
 
@@ -84,11 +85,10 @@ async def test_fetch_uses_resolver_value_for_limit():
 
 
 @pytest.mark.asyncio
-async def test_fetch_passes_the_resolved_limit_to_the_storage():
+async def test_fetch_delegates_to_the_storage():
     storage = MagicMock(spec=FileStorage)
     storage.download = AsyncMock(return_value=(b"data", MagicMock()))
-    downloader = DialDownloader(storage=storage, size_limit_resolver=_make_resolver(1024))
 
-    await downloader.fetch("projects/b/p/files/context/a.csv")
+    await DialDownloader(storage=storage).fetch("projects/b/p/files/context/a.csv")
 
-    storage.download.assert_awaited_once_with("projects/b/p/files/context/a.csv", 1024)
+    storage.download.assert_awaited_once_with("projects/b/p/files/context/a.csv")

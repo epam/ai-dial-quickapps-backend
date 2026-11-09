@@ -19,8 +19,10 @@ from tests.unit_tests.dial_core_services_tests._project_stream import (
 PROJECT_FILE = "projects/b/p/files/context/a.csv"
 
 
-def _make_storage(project_files: MagicMock) -> ProjectFileStorage:
-    return ProjectFileStorage(project_files, MagicMock(spec=FileLoadingSizeLimitResolver))
+def _make_storage(project_files: MagicMock, size_limit: int = 100) -> ProjectFileStorage:
+    resolver = MagicMock(spec=FileLoadingSizeLimitResolver)
+    resolver.resolve.return_value = size_limit
+    return ProjectFileStorage(project_files, resolver)
 
 
 class TestDownload:
@@ -29,7 +31,7 @@ class TestDownload:
         project_files = MagicMock(spec=ProjectFilesClient)
         project_files.stream = project_stream(b"project", etag="file-etag")
 
-        data, metadata = await _make_storage(project_files).download(PROJECT_FILE, 100)
+        data, metadata = await _make_storage(project_files).download(PROJECT_FILE)
 
         assert data == b"project"
         assert metadata.etag == "file-etag"
@@ -42,7 +44,7 @@ class TestDownload:
         project_files.stream = project_stream(b"x" * 11)
 
         with pytest.raises(FileTooLargeError, match="exceeds the limit"):
-            await _make_storage(project_files).download(PROJECT_FILE, 10)
+            await _make_storage(project_files, size_limit=10).download(PROJECT_FILE)
 
 
 class TestReadWithinSizeLimit:

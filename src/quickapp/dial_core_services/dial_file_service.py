@@ -9,9 +9,6 @@ from injector import inject
 from quickapp.common.state_holder import StateHolder
 from quickapp.common.url_sanitization import sanitize_url
 from quickapp.dial_core_services.storage.file_storage import FileStorage, FolderEntry
-from quickapp.shared.config_resolvers.file_loading_size_limit_resolver import (
-    FileLoadingSizeLimitResolver,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -28,12 +25,10 @@ class DialFileService:
         dial_client: AsyncDial,
         storage: FileStorage,
         state_holder: StateHolder,
-        size_limit_resolver: FileLoadingSizeLimitResolver,
     ):
         self.__dial_client: AsyncDial = dial_client
         self.__storage: FileStorage = storage
         self.__state_holder: StateHolder = state_holder
-        self.__content_size_limit: int = size_limit_resolver.resolve()
 
     async def my_appdata_home(self) -> PurePosixPath | None:
         return await self.__dial_client.my_appdata_home()
@@ -46,7 +41,7 @@ class DialFileService:
             return file_data, self.__state_holder.get_file_metadata(file_url)
         try:
             logger.debug("Downloading file: %s", safe_url)
-            file_data, metadata = await self.__storage.download(file_url, self.__content_size_limit)
+            file_data, metadata = await self.__storage.download(file_url)
             self.__state_holder.store_file_data(file_url, file_data, metadata)
         except Exception as e:
             logger.error("Failed to download: %s", safe_url, exc_info=True)
@@ -146,9 +141,12 @@ class DialFileService:
         Moving a file onto itself raises ``SameSourceAndDestinationException`` before any
         write, so the source is never deleted.
         """
-        await self.__storage.move(source_url, destination_url, overwrite)
-        self.invalidate_cache(source_url)
-        self.invalidate_cache(destination_url)
+        try:
+            await self.__storage.move(source_url, destination_url, overwrite)
+        finally:
+            # Also after a partial move: the destination may already be written.
+            self.invalidate_cache(source_url)
+            self.invalidate_cache(destination_url)
 
     async def grant_permissions_to_files(
         self, files_to_share: list[str], dial_toolset_id: str

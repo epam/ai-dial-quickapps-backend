@@ -1,4 +1,4 @@
-from aidial_client._exception import DialException
+from aidial_client import DialException
 
 
 class ToolsetNotFoundException(Exception):

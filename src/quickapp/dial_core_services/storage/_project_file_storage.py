@@ -1,11 +1,11 @@
 from typing import Literal
 
-from aidial_client._exception import EtagMismatchError
-from aidial_client.helpers.storage_resource import _percent_encode_relative_url
+from aidial_client import EtagMismatchError
 from aidial_client.types.file import FileDownloadResponse
 from aidial_client.types.metadata import FileMetadata
 from injector import inject
 
+from quickapp.common.utils import canonical_url
 from quickapp.dial_core_services._project_files import ProjectFilesClient, project_file_metadata
 from quickapp.dial_core_services.storage._transfer import copy_via_download, move_via_download
 from quickapp.dial_core_services.storage.file_storage import (
@@ -28,11 +28,11 @@ class ProjectFileStorage(FileStorage):
         size_limit_resolver: FileLoadingSizeLimitResolver,
     ) -> None:
         self.__project_files: ProjectFilesClient = project_files
-        self.__size_limit_resolver: FileLoadingSizeLimitResolver = size_limit_resolver
+        self.__size_limit: int = size_limit_resolver.resolve()
 
-    async def download(self, url: str, max_bytes: int) -> tuple[bytes, FileMetadata]:
+    async def download(self, url: str) -> tuple[bytes, FileMetadata]:
         async with self.__project_files.stream(url) as response:
-            return await read_within_size_limit(response, url, max_bytes)
+            return await read_within_size_limit(response, url, self.__size_limit)
 
     async def upload(
         self,
@@ -57,7 +57,7 @@ class ProjectFileStorage(FileStorage):
             raise EtagMismatchError(message=f"File has changed: {url}")
         await self.__project_files.put(url, content, content_type)
         # Same form v1 returns in `metadata.url`.
-        return _percent_encode_relative_url(url)
+        return canonical_url(url)
 
     async def delete(self, url: str) -> None:
         await self.__project_files.delete(url)
@@ -70,24 +70,10 @@ class ProjectFileStorage(FileStorage):
         ]
 
     async def copy(self, source_url: str, destination_url: str, overwrite: bool) -> None:
-        await copy_via_download(
-            self,
-            source_url,
-            self,
-            destination_url,
-            overwrite=overwrite,
-            max_bytes=self.__size_limit_resolver.resolve(),
-        )
+        await copy_via_download(self, source_url, self, destination_url, overwrite=overwrite)
 
     async def move(self, source_url: str, destination_url: str, overwrite: bool) -> None:
-        await move_via_download(
-            self,
-            source_url,
-            self,
-            destination_url,
-            overwrite=overwrite,
-            max_bytes=self.__size_limit_resolver.resolve(),
-        )
+        await move_via_download(self, source_url, self, destination_url, overwrite=overwrite)
 
 
 async def read_within_size_limit(

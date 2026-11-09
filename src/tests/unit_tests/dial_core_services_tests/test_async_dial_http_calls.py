@@ -295,8 +295,7 @@ class TestDialFileServiceHttpCalls:
         )
 
         downloader = DialDownloader(
-            storage=V1FileStorage(_dial_client()),
-            size_limit_resolver=_file_loading_size_limit_resolver(),
+            storage=V1FileStorage(_dial_client(), _file_loading_size_limit_resolver()),
         )
         data, metadata = await downloader.fetch("files/my-bucket/test.txt")
 
@@ -316,8 +315,7 @@ class TestDialFileServiceHttpCalls:
         )
 
         downloader = DialDownloader(
-            storage=V1FileStorage(_dial_client()),
-            size_limit_resolver=_file_loading_size_limit_resolver(),
+            storage=V1FileStorage(_dial_client(), _file_loading_size_limit_resolver()),
         )
         with pytest.raises(ValueError, match="exceeds the limit"):
             await downloader.fetch("files/my-bucket/large.bin")
@@ -337,9 +335,8 @@ class TestDialFileServiceHttpCalls:
         client = _dial_client()
         svc = DialFileService(
             dial_client=client,
-            storage=V1FileStorage(client),
+            storage=V1FileStorage(client, _file_loading_size_limit_resolver()),
             state_holder=StateHolder(),
-            size_limit_resolver=_file_loading_size_limit_resolver(),
         )
         await svc.grant_permissions_to_files(
             ["files/my-bucket/a.txt", "files/my-bucket/b.txt"],

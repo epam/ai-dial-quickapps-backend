@@ -17,8 +17,7 @@
   - doesn't see the project instructions or context files;
   - keeps its files in its own appdata, so chats in one project share nothing;
   - writes tool outputs to appdata, so Chat's project **Outputs** section (`artifacts/`) stays empty.
-- Project files are a Core v2 resource (`projects/…`). `DialFileService` and aidial-client only speak the v1 `files/…`
-  API.
+- Project files are a Core v2 resource (`projects/…`). aidial-client only speaks the v1 `files/…` API.
 - Without a grant, a file tool reports Core's 403 as an invalid parameter (`_DialFileTool._check_permission_denied` in
   `dial_files_tooling/_base_file_tool.py`, worded "try to call the tool again" by `common/staged_base_tool.py`), so the
   agent retries other paths for 30+ steps before it gives up.

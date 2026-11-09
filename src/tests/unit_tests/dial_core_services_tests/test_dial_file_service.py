@@ -67,9 +67,8 @@ def _make_service(
     dial_client = dial_client or _make_mock_dial_client()
     return DialFileService(
         dial_client=dial_client,
-        storage=V1FileStorage(dial_client),
+        storage=V1FileStorage(dial_client, size_limit_resolver or _make_resolver()),
         state_holder=state_holder or StateHolder(),
-        size_limit_resolver=size_limit_resolver or _make_resolver(),
     )
 
 

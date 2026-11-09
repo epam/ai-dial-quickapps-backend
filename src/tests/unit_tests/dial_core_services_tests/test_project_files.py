@@ -1,8 +1,7 @@
 """``ProjectFilesClient`` against a real AsyncDial; HTTP is intercepted by pytest-httpx."""
 
 import pytest
-from aidial_client import AsyncDial
-from aidial_client._exception import DialException, EtagMismatchError, ResourceNotFoundError
+from aidial_client import AsyncDial, DialException, EtagMismatchError, ResourceNotFoundError
 
 from quickapp.dial_core_services._project_files import ProjectFilesClient
 

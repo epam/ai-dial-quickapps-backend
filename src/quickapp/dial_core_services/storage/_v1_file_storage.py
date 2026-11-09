@@ -1,7 +1,6 @@
 from typing import Literal, NoReturn
 
-from aidial_client import AsyncDial
-from aidial_client._exception import DialException, ResourceNotFoundError
+from aidial_client import AsyncDial, DialException, ResourceNotFoundError
 from aidial_client.types.metadata import FileItem, FileMetadata
 from injector import inject
 
@@ -10,14 +9,20 @@ from quickapp.dial_core_services.storage.file_storage import (
     FolderEntry,
     ensure_within_size_limit,
 )
+from quickapp.shared.config_resolvers.file_loading_size_limit_resolver import (
+    FileLoadingSizeLimitResolver,
+)
 
 
 @inject
 class V1FileStorage(FileStorage):
     """``files/...`` through the v1 files API."""
 
-    def __init__(self, dial_client: AsyncDial) -> None:
+    def __init__(
+        self, dial_client: AsyncDial, size_limit_resolver: FileLoadingSizeLimitResolver
+    ) -> None:
         self.__dial_client: AsyncDial = dial_client
+        self.__size_limit: int = size_limit_resolver.resolve()
 
     @staticmethod
     def _reraise_404_as_not_found(exc: DialException) -> NoReturn:
@@ -32,12 +37,12 @@ class V1FileStorage(FileStorage):
             raise ResourceNotFoundError(message=exc.message) from exc
         raise exc
 
-    async def download(self, url: str, max_bytes: int) -> tuple[bytes, FileMetadata]:
+    async def download(self, url: str) -> tuple[bytes, FileMetadata]:
         try:
             metadata = await self.__dial_client.files.get_metadata(url)
         except DialException as e:
             self._reraise_404_as_not_found(e)
-        ensure_within_size_limit(metadata.content_length or 0, max_bytes)
+        ensure_within_size_limit(metadata.content_length or 0, self.__size_limit)
         data = await (await self.__dial_client.files.download(url)).aget_content()
         return data, metadata
 

@@ -4,7 +4,7 @@ v2 dispatch and preconditions."""
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from aidial_client._exception import DialException, EtagMismatchError
+from aidial_client import DialException, EtagMismatchError
 
 from quickapp.common.project_context import ProjectContext
 from quickapp.common.state_holder import StateHolder
@@ -71,17 +71,16 @@ def _make_service(
     resolver = MagicMock(spec=FileLoadingSizeLimitResolver)
     resolver.resolve.return_value = size_limit
     dial_client = dial_client or _make_dial_client()
-    v1 = V1FileStorage(dial_client)
+    v1 = V1FileStorage(dial_client, resolver)
     storage: FileStorage = (
         v1
         if project is None
-        else RoutedFileStorage(v1, ProjectFileStorage(project_files, resolver), project, size_limit)
+        else RoutedFileStorage(v1, ProjectFileStorage(project_files, resolver), project)
     )
     return DialFileService(
         dial_client=dial_client,
         storage=storage,
         state_holder=StateHolder(),
-        size_limit_resolver=resolver,
     )
 
 
@@ -275,6 +274,21 @@ class TestCopyAndMove:
 
         project_files.put.assert_awaited_once_with(destination, b"project data", "text/markdown")
         project_files.delete.assert_awaited_once_with(PROJECT_FILE)
+
+    @pytest.mark.asyncio
+    async def test_a_partial_move_clears_the_destination_cache(self):
+        project_files = _make_project_files()
+        project_files.delete = AsyncMock(side_effect=DialException(message="boom", status_code=500))
+        svc = _make_service(project_files)
+        destination = "projects/b/p/files/artifacts/moved.md"
+        await svc.download_file(destination)
+
+        with pytest.raises(PartialMoveException):
+            await svc.move(PROJECT_FILE, destination, overwrite=True)
+        await svc.download_file(destination)
+
+        reads = [call.args[0] for call in project_files.stream.call_args_list]
+        assert reads.count(destination) == 2
 
     @pytest.mark.asyncio
     async def test_failed_delete_after_the_copy_is_a_partial_move(self):

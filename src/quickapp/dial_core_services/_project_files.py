@@ -20,20 +20,17 @@ from http import HTTPStatus
 from typing import Literal
 
 import httpx
-from aidial_client import AsyncDial
-from aidial_client._exception import DialException, ResourceNotFoundError
+from aidial_client import AsyncDial, DialException, ResourceNotFoundError
 from aidial_client._http_client._base import ErrorHandler
 from aidial_client._internal_types._http_request import FinalRequestOptions
-from aidial_client.helpers.storage_resource import (
-    _percent_encode_relative_url,
-    _storage_error_processor,
-)
+from aidial_client.helpers.storage_resource import _storage_error_processor
 from aidial_client.types.file import FileDownloadResponse
 from aidial_client.types.metadata import FileMetadata
 from injector import inject
 from pydantic import BaseModel, ConfigDict
 
 from quickapp.common.project_context import has_unsafe_segments
+from quickapp.common.utils import canonical_url
 
 
 class _RangeNotSatisfiableError(DialException):
@@ -160,7 +157,7 @@ class ProjectFilesClient:
             raise DialException(message=f"Invalid project resource path: {url}", status_code=400)
         return FinalRequestOptions(
             method=method,
-            url=_percent_encode_relative_url(url),
+            url=canonical_url(url),
             files=files,
             params=params,
             headers=headers or {},

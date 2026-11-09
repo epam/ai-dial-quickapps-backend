@@ -24,8 +24,9 @@ class FileStorage(ABC):
     """
 
     @abstractmethod
-    async def download(self, url: str, max_bytes: int) -> tuple[bytes, FileMetadata]:
-        """The file's bytes and metadata; ``FileTooLargeError`` above ``max_bytes``."""
+    async def download(self, url: str) -> tuple[bytes, FileMetadata]:
+        """The file's bytes and metadata; ``FileTooLargeError`` above the file-loading size
+        limit (QuickApps never loads a larger file)."""
 
     @abstractmethod
     async def upload(
