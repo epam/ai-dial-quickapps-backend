@@ -35,6 +35,9 @@ StartupInitializer = Annotated[BaseInitializer, InitializerType.startup]
 async def invoke_initializers(injector: Injector, initializer_type: InitializerType) -> None:
     initializer_type_to_get = list[Annotated[BaseInitializer, initializer_type]]
     if injector.binder.has_explicit_binding_for(initializer_type_to_get):
-        initializers = sorted(injector.get(initializer_type_to_get), key=lambda i: i.order)
-        for initializer in initializers:
-            await initializer.initialize()
+        await run_initializers(injector.get(initializer_type_to_get))
+
+
+async def run_initializers(initializers: list[BaseInitializer]) -> None:
+    for initializer in sorted(initializers, key=lambda i: i.order):
+        await initializer.initialize()
