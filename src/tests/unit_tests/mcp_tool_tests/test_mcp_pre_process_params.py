@@ -7,7 +7,6 @@ import pytest
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
-from quickapp.common.project_context import ProjectContext
 from quickapp.common.state_holder import StateHolder
 from quickapp.config.tools.mcp import MCPTool
 from quickapp.dial_core_services.attachment_service import AttachmentService
@@ -25,7 +24,6 @@ DIAL_URL = "https://dial.example.com"
 def _make_tool(
     input_schema: dict | None = None,
     dial_toolset_id: str | None = None,
-    project: ProjectContext | None = None,
 ) -> tuple[_MCPTool, MagicMock, MagicMock]:
     """Create an _MCPTool with mocked dependencies.
 
@@ -70,7 +68,6 @@ def _make_tool(
         timeout_resolver=noop_timeout_resolver(),
         dial_settings=dial_settings,
         argument_transformers=[file_transformer],
-        project=project,
     )
     return mcp_tool, file_service, file_loader
 
@@ -211,26 +208,15 @@ class TestPreProcessParams:
         file_service.grant_permissions_to_files.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_dial_url_current_project_file_is_shared_in_project(self):
+    async def test_dial_url_project_file_is_shared(self):
         tool, file_service, _ = _make_tool(
             input_schema={"properties": {"doc_url": {"type": "string", "dial_url": True}}},
             dial_toolset_id="my-toolset",
-            project=ProjectContext(url="projects/b/P"),
         )
         await tool._pre_process_params(doc_url="projects/b/P/files/context/a.pdf")
         file_service.grant_permissions_to_files.assert_awaited_once_with(
             ["projects/b/P/files/context/a.pdf"], "my-toolset"
         )
-
-    @pytest.mark.asyncio
-    async def test_dial_url_project_path_without_project_rejected(self):
-        tool, file_service, _ = _make_tool(
-            input_schema={"properties": {"doc_url": {"type": "string", "dial_url": True}}},
-            dial_toolset_id="my-toolset",
-        )
-        with pytest.raises(InvalidToolCallParameterException):
-            await tool._pre_process_params(doc_url="projects/b/P/files/context/a.pdf")
-        file_service.grant_permissions_to_files.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_dial_url_list_with_one_external_rejects_whole_list(self):

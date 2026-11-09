@@ -7,7 +7,6 @@ from pydantic import SecretStr
 
 from quickapp.common import DIAL_API_KEY
 from quickapp.common.dial_settings import DialSettings
-from quickapp.common.project_context import PROJECT_CONTEXT
 from quickapp.common.tool_timeout_utils import build_async_dial_timeout
 from quickapp.common.url_classification import (
     UrlScheme,
@@ -34,10 +33,8 @@ class InputFileHandler:
         dial_settings: DialSettings,
         dial_api_key: DIAL_API_KEY,
         timeout_resolver: ToolTimeoutResolver,
-        project: PROJECT_CONTEXT,
     ) -> None:
         self.__promoter = promoter
-        self.__project = project
         self.__dial_url = dial_settings.url
         self.__dial_api_key = dial_api_key
         self.__timeout_resolver = timeout_resolver
@@ -58,14 +55,11 @@ class InputFileHandler:
         from the host DIAL and re-uploaded to the dev DIAL — preserving the
         existing local-run behaviour.
 
-        A file of the request's project fails fast: the interpreter reads v1 ``files/``
-        URLs only.
+        A project file fails fast: the interpreter reads v1 ``files/`` URLs only.
         """
-        if self.__project is not None and self.__project.contains(
-            to_relative_project_url(attachment_url, self.__dial_url, self.__project)
-        ):
+        if to_relative_project_url(attachment_url, self.__dial_url).startswith("projects/"):
             raise _PyInterpreterError("project files can't be passed to the interpreter yet")
-        scheme = classify_url(attachment_url, self.__dial_url, self.__project)
+        scheme = classify_url(attachment_url, self.__dial_url)
         if scheme == UrlScheme.EXTERNAL:
             metadata = await self.__promoter.promote(
                 attachment_url, parameter_name="attachment_urls"

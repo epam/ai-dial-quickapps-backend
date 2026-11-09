@@ -4,7 +4,6 @@ import pytest
 from aidial_sdk.chat_completion import Attachment, Message, Role
 from aidial_sdk.chat_completion.request import FunctionCall, ToolCall
 
-from quickapp.common.project_context import ProjectContext
 from quickapp.common.tool_names import INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
 from quickapp.core.agent import OrchestratorCapabilities
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._attachment_acceptance import (
@@ -14,14 +13,12 @@ from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_kee
     _GetContentKeepPolicy,
 )
 
-_PROJECT = ProjectContext(url="projects/b/P")
 
-
-def _policy(project: ProjectContext | None) -> _GetContentKeepPolicy:
+def _policy() -> _GetContentKeepPolicy:
     caps = OrchestratorCapabilities(
         deployment=MagicMock(id="orch", input_attachment_types=["application/pdf"]),
     )
-    return _GetContentKeepPolicy(attachment_acceptance=_AttachmentAcceptance(caps), project=project)
+    return _GetContentKeepPolicy(attachment_acceptance=_AttachmentAcceptance(caps))
 
 
 def _get_content_turn() -> list[Message]:
@@ -42,20 +39,17 @@ def _get_content_turn() -> list[Message]:
 
 
 @pytest.mark.parametrize(
-    ("project", "url", "kept"),
+    ("url", "kept"),
     [
-        (None, "files/b/a.pdf", True),
-        (_PROJECT, "files/b/a.pdf", True),
-        (_PROJECT, "projects/b/P/files/context/a.pdf", True),
-        (_PROJECT, "/projects/b/P/files/context/a.pdf", True),
-        (_PROJECT, "projects/b/Other/files/context/a.pdf", False),
-        (None, "projects/b/P/files/context/a.pdf", False),
+        ("files/b/a.pdf", True),
+        ("projects/b/P/files/context/a.pdf", True),
+        ("/projects/b/P/files/context/a.pdf", True),
+        ("https://example.com/a.pdf", False),
+        ("reports/a.pdf", False),
     ],
 )
-def test_keeps_storage_paths_of_the_current_project(
-    project: ProjectContext | None, url: str, kept: bool
-) -> None:
-    policy = _policy(project)
+def test_keeps_dial_storage_paths(url: str, kept: bool) -> None:
+    policy = _policy()
     messages = _get_content_turn()
     policy.prepare(messages)
 

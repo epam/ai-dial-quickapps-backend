@@ -10,7 +10,6 @@ parameter-error shape.
 from injector import inject
 
 from quickapp.common.dial_settings import DialSettings
-from quickapp.common.project_context import PROJECT_CONTEXT
 from quickapp.common.url_classification import UrlScheme, classify_url
 from quickapp.common.url_sanitization import sanitize_url
 from quickapp.shared.external_fetch.external_url_fetcher import ExternalUrlFetcher, FetchedBytes
@@ -29,15 +28,9 @@ class WebContentFetcher:
     verbatim; adds scheme classification and a per-request fetch cache.
     """
 
-    def __init__(
-        self,
-        external_fetcher: ExternalUrlFetcher,
-        dial_settings: DialSettings,
-        project: PROJECT_CONTEXT,
-    ) -> None:
+    def __init__(self, external_fetcher: ExternalUrlFetcher, dial_settings: DialSettings) -> None:
         self.__external_fetcher = external_fetcher
         self.__dial_url = dial_settings.url
-        self.__project: PROJECT_CONTEXT = project
         # Request-scoped (this class is bound request-scoped) so a re-call for the
         # same URL within one request does not re-download.
         self.__fetched_by_url: dict[str, FetchedBytes] = {}
@@ -49,7 +42,7 @@ class WebContentFetcher:
         propagates ``ExternalFetchError`` / ``ExternalFetchDisabledError`` for
         egress failures.
         """
-        scheme = classify_url(url, self.__dial_url, self.__project)
+        scheme = classify_url(url, self.__dial_url)
         if scheme in (UrlScheme.DIAL, UrlScheme.DIAL_APPDIR_RELATIVE):
             raise WebContentFetchError(
                 f"URL {url} already points to a file in DIAL storage and does not "

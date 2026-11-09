@@ -8,7 +8,6 @@ from injector import inject
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.file_reference_pattern import strip_file_prefix
-from quickapp.common.project_context import PROJECT_CONTEXT
 from quickapp.common.url_classification import (
     UrlScheme,
     classify_url,
@@ -32,8 +31,8 @@ class DialFilePromoter:
 
     Single API for the deployment-attachment fallback (when the deployment
     does not support ``url_attachments``) and the Python interpreter staging
-    of external files. DIAL paths pass through (v1 metadata, or v2 for a file of the
-    request's project); external URLs are fetched via :class:`ExternalUrlFetcher` and
+    of external files. DIAL paths pass through (v1 metadata, or v2 for a ``projects/``
+    URL); external URLs are fetched via :class:`ExternalUrlFetcher` and
     uploaded via the :class:`AttachmentService` factored helper.
     """
 
@@ -44,11 +43,9 @@ class DialFilePromoter:
         attachment_service: AttachmentService,
         dial_settings: DialSettings,
         project_files: ProjectFilesClient,
-        project: PROJECT_CONTEXT,
     ) -> None:
         self.__dial_client = dial_client
         self.__project_files = project_files
-        self.__project = project
         self.__external_fetcher = external_fetcher
         self.__attachment_service = attachment_service
         self.__dial_url = dial_settings.url
@@ -68,10 +65,10 @@ class DialFilePromoter:
             raise
 
     async def __do_promote(self, url: str, parameter_name: str) -> FileMetadata | FileItem:
-        scheme = classify_url(url, self.__dial_url, self.__project)
+        scheme = classify_url(url, self.__dial_url)
         if scheme == UrlScheme.DIAL:
-            path = to_relative_project_url(strip_file_prefix(url), self.__dial_url, self.__project)
-            if self.__project is not None and self.__project.contains(path):
+            path = to_relative_project_url(strip_file_prefix(url), self.__dial_url)
+            if path.startswith("projects/"):
                 return await self.__project_files.file_metadata(path)
             return await self.__dial_client.files.get_metadata(path)
         if scheme == UrlScheme.EXTERNAL:

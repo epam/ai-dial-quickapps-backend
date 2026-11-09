@@ -4,6 +4,7 @@ from functools import lru_cache
 from urllib.parse import urlsplit
 
 from quickapp.common.exceptions import InvalidToolCallParameterException
+from quickapp.common.project_context import has_unsafe_segments
 from quickapp.common.url_sanitization import sanitize_url
 
 
@@ -112,22 +113,19 @@ def classify_url(url: str, dial_base_url: str) -> UrlScheme:
     return UrlScheme.EXTERNAL
 
 
-def is_dial_storage_path(url: str, project: ProjectContext | None = None) -> bool:
-    """Whether ``url`` is a relative DIAL storage path: ``files/...`` or, in a project chat, a
-    file of the request's ``project``. Host-matched absolute URLs are not (see
-    :func:`to_relative_project_url`)."""
-    return url.startswith("files/") or (project is not None and project.contains(url))
+def is_dial_storage_path(url: str) -> bool:
+    """Whether ``url`` is a relative DIAL storage path: ``files/...`` or ``projects/...``.
+    Host-matched absolute URLs are not (see :func:`to_relative_project_url`)."""
+    return url.startswith(("files/", "projects/"))
 
 
-def to_relative_project_url(url: str, dial_base_url: str, project: ProjectContext | None) -> str:
-    """The relative form of a host-matched absolute Core URL of the request's ``project``.
+def to_relative_project_url(url: str, dial_base_url: str) -> str:
+    """The relative form of a host-matched absolute Core project URL.
 
     ``{DIAL_URL}/v1/projects/{b}/{p}/files/x`` → ``projects/{b}/{p}/files/x``, so it routes
-    like the relative form. Any other URL (no project, another host, another project, a query
-    or fragment, ``files/...``) is returned unchanged.
+    like the relative form. Any other URL (another host, a query or fragment, an empty,
+    ``.`` or ``..`` segment, ``files/...``) is returned unchanged.
     """
-    if project is None:
-        return url
     try:
         split = urlsplit(url)
         base_path = urlsplit(dial_base_url).path.rstrip("/")
@@ -142,7 +140,9 @@ def to_relative_project_url(url: str, dial_base_url: str, project: ProjectContex
     if not split.path.startswith(prefix):
         return url
     relative = split.path[len(prefix) :]
-    return relative if project.contains(relative) else url
+    if not relative.startswith("projects/") or has_unsafe_segments(relative):
+        return url
+    return relative
 
 
 def unsupported_scheme_error(url: str, parameter_name: str) -> InvalidToolCallParameterException:

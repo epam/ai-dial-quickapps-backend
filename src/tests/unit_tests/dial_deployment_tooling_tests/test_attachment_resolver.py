@@ -9,6 +9,7 @@ from quickapp.common.project_context import ProjectContext
 from quickapp.dial_core_services.dial_file_promoter import DialFilePromoter
 from quickapp.dial_deployment_tooling._attachment_resolver import AttachmentResolver
 from quickapp.shared.home_path.home_path_resolver import HomePathResolver
+from tests.unit_tests.dial_files_tooling._helpers import make_config, make_service
 
 _PROJECT = ProjectContext(url="projects/bucket/My%20Project")
 _ARTIFACTS = "projects/bucket/My%20Project/files/artifacts/"
@@ -28,8 +29,7 @@ def _make_resolver(
         file_promoter = MagicMock(spec=DialFilePromoter)
         file_promoter.promote = AsyncMock()
     dial_settings = MagicMock(url=base_url)
-    home_resolver = MagicMock(spec=HomePathResolver)
-    home_resolver.resolve_appdata_url = AsyncMock(side_effect=lambda path: f"{_ARTIFACTS}{path}")
+    home_resolver = HomePathResolver(make_service(), make_config(), project)
     return AttachmentResolver(
         dial_client=dial_client,
         dial_settings=dial_settings,
@@ -262,13 +262,21 @@ class TestProjectChat:
         assert result["url"] == "files/b/x.png"
 
     @pytest.mark.asyncio
-    async def test_other_project_url_is_not_a_project_file(self):
-        """Another project's URL is a home-relative path in a project chat (D8)."""
+    async def test_other_project_url_is_rejected(self):
+        """Only the current project's URLs resolve (D8)."""
         resolver = _make_resolver(project=_PROJECT)
-        result = await resolver._resolve_attachment(
-            "projects/other/P/files/a.pdf", supports_url_attachments=False
-        )
-        assert result["url"] == f"{_ARTIFACTS}projects/other/P/files/a.pdf"
+        with pytest.raises(InvalidToolCallParameterException, match="current project"):
+            await resolver._resolve_attachment(
+                "projects/other/P/files/a.pdf", supports_url_attachments=False
+            )
+
+    @pytest.mark.asyncio
+    async def test_project_url_without_project_is_rejected(self):
+        resolver = _make_resolver()
+        with pytest.raises(InvalidToolCallParameterException, match="current project"):
+            await resolver._resolve_attachment(
+                "projects/other/P/files/a.pdf", supports_url_attachments=False
+            )
 
     @pytest.mark.asyncio
     async def test_without_project_home_relative_stays_unsupported(self):

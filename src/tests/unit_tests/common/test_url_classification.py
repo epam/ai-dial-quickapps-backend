@@ -1,6 +1,5 @@
 import pytest
 
-from quickapp.common.project_context import ProjectContext
 from quickapp.common.url_classification import (
     UrlScheme,
     classify_url,
@@ -176,8 +175,6 @@ class TestProjectUrls:
 
 
 class TestToRelativeProjectUrl:
-    _PROJECT = ProjectContext(url="projects/b/My%20Project")
-
     @pytest.mark.parametrize(
         ("url", "base_url"),
         [
@@ -187,10 +184,7 @@ class TestToRelativeProjectUrl:
         ],
     )
     def test_host_matched_project_url_becomes_relative(self, url: str, base_url: str):
-        assert (
-            to_relative_project_url(url, base_url, self._PROJECT)
-            == "projects/b/My%20Project/files/x.md"
-        )
+        assert to_relative_project_url(url, base_url) == "projects/b/My%20Project/files/x.md"
 
     @pytest.mark.parametrize(
         "url",
@@ -198,7 +192,6 @@ class TestToRelativeProjectUrl:
             "projects/b/My%20Project/files/x.md",
             "files/b/x.md",
             f"{DIAL_URL}/v1/files/b/x.md",
-            f"{DIAL_URL}/v1/projects/b/Other/files/x.md",
             f"{DIAL_URL}/v1/projects/b/My%20Project/files/../../Other/files/x.md",
             f"{DIAL_URL}/v1/projects/b/My%20Project/files/x.md?download=1",
             f"{DIAL_URL}/v2/projects/b/My%20Project/files/x.md",
@@ -207,22 +200,17 @@ class TestToRelativeProjectUrl:
         ],
     )
     def test_anything_else_is_unchanged(self, url: str):
-        assert to_relative_project_url(url, DIAL_URL, self._PROJECT) == url
-
-    def test_unchanged_without_project(self):
-        url = f"{DIAL_URL}/v1/projects/b/My%20Project/files/x.md"
-        assert to_relative_project_url(url, DIAL_URL, None) == url
+        assert to_relative_project_url(url, DIAL_URL) == url
 
 
 @pytest.mark.parametrize(
-    ("url", "project", "expected"),
+    ("url", "expected"),
     [
-        ("files/b/x.md", None, True),
-        ("projects/b/P/files/x.md", None, False),
-        ("projects/b/P/files/x.md", ProjectContext(url="projects/b/P"), True),
-        ("projects/b/Q/files/x.md", ProjectContext(url="projects/b/P"), False),
-        (f"{DIAL_URL}/v1/files/b/x.md", None, False),
+        ("files/b/x.md", True),
+        ("projects/b/P/files/x.md", True),
+        ("reports/x.md", False),
+        (f"{DIAL_URL}/v1/files/b/x.md", False),
     ],
 )
-def test_is_dial_storage_path(url: str, project: ProjectContext | None, expected: bool):
-    assert is_dial_storage_path(url, project) is expected
+def test_is_dial_storage_path(url: str, expected: bool):
+    assert is_dial_storage_path(url) is expected
