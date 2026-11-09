@@ -54,8 +54,9 @@ def _provider(
     file_tools: bool = True,
     enabled_tools: Any = "all",
 ) -> _ProjectPromptProvider:
+    # Without file tools: only write tools enabled, so none can read the listed files.
     features = SimpleNamespace(
-        dial_files=DialFilesConfig(enabled_tools=enabled_tools) if file_tools else None
+        dial_files=DialFilesConfig(enabled_tools=enabled_tools if file_tools else ["write"])
     )
     return _ProjectPromptProvider(
         project=project,
@@ -162,6 +163,19 @@ class TestProjectPromptProvider:
 
         assert "## Project files" not in part
         service.list_folder.assert_not_awaited()
+
+    @pytest.mark.parametrize("features", [None, SimpleNamespace(dial_files=None)])
+    @pytest.mark.asyncio
+    async def test_absent_file_tools_config_means_default_tools(self, features):
+        provider = _ProjectPromptProvider(
+            project=PROJECT,
+            app_config=SimpleNamespace(features=features),  # type: ignore[arg-type]
+            dial_file_service=_service(context=[_file("tickets.csv")]),
+        )
+
+        part = await provider.get_prompt_part()
+
+        assert "## Project files" in part
 
     @pytest.mark.asyncio
     async def test_context_listing_stops_once_enough_files_are_found(self):

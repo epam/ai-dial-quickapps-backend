@@ -9,7 +9,7 @@ from injector import inject
 from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
 from quickapp.common.project_context import PROJECT_CONTEXT, ProjectContext
 from quickapp.config.application import ApplicationConfig
-from quickapp.config.dial_files import DialFilesToolName
+from quickapp.config.dial_files import DialFilesConfig, DialFilesToolName
 from quickapp.dial_core_services.dial_file_service import DialFileService
 from quickapp.dial_core_services.exceptions import FileTooLargeError
 
@@ -151,12 +151,12 @@ class _ProjectPromptProvider(PromptPartProvider):
         return files, True
 
     def __can_read_files(self) -> bool:
-        """Whether the app can read the listed files: ``features.dial_files`` with at least
-        one read-capable tool enabled."""
+        """Whether the app can read the listed files: at least one read-capable file tool is
+        enabled. File tools are on by default: an absent ``features`` or ``dial_files`` block
+        means every tool."""
         features = self.__app_config.features
-        if features is None or features.dial_files is None:
-            return False
-        enabled = features.dial_files.enabled_tools
+        config = features.dial_files if features is not None else None
+        enabled = (config or DialFilesConfig()).enabled_tools
         return enabled == "all" or not _READ_TOOLS.isdisjoint(enabled)
 
 
