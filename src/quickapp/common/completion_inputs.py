@@ -6,6 +6,7 @@ from aidial_sdk.deployment.configuration import ConfigurationRequest
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, SkipValidation
 
 from quickapp.common._di_types import (
+    ACCEPT_LANGUAGE,
     TIMEZONE_HEADER,
     TIMEZONE_HEADER_VALUE,
     TOOL_CHOICE,
@@ -27,20 +28,21 @@ class CompletionInputs(BaseModel):
 
     api_key: SecretStr
     bearer: SecretStr | None = None
-    application_config: ApplicationConfig = Field(
-        description="Raw manifest; `_RequestContextSetup` runs `ConfigResolver` over it."
-    )
+    # Raw from HTTP, already resolved for a task; `_RequestContextSetup` resolves it either way.
+    application_config: ApplicationConfig
     messages: list[Message] = Field(default_factory=list)
     # The SDK Choice is not a Pydantic model; it is passed through, never validated.
     choice: Annotated[Choice | None, SkipValidation] = None
     forwarded_headers: ForwardedHeaders = None
-    accept_language: str | None = None
+    accept_language: ACCEPT_LANGUAGE = None
     timezone_header_value: TIMEZONE_HEADER_VALUE = None
     response_format: ResponseFormat | None = None
     tool_choice: TOOL_CHOICE = None
     extra_tools: list[Tool] = Field(default_factory=list)
     # Never set from an HTTP request: only a delegated task narrows its own run.
     tool_allowlist: ToolAllowlist = Field(default_factory=ToolAllowlist)
+    # Set only by a delegated task; tags its lifecycle logs.
+    is_task: bool = False
 
     @classmethod
     async def from_request(
