@@ -8,9 +8,9 @@ header decoding. Requests use the canonical (percent-encoded) form of the projec
 import uuid
 
 import httpx
-from aidial_client.helpers.storage_resource import _percent_encode_relative_url
 
 from quickapp.common.project_context import ProjectContext
+from quickapp.common.utils import canonical_url
 
 MARKER = "PROJECT-MARKER-7Q"
 TICKET_CODE = "TCK-8841"
@@ -56,7 +56,7 @@ def header_value(project: ProjectContext) -> str:
 
 
 def read_artifact(core: httpx.Client, project: ProjectContext, name: str) -> httpx.Response:
-    return core.get(f"/v2/{project.artifacts_root}{_percent_encode_relative_url(name)}")
+    return core.get(f"/v2/{project.artifacts_root}{canonical_url(name)}")
 
 
 def list_artifacts(core: httpx.Client, project: ProjectContext) -> list[str]:
