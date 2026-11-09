@@ -72,6 +72,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from quickapp.common.project_context import PROJECT_HEADER, ProjectContext
 from quickapp.config.application import ApplicationConfig, Features
+from quickapp.config.dial_files import DialFilesConfig
 from quickapp.config.toolsets.dial_app import DialAppToolSet
 from quickapp.config.toolsets.mcp import MCPProtocol, MCPServerInfo, MCPToolSet
 from quickapp.config.toolsets.toolset import ToolSet
@@ -219,7 +220,10 @@ def _router_app_config(model: str) -> ApplicationConfig:
     )
     config = TestConfig.create_app_configuration(toolsets=[nested], model=model)
     # No file tools of its own: whatever lands in the project was written by the nested app.
-    return config.model_copy(update={"features": Features()})
+    # File tools are on by default (#710), so an empty `enabled_tools` turns them off.
+    return config.model_copy(
+        update={"features": Features(dial_files=DialFilesConfig(enabled_tools=[]))}
+    )
 
 
 def _app_body(name: str, config: ApplicationConfig) -> dict:
