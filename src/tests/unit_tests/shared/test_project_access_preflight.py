@@ -3,8 +3,7 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from aidial_client import AsyncDial
-from aidial_client._exception import DialException
+from aidial_client import AsyncDial, DialException
 from aidial_sdk.exceptions import HTTPException as DialHTTPException
 
 from quickapp.common.project_context import ProjectContext

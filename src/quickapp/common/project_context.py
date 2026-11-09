@@ -82,9 +82,7 @@ class ProjectContext(BaseModel):
     def is_read_only(self, url: str) -> bool:
         """Whether ``url`` is a file of this project outside ``artifacts/`` (``PROJECT.md``,
         ``context/``, ``conversations/``): the agent reads these but never writes them."""
-        return self.contains(url) and not _percent_encode_relative_url(url).startswith(
-            self.artifacts_root
-        )
+        return self.contains(url) and not canonical_url(url).startswith(self.artifacts_root)
 
     @property
     def instructions_url(self) -> str:

@@ -1,6 +1,6 @@
 import logging
 
-from aidial_client._exception import DialException, ResourceNotFoundError
+from aidial_client import DialException, ResourceNotFoundError
 from aidial_sdk.exceptions import HTTPException as DialHTTPException
 from injector import inject
 
