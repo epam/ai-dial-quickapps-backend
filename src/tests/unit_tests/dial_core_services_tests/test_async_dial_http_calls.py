@@ -26,6 +26,7 @@ from pydantic import SecretStr
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.project_context import ProjectContext
 from quickapp.common.state_holder import StateHolder
+from quickapp.dial_core_services._project_files import ProjectFilesClient
 from quickapp.dial_core_services.attachment_service import AttachmentService
 from quickapp.dial_core_services.dial_downloader import DialDownloader
 from quickapp.dial_core_services.dial_file_service import DialFileService
@@ -33,6 +34,8 @@ from quickapp.dial_core_services.exceptions import (
     ToolsetForbiddenException,
     ToolsetNotFoundException,
 )
+from quickapp.dial_core_services.storage._project_file_storage import ProjectFileStorage
+from quickapp.dial_core_services.storage._routed_file_storage import RoutedFileStorage
 from quickapp.dial_core_services.storage._v1_file_storage import V1FileStorage
 from quickapp.dial_core_services.tool_config_service import ToolConfigCoreService
 from quickapp.shared.config_resolvers.file_loading_size_limit_resolver import (
@@ -434,12 +437,14 @@ class TestAttachmentServiceHttpCalls:
         )
         client = _dial_client()
         project = ProjectContext(url="projects/my-bucket/My Project")
+        size_limit_resolver = _file_loading_size_limit_resolver()
+        storage = RoutedFileStorage(
+            V1FileStorage(client, size_limit_resolver),
+            ProjectFileStorage(ProjectFilesClient(client), size_limit_resolver),
+            project,
+        )
         file_service = DialFileService(
-            dial_client=client,
-            state_holder=StateHolder(),
-            size_limit_resolver=_file_loading_size_limit_resolver(),
-            project_files=ProjectFilesClient(client),
-            project=project,
+            dial_client=client, storage=storage, state_holder=StateHolder()
         )
         svc = AttachmentService(dial_client=client, file_service=file_service, project=project)
 
