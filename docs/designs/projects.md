@@ -303,6 +303,9 @@ Paths in a project `projects/{b}/My%20Project`:
 | `projects/{b}/Other/files/x.md` (another project) | rejected: "only files of the current project" |
 | `files/{bucket}/appdata/…/x.md` (app context) | unchanged, v1 |
 
+The model sees project paths decoded (`My Project`): the prompt's folders, `list_files` output and stage titles. Both
+spellings resolve to the same canonical URL; a name that wouldn't decode back (a literal `%41`) stays encoded.
+
 ---
 
 ## Documentation

@@ -2,7 +2,7 @@ from injector import inject
 
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.project_context import PROJECT_CONTEXT, has_unsafe_segments
-from quickapp.common.utils import canonical_url
+from quickapp.common.utils import canonical_url, readable_url
 from quickapp.config.dial_files import DialFilesConfig
 from quickapp.dial_core_services.dial_file_service import DialFileService
 
@@ -137,7 +137,9 @@ class HomePathResolver:
             return url
         if self._project is not None and self._project.contains(url):
             # The home is canonical; the model may spell the URL decoded (``My Project``).
+            # Shown decoded: the resolver canonicalizes it again when the model passes it back.
             url = canonical_url(url)
+            return readable_url(url[len(home) :] if url.startswith(home) else url)
         if url.startswith(home):
             return url[len(home) :]
         return url
