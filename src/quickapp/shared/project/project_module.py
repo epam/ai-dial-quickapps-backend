@@ -1,16 +1,20 @@
 from fastapi_injector import request_scope
-from injector import Binder, Module, ProviderOf, multiprovider
+from injector import Binder, Module, ProviderOf, multiprovider, singleton
 
 from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
 from quickapp.common.base_initializer import CompletionInitializer
+from quickapp.common.exceptions import InitializationException
 from quickapp.common.preview import preview_module
 from quickapp.shared.project._project_access_preflight import _ProjectAccessPreflight
+from quickapp.shared.project._project_instructions import _ProjectInstructions
 from quickapp.shared.project._project_prompt_provider import _ProjectPromptProvider
+from quickapp.shared.project._settings import ProjectSettings
 
 
 @preview_module
 class ProjectModule(Module):
-    """Project chats (``x-project-id``): the access preflight and the project prompt section.
+    """Project chats (``x-project-id``): the access preflight (which also loads
+    ``PROJECT.md``) and the project prompt section.
 
     ``PROJECT_CONTEXT`` itself is provided by ``AppModule``; both parts are no-ops when it
     is ``None``. Registered in ``shared_module`` right after ``core_module``, so the prompt
@@ -18,6 +22,8 @@ class ProjectModule(Module):
     """
 
     def configure(self, binder: Binder) -> None:
+        binder.bind(ProjectSettings, to=ProjectSettings, scope=singleton)
+        binder.bind(_ProjectInstructions, to=_ProjectInstructions, scope=request_scope)
         binder.bind(_ProjectAccessPreflight, to=_ProjectAccessPreflight, scope=request_scope)
         binder.bind(_ProjectPromptProvider, to=_ProjectPromptProvider, scope=request_scope)
 
@@ -32,3 +38,10 @@ class ProjectModule(Module):
         self, prompt_provider: ProviderOf[_ProjectPromptProvider]
     ) -> list[PromptPartProvider]:
         return [prompt_provider.get()]
+
+    @multiprovider
+    def _provide_initialization_exceptions(
+        self, instructions: ProviderOf[_ProjectInstructions]
+    ) -> list[InitializationException]:
+        # Resolved by _InitializationErrorHandler after the initializers have run.
+        return instructions.get().exceptions

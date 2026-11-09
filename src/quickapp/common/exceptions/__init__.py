@@ -7,6 +7,7 @@ from .offload_configuration import OffloadConfigurationException
 from .orchestrator_exceed_max_iterations import OrchestratorExceedMaxIterationsException
 from .orchestrator_initialization import OrchestratorInitializationException
 from .orchestrator_system_prompt import OrchestratorSystemPromptException
+from .project_instructions import ProjectInstructionsException
 from .skill_initialization import (
     SkillCatastrophicInitializationException,
     SkillInitializationException,
@@ -26,6 +27,7 @@ __all__ = [
     "OrchestratorExceedMaxIterationsException",
     "OrchestratorInitializationException",
     "OrchestratorSystemPromptException",
+    "ProjectInstructionsException",
     "SkillCatastrophicInitializationException",
     "SkillInitializationException",
     "ToolInitializationException",
