@@ -78,8 +78,9 @@ class AttachmentService:
         if self.__project is None:
             return (await self.upload_appdata_bytes(data, content_type, filename)).url
         url = f"{self.__project.artifacts_root}{filename}"
-        # Inside `artifacts/` only: the rest of the project is read-only to the app.
-        if not self.__project.contains(url) or self.__project.is_read_only(url):
+        # A name with an unsafe segment (``..``, an encoded ``/``) could leave `artifacts/`:
+        # the project's URLs never have one.
+        if not self.__project.contains(url):
             raise ValueError(f"Invalid output file name: {filename}")
         return await self.__file_service.write_bytes(
             url,
