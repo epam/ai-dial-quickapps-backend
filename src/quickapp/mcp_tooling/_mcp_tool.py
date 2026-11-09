@@ -14,7 +14,6 @@ from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.payload_logging import log_payload
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
-from quickapp.common.project_context import PROJECT_CONTEXT
 from quickapp.common.state_holder import StateHolder
 from quickapp.common.tool_timeout_utils import translate_timeout
 from quickapp.common.url_classification import UrlScheme, classify_url
@@ -65,7 +64,6 @@ class _MCPTool(StagedBaseTool):
         stage_display_level: StageDisplayLevel = StageDisplayLevel.INFO,
         argument_transformers: list[ToolArgumentTransformer] | None = None,
         fixed_arguments: dict[str, Any] | None = None,
-        project: PROJECT_CONTEXT = None,
     ):
         super().__init__(
             name=tool.name or "MCP Tool",
@@ -88,7 +86,6 @@ class _MCPTool(StagedBaseTool):
         self.__timeout_resolver: ToolTimeoutResolver = timeout_resolver
         self.__dial_url: str = dial_settings.url
         self.__fixed_arguments: dict[str, Any] = fixed_arguments or {}
-        self.__project: PROJECT_CONTEXT = project
 
     async def _pre_process_params(self, **kwargs: Any) -> dict[str, Any]:
         # Fixed values win over the caller and go through the transformers like any argument.
@@ -132,9 +129,9 @@ class _MCPTool(StagedBaseTool):
             elif isinstance(value, list):
                 candidates.extend(elem for elem in value if isinstance(elem, str))
             for candidate in candidates:
-                # A file of the request's project is a DIAL file here; per-file grants on
-                # `projects/` URLs depend on Core (unverified, see docs/projects.md).
-                scheme = classify_url(candidate, self.__dial_url, self.__project)
+                # A `projects/` URL is a DIAL file here; per-file grants on `projects/` URLs
+                # depend on Core (unverified, see docs/projects.md).
+                scheme = classify_url(candidate, self.__dial_url)
                 if scheme == UrlScheme.EXTERNAL:
                     raise InvalidToolCallParameterException(
                         parameter_name=key,

@@ -36,9 +36,9 @@ A project lives under Core's `projects/{bucket}/{path}/files/`:
    `save_path` resolve there; the app's appdata is reachable only by full `files/...` URL.
 4. **Project URLs.** A path starting with `projects/` is an absolute URL, like `files/...`, in every chat. The DIAL
    files tools, `web_fetch`, `get_content` and message attachments accept full URLs of the current project
-   (`projects/{bucket}/{path}/files/...`) wherever they accept a `files/...` URL; the file tools reject any other
+   (`projects/{bucket}/{path}/files/...`) wherever they accept a `files/...` URL; the file tools and DIAL deployment attachments reject any other
    `projects/...` URL ("only files of the current project"). In attachments, the absolute Core form
-   (`{DIAL_URL}/v1/projects/...` of the current project) is turned into the relative form first. DIAL deployments and
+   (`{DIAL_URL}/v1/projects/...`) is turned into the relative form first. DIAL deployments and
    the code interpreter don't read project URLs yet: see **Downstream** below and [Known issues](#known-issues).
 5. **Read-only files.** Write-side tools (`write_file`, `edit_file`, `delete_file`, the `move_file` source,
    `copy_file` / `move_file` destinations, `web_fetch` `save_path`) accept relative paths only, so they never write

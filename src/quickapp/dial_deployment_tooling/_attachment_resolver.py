@@ -16,7 +16,7 @@ from quickapp.common.url_classification import (
     to_relative_project_url,
     unsupported_scheme_error,
 )
-from quickapp.common.utils import canonical_url, filename_from_url_path
+from quickapp.common.utils import filename_from_url_path
 from quickapp.dial_core_services.dial_file_promoter import DialFilePromoter
 from quickapp.shared.home_path.home_path_resolver import HomePathResolver
 
@@ -86,16 +86,15 @@ class AttachmentResolver:
     async def _resolve_attachment(
         self, file_relative_url: str, supports_url_attachments: bool
     ) -> AttachmentParam:
-        bare = to_relative_project_url(
-            strip_file_prefix(file_relative_url), self.__base_url, self.__project
-        )
-        scheme = classify_url(bare, self.__base_url, self.__project)
+        bare = to_relative_project_url(strip_file_prefix(file_relative_url), self.__base_url)
+        scheme = classify_url(bare, self.__base_url)
 
-        if self.__project is not None:
-            if scheme == UrlScheme.DIAL_APPDIR_RELATIVE:
-                return _pass_through(await self.__home_resolver.resolve_appdata_url(bare))
-            if scheme == UrlScheme.DIAL and self.__project.contains(bare):
-                return _pass_through(canonical_url(bare))
+        # The resolver accepts only the current project's URLs (and rejects any outside a
+        # project chat), in canonical form.
+        if bare.startswith("projects/") or (
+            self.__project is not None and scheme == UrlScheme.DIAL_APPDIR_RELATIVE
+        ):
+            return _pass_through(await self.__home_resolver.resolve_appdata_url(bare))
 
         if scheme == UrlScheme.DIAL:
             metadata: AsyncMetadata = self.__dial_client.metadata

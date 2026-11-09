@@ -225,7 +225,8 @@ flowchart LR
 - Strip it from REST API tool calls (`rest_api_tooling/_rest_api_tool.py`): it carries the user's bucket and project
   name to external hosts. The orchestrator model call goes through Core and keeps it.
 - Nested apps declare and get their own grants (#1930 resolves dependencies at every hop of a chain).
-- `AttachmentResolver`: home-relative and current-project URLs pass through without the v1 metadata call. A deployment
+- `AttachmentResolver`: home-relative and `projects/` URLs go through `HomePathResolver` (only the current project's
+  resolve) and pass through without the v1 metadata call. A deployment
   that can't read `projects/` URLs (anything but a QuickApp, C4) returns its own error, surfaced as a tool error.
 - Remove the remaining `files/`-only assumptions: lazy `get_content`, `config/dial_files.py`, the attachment
   strategies, the promoter's DIAL branch (`dial_file_promoter.py`, v1 `files.get_metadata`).

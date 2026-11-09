@@ -6,7 +6,6 @@ from pydantic import SecretStr
 
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import InvalidToolCallParameterException
-from quickapp.common.project_context import ProjectContext
 from quickapp.dial_core_services.dial_file_promoter import DialFilePromoter
 from quickapp.internal_tooling.py_interpreter_tooling._exceptions import _PyInterpreterError
 from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_settings import (
@@ -20,9 +19,7 @@ from tests.unit_tests.common.common import noop_timeout_resolver
 DIAL_URL = "https://dial.example.com"
 
 
-def _make_handler(
-    promoter: MagicMock | None = None, project: ProjectContext | None = None
-) -> InputFileHandler:
+def _make_handler(promoter: MagicMock | None = None) -> InputFileHandler:
     settings = MagicMock(spec=DialSettings)
     settings.url = DIAL_URL
     if promoter is None:
@@ -33,7 +30,6 @@ def _make_handler(
         dial_settings=settings,
         dial_api_key=SecretStr("host-key"),
         timeout_resolver=noop_timeout_resolver(value=10.0),
-        project=project,
     )
 
 
@@ -165,9 +161,7 @@ async def test_external_url_with_dev_dial_promotes_then_uploads_to_dev():
     request_dial.files.download.assert_awaited_once_with("files/bucket/promoted.csv")
 
 
-class TestProjectChat:
-    _PROJECT = ProjectContext(url="projects/bucket/P")
-
+class TestProjectUrls:
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
         "url",
@@ -176,10 +170,10 @@ class TestProjectChat:
             f"{DIAL_URL}/v1/projects/bucket/P/files/context/data.csv",
         ],
     )
-    async def test_current_project_url_fails_fast(self, url: str):
+    async def test_project_url_fails_fast(self, url: str):
         promoter = MagicMock(spec=DialFilePromoter)
         promoter.promote = AsyncMock()
-        handler = _make_handler(promoter=promoter, project=self._PROJECT)
+        handler = _make_handler(promoter=promoter)
 
         with pytest.raises(_PyInterpreterError, match="project files can't be passed"):
             await handler.get_attachment_url(
@@ -190,8 +184,8 @@ class TestProjectChat:
         promoter.promote.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_files_url_in_project_passes_through(self):
-        handler = _make_handler(project=self._PROJECT)
+    async def test_files_url_passes_through(self):
+        handler = _make_handler()
 
         url = await handler.get_attachment_url(
             settings=_settings_no_dev_dial(),

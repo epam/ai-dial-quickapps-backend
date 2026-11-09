@@ -15,7 +15,6 @@ from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.messages_mixin import MessagesMixin
-from quickapp.common.project_context import ProjectContext
 from quickapp.core.agent import OrchestratorCapabilities
 from quickapp.dial_core_services.dial_file_promoter import DialFilePromoter
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._attachment_acceptance import (
@@ -41,7 +40,6 @@ def _make_tool(
     input_attachment_types: list[str] | None,
     messages: list[Message] | None = None,
     promoter: DialFilePromoter | None = None,
-    project: ProjectContext | None = None,
 ) -> _GetContentTool:
     caps = OrchestratorCapabilities(
         deployment=SimpleNamespace(  # type: ignore[arg-type]
@@ -59,7 +57,6 @@ def _make_tool(
     materializer = _AttachmentMaterializer(
         dial_promoter=promoter,
         dial_settings=settings,
-        project=project,
     )
     home_resolver = MagicMock(spec=HomePathResolver)
     home_resolver.resolve_appdata_url = AsyncMock(
