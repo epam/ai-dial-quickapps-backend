@@ -13,8 +13,8 @@ from quickapp.shared.project._settings import ProjectSettings
 
 @preview_module
 class ProjectModule(Module):
-    """Project chats (``x-project-id``): the access preflight (which also loads
-    ``PROJECT.md``) and the project prompt section.
+    """Project chats (``x-project-id``): the access preflight and the project prompt section
+    (which loads ``PROJECT.md``).
 
     ``PROJECT_CONTEXT`` itself is provided by ``AppModule``; both parts are no-ops when it
     is ``None``. Registered in ``shared_module`` right after ``core_module``, so the prompt

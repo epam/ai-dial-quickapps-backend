@@ -12,26 +12,15 @@ from quickapp.core.application._quick_app_completion import _outgoing_status_cod
 from quickapp.dial_app_tooling._dial_app_resolver import _DialAppResolver
 from quickapp.dial_core_services._project_files import ProjectFilesClient
 from quickapp.shared.project._project_access_preflight import _ProjectAccessPreflight
-from quickapp.shared.project._project_instructions import _ProjectInstructions
 
 BASE_URL = "http://test-dial"
 PROJECT = ProjectContext(url="projects/b/My Project")
 METADATA_URL = f"{BASE_URL}/v2/metadata/projects/b/My%20Project"
 
 
-def _instructions() -> MagicMock:
-    instructions = MagicMock(spec=_ProjectInstructions)
-    instructions.body = AsyncMock(return_value="")
-    return instructions
-
-
-def _preflight(
-    project: ProjectContext | None = PROJECT, instructions: MagicMock | None = None
-) -> _ProjectAccessPreflight:
+def _preflight(project: ProjectContext | None = PROJECT) -> _ProjectAccessPreflight:
     client = ProjectFilesClient(AsyncDial(base_url=BASE_URL, api_key="per-request", max_retries=0))
-    return _ProjectAccessPreflight(
-        project=project, project_files=client, instructions=instructions or _instructions()
-    )
+    return _ProjectAccessPreflight(project=project, project_files=client)
 
 
 def test_runs_before_the_dial_app_resolver() -> None:
@@ -43,27 +32,20 @@ async def test_no_project_makes_no_call() -> None:
     project_files = MagicMock(spec=ProjectFilesClient)
     project_files.project_metadata = AsyncMock()
 
-    instructions = _instructions()
-
-    await _ProjectAccessPreflight(
-        project=None, project_files=project_files, instructions=instructions
-    ).initialize()
+    await _ProjectAccessPreflight(project=None, project_files=project_files).initialize()
 
     project_files.project_metadata.assert_not_awaited()
-    instructions.body.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_access_passes_with_one_call_and_the_request_key(httpx_mock) -> None:
     httpx_mock.add_response(method="GET", url=METADATA_URL, json={"etag": "e"})
-    instructions = _instructions()
 
-    await _preflight(instructions=instructions).initialize()
+    await _preflight().initialize()
 
     requests = httpx_mock.get_requests()
     assert len(requests) == 1
     assert requests[0].headers["api-key"] == "per-request"
-    instructions.body.assert_awaited_once()
 
 
 @pytest.mark.parametrize(
@@ -87,12 +69,8 @@ async def test_no_access_fails_with_a_wire_error(
 ) -> None:
     httpx_mock.add_response(method="GET", url=METADATA_URL, status_code=core_status)
 
-    instructions = _instructions()
-
     with pytest.raises(DialHTTPException) as excinfo:
-        await _preflight(instructions=instructions).initialize()
-
-    instructions.body.assert_not_awaited()
+        await _preflight().initialize()
 
     error = excinfo.value
     assert (error.status_code, error.code, error.display_message) == (core_status, code, message)

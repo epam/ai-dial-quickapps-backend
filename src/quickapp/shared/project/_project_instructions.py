@@ -22,9 +22,9 @@ _FRONTMATTER_RE = re.compile(
 class _ProjectInstructions:
     """The request project's ``PROJECT.md`` body, loaded once per request.
 
-    Loaded by the access preflight, so a failure reaches the user as a warning in the
-    Initialization issues stage before the turn; the prompt provider then reads the same
-    result. A missing file is no instructions, not an issue.
+    Loaded by the prompt provider while the system prompt is built, before the
+    Initialization issues stage renders, so a failure reaches the user as a warning there.
+    A missing file is no instructions, not an issue.
     """
 
     def __init__(self, project: PROJECT_CONTEXT, dial_file_service: DialFileService) -> None:
