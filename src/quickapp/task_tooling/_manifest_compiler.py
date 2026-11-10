@@ -24,9 +24,9 @@ def compile_task_manifest(
 
     Contexts, skills and ``on_request_start`` hooks are inherited; other hook events
     are not, so ``on_completion`` fires once per user turn. The app's system prompt
-    follows the task prompt. Fields the compiler doesn't touch are inherited. ``explicit_tools`` turns tool discovery
-    off, so a named deferred tool becomes a regular one and nothing outside the
-    allowlist can be loaded through ``internal_tool_search``.
+    follows the task prompt. Fields the compiler doesn't touch are inherited.
+    ``explicit_tools`` turns tool discovery off, so a named deferred tool becomes a regular
+    one and nothing outside the allowlist can be loaded through ``internal_tool_search``.
     """
     manifest = parent.model_copy(deep=True)
 
@@ -38,12 +38,13 @@ def compile_task_manifest(
     if explicit_tools:
         manifest.orchestrator.tool_discovery = None
 
-    # Depth 1: a task cannot run tasks. Starters are a user-facing concern.
+    # Depth 1: a task cannot run tasks.
     if manifest.features is not None:
         manifest.features.run_task = None
     manifest.hooks = [
         hook for hook in manifest.hooks or [] if hook.event in _TASK_HOOK_EVENTS
     ] or None
+    # Starters are a user-facing feature.
     manifest.starters = None
     manifest.conversation_starters = None
 

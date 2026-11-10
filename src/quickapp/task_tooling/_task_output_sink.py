@@ -1,23 +1,21 @@
 """Renders a task's output into the delegating agent's ``Task`` stage.
 
-``Choice`` and ``Stage`` are pure producers over a ``ChunkQueue``: every write they
-offer — ``append_content``, ``add_attachment``, ``set_state``, ``create_stage``,
-``Stage.append_name``, ``Stage.append_content``, ``Stage.close`` — lands as one typed
-chunk on the queue they were built with. Intercepting the queue therefore captures a
-task's entire output without the orchestrator knowing it is not writing to a user's
-choice, which is why this feature needs no orchestrator changes at all.
+``Choice`` and ``Stage`` write every chunk to the ``ChunkQueue`` they were built with,
+so intercepting that queue captures the task's whole output.
 """
 
 import asyncio
 import logging
-from typing import Any
 
 from aidial_sdk.chat_completion import Attachment, Status
 from aidial_sdk.chat_completion.chunks import (
     AttachmentChunk,
     AttachmentStageChunk,
+    BaseChunk,
     ContentChunk,
     ContentStageChunk,
+    EndChunk,
+    ExceptionChunk,
     FinishStageChunk,
     FunctionCallChunk,
     FunctionToolCallChunk,
@@ -47,7 +45,10 @@ class _TaskStage:
         self.content: list[str] = []
 
 
-class TaskOutputSink(asyncio.Queue):  # type: ignore[type-arg]
+_Chunk = BaseChunk | ExceptionChunk | EndChunk
+
+
+class TaskOutputSink(asyncio.Queue[_Chunk]):
     """A ``ChunkQueue`` that renders the task's chunks into the parent tool stage.
 
     ``stage_wrapper`` is ``None`` when stage display is suppressed for the call; the sink
@@ -61,7 +62,7 @@ class TaskOutputSink(asyncio.Queue):  # type: ignore[type-arg]
         self._stages: dict[int, _TaskStage] = {}
         self.attachments: list[Attachment] = []
 
-    def put_nowait(self, item: Any) -> None:
+    def put_nowait(self, item: _Chunk) -> None:
         """Consume the chunk instead of queueing it. Never raises into the task."""
         try:
             self._dispatch(item)
@@ -70,7 +71,7 @@ class TaskOutputSink(asyncio.Queue):  # type: ignore[type-arg]
             # needs is read back off the task's messages, not off this stage.
             logger.warning("Failed to render task output chunk", exc_info=True)
 
-    def _dispatch(self, chunk: Any) -> None:
+    def _dispatch(self, chunk: _Chunk) -> None:
         match chunk:
             case ContentChunk():
                 # The task's own prose between tool calls — the live progress signal.

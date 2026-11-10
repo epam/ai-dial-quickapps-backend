@@ -6,7 +6,7 @@ class RunTaskConfig(BaseModel):
 
     The tool runs a self-contained task in an isolated child run and returns only its
     final answer. The child uses this app's deployment and inherits its contexts,
-    skills and hooks; the delegating agent picks its tools per call.
+    skills and ``on_request_start`` hooks; the delegating agent picks its tools per call.
     """
 
     enabled: bool = Field(
