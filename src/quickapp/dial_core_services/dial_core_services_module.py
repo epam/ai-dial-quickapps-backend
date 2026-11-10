@@ -12,6 +12,7 @@ from quickapp.dial_core_services.deployment_names_service import DeploymentNames
 from quickapp.dial_core_services.dial_downloader import DialDownloader
 from quickapp.dial_core_services.dial_file_promoter import DialFilePromoter
 from quickapp.dial_core_services.dial_file_service import DialFileService
+from quickapp.dial_core_services.dial_prompt_loader import DialPromptLoader
 from quickapp.dial_core_services.tool_config_service import ToolConfigCoreService
 
 logger = logging.getLogger(__name__)
@@ -25,6 +26,7 @@ class DialCoreServicesModule(Module):
         binder.bind(DialFileService, DialFileService, scope=request_scope)
         binder.bind(DialDownloader, DialDownloader, scope=request_scope)
         binder.bind(DialFilePromoter, DialFilePromoter, scope=request_scope)
+        binder.bind(DialPromptLoader, DialPromptLoader, scope=request_scope)
         binder.bind(InteractiveLoginSettings, InteractiveLoginSettings, scope=singleton)
         binder.bind(InteractiveLoginService, InteractiveLoginService, scope=request_scope)
         binder.bind(

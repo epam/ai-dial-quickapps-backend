@@ -28,3 +28,7 @@ class ToolsetForbiddenException(Exception):
             else "Access to toolset forbidden"
         )
         super().__init__(message)
+
+
+class DialPromptLoadError(Exception):
+    """A DIAL prompt could not be loaded. The message is safe to show to users."""

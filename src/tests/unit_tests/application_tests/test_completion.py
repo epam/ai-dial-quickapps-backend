@@ -12,6 +12,7 @@ import quickapp.core.application._quick_app_completion as quick_app_completion
 from quickapp.common.exceptions import (
     ConfigResolutionException,
     OrchestratorExceedMaxIterationsException,
+    OrchestratorSystemPromptException,
 )
 from quickapp.config.agent_settings import AgentSettings
 from quickapp.config.config_template_resolver import ConfigResolver
@@ -186,6 +187,24 @@ def make_request_completion():
         return request, completion, injector
 
     return _make
+
+
+@pytest.mark.asyncio
+async def test_system_prompt_error_from_initializer_stops_request(
+    make_request_completion, monkeypatch
+):
+    async def _raise(injector, itype):
+        raise OrchestratorSystemPromptException(message="bad", path="prompts/b/p")
+
+    monkeypatch.setattr(quick_app_completion, "invoke_initializers", _raise)
+    init_handler = Mock()
+    orchestrator = Mock()
+    request, completion, _ = make_request_completion(orchestrator, init_handler=init_handler)
+
+    await completion.chat_completion(request, FakeResponse(FakeChoice()))
+
+    init_handler.handle_initialization_issues.assert_called_once()
+    orchestrator.invoke.assert_not_called()
 
 
 @pytest.mark.asyncio

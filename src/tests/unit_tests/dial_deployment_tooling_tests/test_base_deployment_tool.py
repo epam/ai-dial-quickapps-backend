@@ -19,6 +19,7 @@ from quickapp.config.dial_deployment import (
     StaticFunctionSpec,
     StaticFunctionTool,
 )
+from quickapp.config.prompt import CustomSystemPromptConfig
 from quickapp.config.tools.base import (
     ConfigurableSchemaSimpleType,
     JsonTypeEnum,
@@ -544,6 +545,29 @@ def _make_mock_completion_service() -> Any:
         content="ok", content_type="text/plain"
     )
     return svc
+
+
+@pytest.mark.asyncio
+async def test_system_prompt_content_passed_to_service():
+    svc = _make_mock_completion_service()
+    tool = _build_tool_with_propagation(messages=[], dial_completion_service=svc)
+    tool.tool_config.system_prompt = CustomSystemPromptConfig(content="Be brief", variables={})
+
+    await tool._run_in_stage_async(stage_wrapper=None, query="hello")
+
+    _, kwargs = svc.complete_request_async.call_args
+    assert kwargs["system_prompt"] == "Be brief"
+
+
+@pytest.mark.asyncio
+async def test_no_system_prompt_passes_none_to_service():
+    svc = _make_mock_completion_service()
+    tool = _build_tool_with_propagation(messages=[], dial_completion_service=svc)
+
+    await tool._run_in_stage_async(stage_wrapper=None, query="hello")
+
+    _, kwargs = svc.complete_request_async.call_args
+    assert kwargs["system_prompt"] is None
 
 
 @pytest.mark.asyncio
