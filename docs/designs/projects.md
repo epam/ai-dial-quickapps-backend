@@ -178,7 +178,7 @@ flowchart LR
 
   | Section | Content | Defaults and limits |
   |---|---|---|
-  | Project instructions | `PROJECT.md` body, frontmatter stripped | missing or empty → no section; malformed frontmatter → the whole file is the body; capped at `PROJECT_INSTRUCTIONS_MAX_CHARS` (env, default 32 000) with a truncation note; framed as user context: the app's system prompt wins on conflict; not loaded → no section (the user is warned, see the preflight) |
+  | Project instructions | `PROJECT.md` body, frontmatter stripped | missing or empty → no section; malformed frontmatter → the whole file is the body; capped at `PROJECT_INSTRUCTIONS_MAX_CHARS` (env, default 32 000) with a truncation note; framed as user context: the app's system prompt wins on conflict; not loaded → no section and a warning in the Initialization issues stage |
   | Project files | the working folder and `context/` **named**, not listed (read-only `context/`; "list them with the file tools") | always; the section stays the same between turns, so it doesn't reset the prompt cache |
 
 - **Appdata in a project:** not the home; reachable only by full URL.
@@ -196,9 +196,10 @@ flowchart LR
   | 404 | 404 `project_not_found` | "The project was not found. It may have been deleted or renamed." |
   | 401, other | as today | the generic error |
 
-- After access passes, it loads `PROJECT.md` (`_ProjectInstructions`, once per request; the prompt provider reads the
-  same result). Over the file-loading size limit or a Core error → a soft `ProjectInstructionsException`: a warning
-  in the **Initialization issues** stage and a WARNING log; the turn continues without the instructions.
+- `PROJECT.md` is loaded by the prompt provider (`_ProjectInstructions`, once per request), not the preflight. Over the
+  file-loading size limit or a Core error → a soft `ProjectInstructionsException`: a warning in the **Initialization
+  issues** stage (rendered after the system prompt is built) and a WARNING log; the turn continues without the
+  instructions.
 
 ### Downstream propagation (PR3)
 
@@ -334,7 +335,7 @@ None for non-project chats. Project behaviour is preview-gated and triggered onl
 | PR | Scope | Depends on | Merge-safe without Core |
 |---|---|---|---|
 | 1 | `ProjectContext` / `PROJECT_CONTEXT`, v2 client, `FileStorage` routing, write flows, streamed reads | — | yes (no header → no-op) |
-| 2 | Home = `artifacts/`, `projects/` prefix rule, prompt section, preflight + `PROJECT.md` warning, 403 secondary fix, L0–L2 docs | PR1 | yes, with preview off where Core lacks C1 (D9) |
+| 2 | Home = `artifacts/`, `projects/` prefix rule, prompt section + `PROJECT.md` warning, preflight, 403 secondary fix, L0–L2 docs | PR1 | yes, with preview off where Core lacks C1 (D9) |
 | 3 | REST header strip, attachment resolver, interpreter input error, remaining `files/` assumptions | PR2 | yes |
 | 4 | Split upload roots; user outputs into `artifacts/` | PR2 | yes, useful after C1 |
 | 5 | Core-path integration suite (per-request key) in CI | PR1–4, C1 released | n/a |
