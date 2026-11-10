@@ -437,7 +437,7 @@ async def test_project_header_not_forwarded_to_rest_api(mock_async_client, heade
         binder.bind(DialSettings, DialSettings(url="https://core"))
         binder.bind(DIAL_BEARER, to=InstanceProvider(SecretStr("some_token")))
         binder.bind(DIAL_API_KEY, SecretStr("some_api_key"))
-        binder.bind(AsyncDial, to=InstanceProvider(MagicMock(spec=AsyncDial)))
+        binder.bind(AttachmentService, to=InstanceProvider(MagicMock(spec=AttachmentService)))
         binder.bind(Stage, to=MagicMock(spec=Stage))
         binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
         binder.bind(StageDisplayLevel, to=InstanceProvider(StageDisplayLevel.INFO))
