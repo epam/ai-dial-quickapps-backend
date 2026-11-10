@@ -2,7 +2,7 @@ import pytest
 from aidial_client._exception import ResourceNotFoundError
 
 from quickapp.common.exceptions import InvalidToolCallParameterException
-from quickapp.dial_core_services.dial_file_service import FolderEntry
+from quickapp.dial_core_services.storage.file_storage import FolderEntry
 from quickapp.dial_files_tooling._find_files_tool import _FindFilesTool
 from quickapp.dial_files_tooling._tool_configs import FIND_FILES_TOOL_CONFIG
 from tests.unit_tests.dial_files_tooling._helpers import make_service, make_tool

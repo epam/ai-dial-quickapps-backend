@@ -17,8 +17,7 @@
   - doesn't see the project instructions or context files;
   - keeps its files in its own appdata, so chats in one project share nothing;
   - writes tool outputs to appdata, so Chat's project **Outputs** section (`artifacts/`) stays empty.
-- Project files are a Core v2 resource (`projects/…`). `DialFileService` and aidial-client only speak the v1 `files/…`
-  API.
+- Project files are a Core v2 resource (`projects/…`). aidial-client only speaks the v1 `files/…` API.
 - Without a grant, a file tool reports Core's 403 as an invalid parameter (`_DialFileTool._check_permission_denied` in
   `dial_files_tooling/_base_file_tool.py`, worded "try to call the tool again" by `common/staged_base_tool.py`), so the
   agent retries other paths for 30+ steps before it gives up.
@@ -87,7 +86,7 @@ flowchart LR
   PC --> P3[3. agent home = artifacts/]
   PC --> P4[4. user outputs → artifacts/]
   PC --> P5[5. forward x-project-id downstream]
-  P3 --> FS[DialFileService<br/>current project → v2, else v1]
+  P3 --> FS[FileStorage router<br/>current project → v2, else v1]
 ```
 
 ### Decisions
@@ -110,7 +109,7 @@ flowchart LR
 |---|---|
 | `PROJECT_CONTEXT` | `None` when `ENABLE_PREVIEW_FEATURES` is off |
 | `ProjectModule` (prompt section, preflight) | module filter (`@preview_module`) |
-| `projects/` routing in `DialFileService` / `DialDownloader`, `projects/` in the path transformer, `reject_absolute_path`, `web_fetch`, `classify_url`, home = `artifacts/`, output root | `PROJECT_CONTEXT is not None` and the URL is under its root |
+| `projects/` routing in `RoutedFileStorage`, `projects/` in the path transformer, `reject_absolute_path`, `web_fetch`, `classify_url`, home = `artifacts/`, output root | `PROJECT_CONTEXT is not None` and the URL is under its root |
 | File-tool 403 → non-retryable permission error | ungated (a secondary fix, see [Secondary Fixes](#secondary-fixes)) |
 | `x-project-id` stripped from REST API tool calls | ungated (the header only exists in project chats) |
 | `x-project-id` to nested apps and MCP | unchanged: the existing `X-*` catch-all, raw header value |
@@ -127,11 +126,20 @@ flowchart LR
 
 ### Project storage (PR1)
 
-- **What:** `DialFileService` routes URLs under the current project's root to a small v2 client
-  (`dial_core_services/_project_files.py`). It covers read, list, write, delete, and copy/move (download + upload).
-  `DialDownloader` routes the same way. Everything else, including other `projects/…` URLs, takes the v1 path.
-- **Reads:** projects have no per-file metadata call, so the size limit is checked after the download. A streamed GET
-  (check `Content-Length` first) replaces it once aidial-client's `stream()` maps error statuses.
+- **What:** file I/O goes through a `FileStorage` interface (`dial_core_services/storage/`): download, upload, delete,
+  list a level, copy, move.
+
+  | Class | Role |
+  |---|---|
+  | `V1FileStorage` | `files/…` through the v1 API (native conditional upload, copy, move) |
+  | `ProjectFileStorage` | current-project files through a small v2 client (`_project_files.py`); copy/move = download + upload |
+  | `RoutedFileStorage` | the only `project.contains()` check: current-project URLs → project storage, everything else (other `projects/…` included) → v1; copy/move between the two = download + upload |
+
+  DI returns `V1FileStorage` when there is no project, `RoutedFileStorage` otherwise. `DialFileService` (cache, write
+  semantics) and `DialDownloader` sit on top and don't know about projects.
+- **Reads:** projects have no per-file metadata call, so a project file is read as a streamed GET: the size limit is
+  checked from `Content-Length` before the body is read, or while reading when the header is missing (needs
+  aidial-client ≥ 0.19, which maps error statuses on streamed requests).
 - **Writes:** Core checks `If-Match` / `If-None-Match` against the **project** ETag, which every write anywhere in the
   project changes (Chat saving `conversations/`, parallel tool calls). So QuickApps checks the file's own state and
   then sends a plain `PUT`, with no project ETag and no 412 loop.
@@ -316,7 +324,7 @@ None for non-project chats. Project behaviour is preview-gated and triggered onl
 
 | PR | Scope | Depends on | Merge-safe without Core |
 |---|---|---|---|
-| 1 | `ProjectContext` / `PROJECT_CONTEXT`, v2 client, `DialFileService` / `DialDownloader` routing, write flows | — | yes (no header → no-op) |
+| 1 | `ProjectContext` / `PROJECT_CONTEXT`, v2 client, `FileStorage` routing, write flows, streamed reads | — | yes (no header → no-op) |
 | 2 | Home = `artifacts/`, prompt section, read-only message, preflight, 403 secondary fix, L0–L2 docs | PR1 | yes, with preview off where Core lacks C1 (D9) |
 | 3 | REST header strip, attachment resolver, interpreter input error, remaining `files/` assumptions | PR2 | yes |
 | 4 | Split upload roots; user outputs into `artifacts/` | PR2 | yes, useful after C1 |
@@ -329,7 +337,7 @@ None for non-project chats. Project behaviour is preview-gated and triggered onl
 | `common/project_context.py` (new), `core/application/` (`AppModule`, request context) | `ProjectContext`, `PROJECT_CONTEXT` |
 | `shared/project/` (new, PR2) | `ProjectModule` (`@preview_module`): project prompt provider, access preflight |
 | `shared/home_path/` | home = `artifacts/` in a project |
-| `dial_core_services/` | `_project_files.py` (v2 client); write flows in `DialFileService`; `PartialMoveException` in `exceptions.py`; current-project routing in `DialFileService`, `DialDownloader`; `AttachmentService` split into home-rooted and appdata-rooted uploads |
+| `dial_core_services/` | `_project_files.py` (v2 client); `storage/` (`FileStorage`, v1 and project storages, `RoutedFileStorage` = current-project routing); `PartialMoveException` in `exceptions.py`; `AttachmentService` split into home-rooted and appdata-rooted uploads |
 | `dial_files_tooling/` (`_base_file_tool.py`, `_utils.py`, `_path_argument_transformer.py`), `web_tooling/`, `common/url_classification.py` | current-project URLs as absolute; read-only message; `DialFilePermissionException` on 403 |
 | `rest_api_tooling/`, `dial_deployment_tooling/_attachment_resolver.py`, `dial_core_services/dial_file_promoter.py`, `internal_tooling/…/input_file_handler.py` | REST strip; project URLs pass through; interpreter input error |
 | `internal_tooling/py_interpreter_tooling/handlers/display_content_processor.py` | `_publish_to_bucket` folded into `AttachmentService` |

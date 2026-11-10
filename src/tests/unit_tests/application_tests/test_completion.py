@@ -14,6 +14,7 @@ from quickapp.common.exceptions import (
     OrchestratorExceedMaxIterationsException,
     OrchestratorSystemPromptException,
 )
+from quickapp.common.feature_settings import FeatureSettings
 from quickapp.config.agent_settings import AgentSettings
 from quickapp.config.config_template_resolver import ConfigResolver
 from quickapp.core.application import _MessagesSetup, _RequestContext
@@ -145,6 +146,7 @@ def make_request_completion():
             config_resolver=config_resolver,
             messages_setup=messages_setup,
             proxy_settings=ProxySettings(),
+            feature_settings=FeatureSettings(),
         )
 
         mapping = {

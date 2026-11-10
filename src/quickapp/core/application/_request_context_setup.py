@@ -12,7 +12,9 @@ from quickapp.common._di_types import (
     TIMEZONE_HEADER,
     ForwardedHeaders,
 )
+from quickapp.common.feature_settings import FeatureSettings
 from quickapp.common.forwarded_headers import extract_x_headers_from_request
+from quickapp.common.project_context import extract_project_context
 from quickapp.common.tool_fallback.catch_all_scanner import log_customised_catch_all_strategies
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.config_template_resolver import ConfigResolver
@@ -41,11 +43,13 @@ class _RequestContextSetup:
         config_resolver: ConfigResolver,
         messages_setup: _MessagesSetup,
         proxy_settings: ProxySettings,
+        feature_settings: FeatureSettings,
     ):
         self.__context_provider = context_provider
         self.__config_resolver = config_resolver
         self.__messages_setup = messages_setup
         self.__proxy_settings = proxy_settings
+        self.__feature_settings = feature_settings
 
     def __resolve_application_config(self, application_properties):
         application_config = ApplicationConfig.model_validate(application_properties)
@@ -74,6 +78,9 @@ class _RequestContextSetup:
             context.client_channel_id = _extract_client_channel_id(context.forwarded_headers)
             context.accept_language = request.headers.get(self.__proxy_settings.language_header)
             context.timezone_header_value = request.headers.get(TIMEZONE_HEADER)
+            # Projects are a preview feature: without the flag the header is ignored.
+            if self.__feature_settings.enable_preview_features:
+                context.project_context = extract_project_context(context.forwarded_headers)
             if request.response_format:
                 context.response_format = request.response_format
             if request.tool_choice is not None:
