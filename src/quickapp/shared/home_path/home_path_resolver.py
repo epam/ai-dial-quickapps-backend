@@ -6,15 +6,6 @@ from quickapp.common.utils import canonical_url, readable_url
 from quickapp.config.dial_files import DialFilesConfig
 from quickapp.dial_core_services.dial_file_service import DialFileService
 
-_PROJECTS_PREFIX = "projects/"
-
-
-def is_absolute_url(path: str) -> bool:
-    """Whether ``path`` is an absolute DIAL URL (``files/...`` or ``projects/...``) rather
-    than a path relative to the agent home. Like ``files``, ``projects`` is a Core resource
-    type, so a home folder of that name can't be addressed by a relative path."""
-    return path.startswith(("files/", _PROJECTS_PREFIX))
-
 
 def _validate_relative_path(path: str) -> None:
     """Reject relative paths that are unsafe or malformed (leading '/', '..', etc.).
@@ -49,7 +40,7 @@ class HomePathResolver:
     tools, the path-argument transformer, and any other agent-home consumer so the home is
     resolved a single time per request.
 
-    Absolute URLs are ``files/...`` and ``projects/...`` (see ``is_absolute_url``); a
+    Absolute URLs are ``files/...`` and ``projects/...`` (see ``is_absolute``); a
     ``projects/...`` URL resolves only to a file of the request's project.
     """
 
@@ -65,13 +56,16 @@ class HomePathResolver:
         self._resolved_home: str | None = None
 
     def is_absolute(self, path: str) -> bool:
-        return is_absolute_url(path)
+        """Whether ``path`` is an absolute DIAL URL (``files/...`` or ``projects/...``) rather
+        than a path relative to the agent home. Like ``files``, ``projects`` is a Core resource
+        type, so a home folder of that name can't be addressed by a relative path."""
+        return path.startswith(("files/", "projects/"))
 
     def require_relative(self, parameter_name: str, path: str) -> None:
         """Reject an absolute URL where only a path under the agent home is accepted
         (a write target): files outside the home, the project's read-only ones included,
         are never written."""
-        if is_absolute_url(path):
+        if self.is_absolute(path):
             raise InvalidToolCallParameterException(
                 parameter_name,
                 f"{parameter_name} must be a relative path, resolved under the agent home "
@@ -88,7 +82,7 @@ class HomePathResolver:
             )
         if path.startswith("files/"):
             return path
-        if path.startswith(_PROJECTS_PREFIX):
+        if path.startswith("projects/"):
             if self._project is None or not self._project.contains(path):
                 raise InvalidToolCallParameterException(
                     "path",
