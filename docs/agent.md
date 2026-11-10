@@ -60,7 +60,7 @@ silently ignored. A system message without text overrides nothing and is accepte
 ### 3. Context Setup
 
 `_QuickAppCompletion` turns the SDK request into a `CompletionInputs` value (`CompletionInputs.from_request`
-is the only reader of the SDK request) and hands it to `CompletionRunner`, which owns steps 3–6 for every
+is the only reader of the SDK request) and hands it to `CompletionRunner`, which owns steps 3–7 for every
 run in the current request scope. The task runner (`task_tooling/`) feeds the same runner, so a delegated
 task gets the same config resolution and initialization checks.
 
@@ -445,9 +445,10 @@ intermediate tool calls never enter the delegating conversation.
 **How a task runs.** `compile_task_manifest` deep-copies the app manifest, sets the system prompt to the
 built-in task prompt followed by the app's prompt (under "Rules from the application"), applies
 `features.run_task.max_iterations`, clears `features.run_task` (a task cannot run tasks), and keeps only
-`on_request_start` hooks (so `on_completion` fires once per user turn). Fields it doesn't touch are inherited. `TaskRunner` enters a fresh DI request scope inside an
-`asyncio.Task` and passes `CompletionInputs` to `CompletionRunner`, copying the caller's credentials,
-forwarded headers, language and time zone.
+`on_request_start` hooks (so `on_completion` fires once per user turn). Fields it doesn't touch are
+inherited. `TaskRunner` enters a fresh DI request scope inside an `asyncio.Task` and passes
+`CompletionInputs` to `CompletionRunner`, copying the caller's credentials, forwarded headers, language
+and time zone.
 
 **Tool filtering.** The tool list is carried as a `ToolAllowlist` on `CompletionInputs` (never set from
 an HTTP request) and applied where tools reach the model (`AgentModule.provide_openai_tools`), where they
@@ -474,9 +475,9 @@ See [`docs/designs/run_task_tool.md`](designs/run_task_tool.md).
 
 **Claude Opus 4.6 / 4.7 may ignore hook results in a task.** These models disregard a hook result when its tool
 isn't in `tools` ([hooks known issue](hooks.md#known-issues)), and an explicit tool list makes that more likely.
-The documented workaround is a paragraph in the app's system prompt, which a task replaces, so
-`TASK_SYSTEM_PROMPT` carries the same paragraph. If a hooked tool's result still goes unused, name that tool
-in `tools` or use another model.
+The documented workaround is a paragraph in the app's system prompt. A task keeps that prompt, but
+under the task framing, so `TASK_SYSTEM_PROMPT` carries the same paragraph as well. If a hooked tool's
+result still goes unused, name that tool in `tools` or use another model.
 
 ---
 

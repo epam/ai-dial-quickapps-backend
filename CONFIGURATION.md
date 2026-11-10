@@ -731,12 +731,13 @@ initialization fails with a hard `ToolInitializationException` — fix the egres
 
 When enabled, exposes `internal_run_task(name, prompt, tools)`. The agent hands a self-contained task to an
 isolated child run and gets back only the final answer, so the task's intermediate tool calls don't fill the
-conversation. The child uses this app's model, contexts, skills and `on_request_start` hooks. Its system prompt is a built-in
-task prompt followed by this app's system prompt, so the app's rules still apply. `on_completion` hooks don't run
-for tasks. The task sees only its prompt, not the conversation or the user's attached files.
+conversation. The child uses this app's model, contexts, skills and `on_request_start` hooks. Its system
+prompt is a built-in task prompt followed by this app's system prompt, so the app's rules still apply.
+`on_completion` hooks don't run for tasks. The task sees only its prompt, not the conversation or the user's
+attached files.
 
-A tool with a `hard_stop` fallback stops the whole turn even when it fails inside a task. Task token usage is
-added to the turn's usage statistics.
+A tool with a `hard_stop` fallback stops the whole turn even when it fails inside a task. When a task
+succeeds, its token usage is added to the turn's usage statistics.
 
 The agent picks the task's tools per call:
 
