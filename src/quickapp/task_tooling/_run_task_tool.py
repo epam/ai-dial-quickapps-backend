@@ -1,6 +1,6 @@
 from typing import Any
 
-from injector import AssistedBuilder, ProviderOf, inject
+from injector import AssistedBuilder, inject
 
 from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
@@ -14,7 +14,7 @@ from quickapp.config.tools.internal import InternalTool
 from ._task_runner import TaskRunner
 from ._task_stage_wrapper import _TaskStageWrapper
 from ._tool_catalogue import IMPLICIT_TASK_TOOL_NAMES, _DelegableToolNames
-from ._tool_config import INHERIT_TOOLS
+from ._tool_config import INHERIT_TOOLS, is_inherit
 
 # Keeps the unknown-tool error readable for apps with large MCP catalogues.
 _MAX_LISTED_TOOL_NAMES = 60
@@ -37,7 +37,7 @@ class _RunTaskTool(StagedBaseTool):
         stage_wrapper_builder: AssistedBuilder[_TaskStageWrapper],
         tool_config: InternalTool,
         perf_timer: PerformanceTimer,
-        runner: ProviderOf[TaskRunner],
+        runner: TaskRunner,
         delegable_tools: _DelegableToolNames,
         stage_display_level: StageDisplayLevel = StageDisplayLevel.INFO,
         **kwargs: Any,
@@ -63,7 +63,7 @@ class _RunTaskTool(StagedBaseTool):
         prompt = _require_text(kwargs, "prompt", "A task description is required.")
         allowlist = self.__resolve_allowlist(kwargs.get("tools"))
 
-        task = await self.__runner.get().run(prompt, allowlist, stage_wrapper)
+        task = await self.__runner.run(prompt, allowlist, stage_wrapper)
 
         result = ToolCallResult(
             content=task.answer,
@@ -98,7 +98,7 @@ class _RunTaskTool(StagedBaseTool):
         answers from the prompt alone. The message names the valid options so the
         LLM can retry.
         """
-        if tools == INHERIT_TOOLS or tools == [INHERIT_TOOLS]:
+        if is_inherit(tools):
             return ToolAllowlist()
         if not isinstance(tools, list) or not all(isinstance(name, str) for name in tools):
             raise InvalidToolCallParameterException(

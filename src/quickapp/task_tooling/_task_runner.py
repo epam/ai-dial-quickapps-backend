@@ -1,9 +1,7 @@
 import asyncio
 import logging
-from typing import Any
 
 from aidial_sdk.chat_completion import Attachment, Choice, Message, Role
-from aidial_sdk.chat_completion.request import MessageContentTextPart
 from fastapi_injector import RequestScopeFactory
 from injector import ProviderOf, inject
 from pydantic import BaseModel, Field
@@ -22,6 +20,7 @@ from quickapp.common.completion_inputs import CompletionInputs
 from quickapp.common.deployment_usage import DeploymentUsage
 from quickapp.common.exceptions import OrchestratorExceedMaxIterationsException
 from quickapp.common.lifecycle_logging import format_event
+from quickapp.common.message_text import message_text
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.tool_allowlist import ToolAllowlist
 from quickapp.config.application import ApplicationConfig
@@ -29,9 +28,11 @@ from quickapp.config.run_task import RunTaskConfig
 
 from ._exceptions import TaskToolErrorException
 from ._manifest_compiler import compile_task_manifest
-from ._run_task_settings import RunTaskSettings, TaskQueueTimeout, TaskSemaphore
+from ._run_task_settings import RunTaskSettings
 from ._task_output_sink import TaskOutputSink
+from ._task_semaphore import TaskQueueTimeout, TaskSemaphore
 from ._tool_catalogue import IMPLICIT_TASK_TOOL_NAMES
+from ._tool_config import INHERIT_TOOLS
 
 logger = logging.getLogger(__name__)
 
@@ -42,15 +43,6 @@ class TaskResult(BaseModel):
     answer: str
     attachments: list[Attachment] = Field(default_factory=list)
     usage: list[DeploymentUsage] = Field(default_factory=list)
-
-
-def _as_text(content: str | list[Any] | None) -> str:
-    """Flatten a message's content down to the text a tool result can carry."""
-    if content is None:
-        return ""
-    if isinstance(content, str):
-        return content
-    return "".join(part.text for part in content if isinstance(part, MessageContentTextPart))
 
 
 def _task_timeout(settings: RunTaskSettings, config: RunTaskConfig) -> float:
@@ -146,7 +138,7 @@ class TaskRunner:
                 "Running task",
                 deployment=manifest.orchestrator.deployment.deployment_id,
                 tools=(
-                    "inherit"
+                    INHERIT_TOOLS
                     if allowlist.names is None
                     else len(allowlist.names - IMPLICIT_TASK_TOOL_NAMES)
                 ),
@@ -201,7 +193,7 @@ class TaskRunner:
             if message.role == Role.ASSISTANT and not message.tool_calls:
                 # Files and images travel back on `TaskResult.attachments`, collected
                 # by `TaskOutputSink`; the answer itself is the joined text.
-                text = _as_text(message.content).strip()
+                text = message_text(message).strip()
                 if text:
                     return text
                 break

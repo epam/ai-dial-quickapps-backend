@@ -1,3 +1,5 @@
+from typing import Any
+
 from quickapp.common.tool_names import INTERNAL_RUN_TASK_TOOL_NAME
 from quickapp.config.tools.base import (
     ConfigurableSchemaArray,
@@ -15,6 +17,12 @@ from quickapp.config.tools.tool_fallback import ContinueStrategyModel, ToolFallb
 # Reserved single item of `tools`: the schema models have no `anyOf`, so the
 # "inherit" | list[str] union is carried by an array.
 INHERIT_TOOLS = "inherit"
+
+
+def is_inherit(tools: Any) -> bool:
+    """Whether `tools` asks for every tool: ``["inherit"]`` or a bare ``"inherit"``."""
+    return tools == INHERIT_TOOLS or tools == [INHERIT_TOOLS]
+
 
 RUN_TASK_TOOL_CONFIG = InternalTool(
     # Validation and task errors are forwarded to the model so it can retry.

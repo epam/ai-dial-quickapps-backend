@@ -8,9 +8,10 @@ from quickapp.common.preview import preview_module
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.run_task import RunTaskConfig
 
-from ._run_task_settings import RunTaskSettings, TaskSemaphore
+from ._run_task_settings import RunTaskSettings
 from ._run_task_tool import _RunTaskTool
 from ._task_runner import TaskRunner
+from ._task_semaphore import TaskSemaphore
 from ._task_stage_wrapper import _TaskStageWrapper
 from ._tool_catalogue import _DelegableToolNames
 from ._tool_config import RUN_TASK_TOOL_CONFIG
