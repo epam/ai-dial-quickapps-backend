@@ -44,9 +44,10 @@ from quickapp.core.application import _InitializationErrorHandler, _RequestConte
 from quickapp.dial_core_services.tool_config_service import ToolConfigCoreService
 from quickapp.task_tooling._exceptions import TaskToolErrorException
 from quickapp.task_tooling._manifest_compiler import compile_task_manifest
-from quickapp.task_tooling._run_task_settings import RunTaskSettings, TaskSemaphore
+from quickapp.task_tooling._run_task_settings import RunTaskSettings
 from quickapp.task_tooling._task_prompt import TASK_SYSTEM_PROMPT
 from quickapp.task_tooling._task_runner import TaskRunner, _task_timeout
+from quickapp.task_tooling._task_semaphore import TaskSemaphore
 from quickapp.task_tooling._tool_catalogue import IMPLICIT_TASK_TOOL_NAMES
 from tests.unit_tests.common.common import create_app_configuration
 
