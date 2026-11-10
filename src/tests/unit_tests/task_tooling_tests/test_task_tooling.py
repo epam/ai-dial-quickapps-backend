@@ -11,7 +11,9 @@ import pytest
 from aidial_sdk.chat_completion import Choice, Message, Role
 from fastapi_injector import RequestScopeFactory
 from injector import Binder, Injector, ProviderOf, inject
+from pydantic import SecretStr
 
+from quickapp.app_factory import AppFactory
 from quickapp.common import ACCEPT_LANGUAGE, TIMEZONE_HEADER_VALUE, StagedBaseTool
 from quickapp.common.base_initializer import InitializerType, invoke_initializers
 from quickapp.common.deployment_usage import DeploymentUsage
@@ -105,8 +107,6 @@ def _reset_fake_orchestrator(monkeypatch):
 
 
 def _test_injector() -> Injector:
-    from quickapp.app_factory import AppFactory
-
     # The real completion initializers run in the child scope — only the DIAL Core
     # round-trip for deployment metadata is stubbed out.
     core_service = MagicMock(spec=ToolConfigCoreService)
@@ -120,8 +120,6 @@ def _test_injector() -> Injector:
 
 
 async def _enter_parent_scope(injector: Injector, config: ApplicationConfig) -> _RequestContext:
-    from pydantic import SecretStr
-
     context = injector.get(_RequestContext)
     context.api_key = SecretStr("key")
     context.bearer = None
