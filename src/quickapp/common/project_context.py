@@ -69,11 +69,6 @@ class ProjectContext(BaseModel):
 
         Compared on the canonical form. A URL with an empty, ``.`` or ``..`` segment
         (``%2e%2e`` included) is never contained, so it can't escape the project.
-
-        Relative form only: an absolute Core URL (``{DIAL_URL}/v1/projects/...``) is not
-        contained and keeps today's v1 path. Every caller (file tools, ``web_fetch``, the file
-        loader, ``DialFileService``, ``DialDownloader``) gets agent paths or Core-listed
-        URLs, which are relative; the v2 client builds ``v2/{url}`` from the relative form.
         """
         if has_unsafe_segments(url):
             return False
