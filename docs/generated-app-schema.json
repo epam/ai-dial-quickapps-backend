@@ -3692,7 +3692,7 @@
       "type": "object"
     },
     "RunTaskConfig": {
-      "description": "Per-app config for the built-in ``internal_run_task`` tool.\n\nThe tool runs a self-contained task in an isolated child run and returns only its\nfinal answer. The child uses this app's deployment and inherits its contexts,\nskills and hooks; the delegating agent picks its tools per call.",
+      "description": "Per-app config for the built-in ``internal_run_task`` tool.\n\nThe tool runs a self-contained task in an isolated child run and returns only its\nfinal answer. The child uses this app's deployment and inherits its contexts,\nskills and ``on_request_start`` hooks; the delegating agent picks its tools per call.",
       "properties": {
         "enabled": {
           "default": false,

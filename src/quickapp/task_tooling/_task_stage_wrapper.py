@@ -9,7 +9,7 @@ from quickapp.common.utils import fenced_code_block
 from ._tool_config import INHERIT_TOOLS, is_inherit
 
 
-def format_tools(tools: Any) -> str:
+def _format_tools(tools: Any) -> str:
     """`tools` as the user reads it: inherit, a comma-separated list, or none."""
     if is_inherit(tools):
         return INHERIT_TOOLS
@@ -29,7 +29,7 @@ class _TaskStageWrapper(TimedStageWrapper):
         prompt = str(parameters.get("prompt", ""))
         return (
             f"**Prompt:**\n{fenced_code_block(prompt)}\n\n"
-            f"**Tools:** {format_tools(parameters.get('tools'))}\n\n"
+            f"**Tools:** {_format_tools(parameters.get('tools'))}\n\n"
         )
 
     def _build_debug_info_from_exception(self, exception: Exception) -> str:

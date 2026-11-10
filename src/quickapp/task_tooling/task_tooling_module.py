@@ -45,6 +45,8 @@ class TaskToolingModule(Module):
     ) -> list[StagedBaseTool]:
         if not config.enabled:
             return []
+        # No argument transformers: resolving a `file:` reference would paste the file
+        # into the prompt. The task reads files itself through the attachment readers.
         return [
             tool_builder.build(
                 tool_config=RUN_TASK_TOOL_CONFIG,
