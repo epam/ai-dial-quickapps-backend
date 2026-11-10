@@ -1,7 +1,10 @@
 # Design: Run task tool
 
-- **Status:** Approved
+- **Status:** Implemented
+- **User-facing:** [CONFIGURATION - Run task](../../CONFIGURATION.md#run-task-configuration) ·
+  [Agent - Run Task](../agent.md#run-task)
 - **Approved:** 2026-11-10
+- **Implemented:** 2026-11-10 (#736)
 - **Dependencies:**
   - [Dynamic tool discovery](dynamic_tool_discovery.md): an explicit tool list turns it off in the task.
   - [Hook context and lifecycle events](hook_context_and_lifecycle_events.md): a task inherits some hooks.
@@ -65,8 +68,9 @@ omitted or `null`, the tool is off; `enabled` defaults to `false`.
 - `prompt` — the complete task. It is the task's only message; see [What a task inherits](#what-a-task-inherits)
   for the rest of its context.
 - `tools` — `["inherit"]` (or a bare `"inherit"`) means every tool the agent sees except `internal_run_task`
-  and client tools, which a task never gets (see [What a task inherits](#what-a-task-inherits)); otherwise a list of exact tool names. `"inherit"` must be the only item. The tool-schema models have no
-  `anyOf`, so the `"inherit" | list[str]` union is carried by an array with one reserved value.
+  and client tools, which a task never gets (see [What a task inherits](#what-a-task-inherits)); otherwise
+  a list of exact tool names. `"inherit"` must be the only item. The tool-schema models have no `anyOf`, so
+  the `"inherit" | list[str]` union is carried by an array with one reserved value.
 - Unknown names fail the call with `InvalidToolCallParameterException`, listing the valid names (capped at 60).
 - An explicit list always also gets the readers for content the task can be pointed at regardless of the list:
   - `internal_skills_read_skill`, `internal_attachments_available_context`, `internal_attachments_get_content`,
@@ -100,7 +104,7 @@ sequenceDiagram
     Child-->>Sink: chunks, stages, attachments
     Sink-->>Stage: prose and closed stages
     Child-->>Runner: final assistant message
-    Runner-->>Tool: TaskResult(answer, attachments)
+    Runner-->>Tool: TaskResult(answer, attachments, usage)
     Tool-->>Agent: tool result
 ```
 
@@ -250,7 +254,8 @@ it, and it does so outside any tool body, so other tools behave as before.
 ### The HTTP handler becomes an adapter
 
 The completion endpoint builds `CompletionInputs.from_request` and delegates to `CompletionRunner`, the same path
-a task uses. Behavior is unchanged.
+a task uses. Behavior is unchanged, except that fetching the app properties now runs before the
+`chat_completion` timer starts, so the Execution time stage no longer counts it.
 
 ---
 
@@ -303,8 +308,10 @@ and regenerated schema files.
 ## Summary of Changes
 
 - `common/completion_inputs.py` — `CompletionInputs`; `_RequestContextSetup.setup_context(inputs)` takes it.
+  `is_task` adds `task=true` to the `Request received` / `Request initialized` logs of a task run.
 - `common/abstract/completion_runner.py`, `core/application/_completion_runner.py` — `BaseCompletionRunner`,
   `CompletionRunner`; the HTTP handler becomes an adapter over them.
+- `common/base_initializer.py` — `run_initializers`, shared by startup and `CompletionRunner`.
 - `common/tool_allowlist.py` — `ToolAllowlist`, applied in `agent_module.py`, `tool_executor.py`,
   `chat_stream_sink_factory.py`; carried by the set-once `_RequestContext.tool_allowlist` and provided by
   `AppModule`.
