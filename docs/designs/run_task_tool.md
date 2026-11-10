@@ -1,18 +1,18 @@
-# Design: Run task tool (`internal_run_task`)
+# Design: Run task tool
 
-- **Status:** Draft
+- **Status:** Approved
+- **Approved:** 2026-11-10
 - **Dependencies:**
   - [Dynamic tool discovery](dynamic_tool_discovery.md): an explicit tool list turns it off in the task.
   - [Hook context and lifecycle events](hook_context_and_lifecycle_events.md): a task inherits some hooks.
 - **Issue:** [#181](https://github.com/epam/ai-dial-quickapps-backend/issues/181)
-- **History:** replaces the subagents design from [PR #513](https://github.com/epam/ai-dial-quickapps-backend/pull/513)
-  (closed without merging). That PR's run machinery is ported; declared subagent types are dropped.
 
 ## Problem Statement
 
 An agent that needs a result from several tool calls (search, read, compute) carries every intermediate
-result in its context, even when it only needs the conclusion. There is no way to hand a self-contained
-piece of work off and get back just the answer.
+result in its context, even when it only needs the conclusion. Today work can be handed off only to a
+separately deployed QuickApp wired in as a DIAL deployment tool, chosen by the builder in advance. There is no
+*ad hoc* hand-off, where the agent writes the prompt and picks the tools per call and gets back just the answer.
 
 ## Design Goals
 
@@ -64,8 +64,8 @@ omitted or `null`, the tool is off; `enabled` defaults to `false`.
 - `name` — a short label written by the model, used as the stage title. Not logged.
 - `prompt` — the complete task. It is the task's only message; see [What a task inherits](#what-a-task-inherits)
   for the rest of its context.
-- `tools` — `["inherit"]` (or a bare `"inherit"`) means every tool the agent sees except `internal_run_task`;
-  otherwise a list of exact tool names. `"inherit"` must be the only item. The tool-schema models have no
+- `tools` — `["inherit"]` (or a bare `"inherit"`) means every tool the agent sees except `internal_run_task`
+  and client tools, which a task never gets (see [What a task inherits](#what-a-task-inherits)); otherwise a list of exact tool names. `"inherit"` must be the only item. The tool-schema models have no
   `anyOf`, so the `"inherit" | list[str]` union is carried by an array with one reserved value.
 - Unknown names fail the call with `InvalidToolCallParameterException`, listing the valid names (capped at 60).
 - An explicit list always also gets the readers for content the task can be pointed at regardless of the list:
@@ -90,6 +90,7 @@ sequenceDiagram
     participant CR as CompletionRunner
     participant Child as Orchestrator (task)
     participant Sink as TaskOutputSink
+    participant Stage as Task stage
     Agent->>Tool: internal_run_task(name, prompt, tools)
     Tool->>Tool: validate, resolve ToolAllowlist
     Tool->>Runner: run(prompt, allowlist, stage)
@@ -97,13 +98,13 @@ sequenceDiagram
     Runner->>CR: run(CompletionInputs)
     CR->>Child: context, initializers, messages, invoke()
     Child-->>Sink: chunks, stages, attachments
-    Sink-->>Agent: rendered into the Task stage
+    Sink-->>Stage: prose and closed stages
     Child-->>Runner: final assistant message
     Runner-->>Tool: TaskResult(answer, attachments)
     Tool-->>Agent: tool result
 ```
 
-Ported from PR #513:
+Components:
 
 - **`CompletionInputs`** (`common/completion_inputs.py`) — everything one run needs. `from_request` is the only
   reader of the SDK request.
@@ -123,19 +124,27 @@ Ported from PR #513:
 | Item | In the task |
 |---|---|
 | Deployment, toolsets, contexts, skills, MCP resources | Inherited |
-| `on_request_start` hooks | Inherited; they see the task prompt as the last user message. See the note below |
+| `on_request_start` hooks | Inherited, so the task gets the same injected context as the parent (e.g. memory recall). They run once per task and see the task prompt as the last user message |
 | Other hook events (`on_completion`, any added later) | Cleared, so `on_completion` fires once per user turn |
 | System prompt | The built-in task prompt, then the app's prompt under "Rules from the application" |
 | `max_iterations` | Inherited, unless `features.run_task.max_iterations` is set |
 | Tool discovery | Inherited with `inherit`; turned off with an explicit list |
-| `features.run_task`, conversation starters | Cleared (depth 1) |
+| `features.run_task` | Cleared (depth 1) |
+| Conversation starters | Cleared (a user-facing feature) |
 | Conversation history and attached files | Not passed; the prompt is the only message |
+| Skills invoked from the user's message (`custom_content.skills`) | Not passed |
+| The request's `response_format` and `tool_choice` | Not passed: a JSON-schema `response_format` on the user's request doesn't apply inside a task |
+| The child's choice state (tool execution history) | Dropped by `TaskOutputSink`; tasks are stateless |
 | Client tools | None |
 | Credentials, forwarded headers, language, time zone | The caller's |
 
 The compiler deep-copies the manifest and changes only the rows above: **a manifest field added later is
 inherited unless the compiler clears it**, and a new hook event runs in tasks only once it's added to the
 compiler's list. Whoever adds either decides.
+
+Inherited `on_request_start` hooks have a cost: a turn with N tasks runs each hook N+1 times, so a hook with side
+effects fires on every run. A hook templated on `last_user_message` receives the task prompt the LLM wrote, not the
+user's text.
 
 Claude Opus 4.6 and 4.7 ignore a hook result when its tool isn't in `tools`
 ([known issue](../hooks.md#known-issues)), and an explicit list makes that more likely. The built-in task prompt
@@ -168,9 +177,11 @@ Owners: `RunTaskSettings`, `TaskSemaphore`, `TaskRunner`.
   a slot and the run each get this budget: queue time isn't charged to the run, and the wait itself is bounded, so
   a busy replica fails the call instead of stalling it indefinitely. Worst case, one call takes twice the budget
   (wait plus run): 20 minutes with the defaults.
-- Task tokens reach the turn's usage table through `ToolCallResult.usage`: the task's own model calls get a row
-  under the tool's name, and tools it called keep their rows. The child also shows its own usage stage inside
-  the `Task` stage.
+- When a task succeeds, its tokens reach the turn's usage table through `ToolCallResult.usage`: the task's own
+  model calls get a row under the tool's name, and tools it called keep their rows. When it fails (timeout,
+  `max_iterations` exhausted, no answer), the tool raises `TaskToolErrorException` and the fallback result carries
+  no usage, so those tokens are missing from the turn's table. Either way the child shows its own usage stage
+  inside the `Task` stage. DIAL Core billing is not affected: the table is display-only (`SHOW_USAGE_STATISTICS`).
 - On timeout or cancellation, the child's open stages close as failed and still render in the `Task` stage;
   attachments on those stages have already reached the parent. Only choice-level attachments collected so far
   are lost. A client disconnect cancels running tasks with the parent request.
@@ -189,6 +200,19 @@ Every failure reaches the agent as an error through the tool's fallback, so it c
 | A tool in the task hits a `hard_stop` fallback | The whole turn stops, as it would if the agent had called the tool |
 | Any other exception in the task (model API error, uncaught tool error) | The tool's catch-all fallback forwards the error text |
 
+### Child initialization
+
+Owners: `CompletionRunner`, `_InitializationErrorHandler`.
+
+- Each task runs in a fresh request scope, so it goes through the same initialization checks as a user request.
+- The allowlist filters after initialization, not before: even `tools: []` initializes every toolset (e.g.
+  connects to every MCP server).
+- Initialization issues are rendered to the user inside the `Task` stage, not reported to the agent, and the
+  parent's own issues repeat in every task. If a toolset fails in the child, an explicit list that passed
+  validation runs with fewer tools.
+- The task forwards the user's client channel, so a sign-in the user denied or let time out in the parent prompts
+  again in each task, and that wait counts against the task's budget.
+
 ### Alternatives considered
 
 - **Wire a QuickApp in as a DIAL deployment tool** (the existing subagent route,
@@ -203,17 +227,30 @@ Every failure reaches the agent as an error through the tool's fallback, so it c
 - **A separate task timeout** next to the unified tool timeouts ([configurable timeouts](configurable_timeouts.md)).
   `tool_defaults.timeout_seconds` bounds one client call and may raise the env default; the task budget bounds a
   whole agent run on the replica's shared event loop, so an app may only shorten the admin ceiling.
-- **Reuse the parent's tool instances** instead of a fresh scope. That saves re-initialization (MCP connects,
-  skill fetches, `on_request_start` hooks run again per task), but tool instances hold request-scoped state, and
-  sharing them would break isolation between parallel tasks. A fresh scope also gives the task the same
-  initialization checks as a user request. The cost: if a toolset fails to initialize in the child, an explicit
-  list that passed validation runs with fewer tools. The initialization issues are rendered to the user inside the
-  `Task` stage, not reported to the agent, and the parent's own issues repeat in every task. Initialization isn't
-  narrowed either: the allowlist filters after it, so even `tools: []` initializes every toolset (e.g. connects to
-  every MCP server). And because the task forwards the user's client channel, a sign-in the user denied or let
-  time out in the parent prompts again in each task, and that wait counts against the task's budget.
-- **Declared task types** with fixed prompts and tools (PR #513). Review found that agent-chosen tools cover the
-  use cases in #181 with far less configuration; types can be added later on top of this tool.
+- **Reuse the parent's tool instances** instead of a fresh scope. That would save re-initialization (MCP
+  connects, skill fetches), but tool instances hold request-scoped state, and sharing them would break isolation
+  between parallel tasks. See [Child initialization](#child-initialization) for what the fresh scope costs.
+- **Clear all hooks in a task.** The task would lose the context `on_request_start` hooks inject. Keeping them
+  costs the repeat runs described under [What a task inherits](#what-a-task-inherits).
+- **Declared task types** with fixed prompts and tools
+  ([PR #513](https://github.com/epam/ai-dial-quickapps-backend/pull/513), closed without merging). Review found
+  that agent-chosen tools cover the use cases in #181 with far less configuration; types can be added later on
+  top of this tool.
+
+---
+
+## Secondary Fixes
+
+### Hard stop passes through a tool body
+
+`StagedBaseTool` re-raises `FallbackAgentStopException` from a tool body instead of routing it to the tool's
+fallback, so a `hard_stop` inside a task stops the delegating turn. Today only `HardStopStrategyHandler` raises
+it, and it does so outside any tool body, so other tools behave as before.
+
+### The HTTP handler becomes an adapter
+
+The completion endpoint builds `CompletionInputs.from_request` and delegates to `CompletionRunner`, the same path
+a task uses. Behavior is unchanged.
 
 ---
 
@@ -225,10 +262,12 @@ Every failure reaches the agent as an error through the tool's fallback, so it c
 - A "fork" mode that copies the conversation history into the task: it defeats the context saving that motivates
   the tool.
 - Skipping toolsets that hold no listed tool, or that failed in the parent: needs a name-to-toolset map from the
-  parent's tools; a follow-up if initialization cost or repeated sign-in prompts show up in practice.
+  parent's tools; a follow-up if initialization cost or repeated sign-in prompts show up in practice. See
+  [Child initialization](#child-initialization).
 - A per-request share of the task slots: see Limits.
 - Telling the agent when a tool it named failed to initialize in the task: the user sees the issue in the `Task`
-  stage; surfacing it in the tool result is a follow-up.
+  stage; surfacing it in the tool result is a follow-up. See [Child initialization](#child-initialization).
+- Carrying a failed task's usage into the turn's usage table: see Limits.
 
 ## Configuration / Usage Examples
 
@@ -267,13 +306,16 @@ and regenerated schema files.
 - `common/abstract/completion_runner.py`, `core/application/_completion_runner.py` — `BaseCompletionRunner`,
   `CompletionRunner`; the HTTP handler becomes an adapter over them.
 - `common/tool_allowlist.py` — `ToolAllowlist`, applied in `agent_module.py`, `tool_executor.py`,
-  `chat_stream_sink_factory.py`.
+  `chat_stream_sink_factory.py`; carried by the set-once `_RequestContext.tool_allowlist` and provided by
+  `AppModule`.
+- `common/tool_names.py` — `INTERNAL_RUN_TASK_TOOL_NAME`.
 - `config/run_task.py` — `RunTaskConfig`; `Features.run_task` as a `PreviewField`.
 - `common/abstract/completed_run.py` — `CompletedRun`, what a caller reads from a finished run (usage);
   `Orchestrator.usage_statistics` provides it.
 - `common/staged_base_tool.py` — `FallbackAgentStopException` passes through a tool body.
 - `task_tooling/` — `TaskToolingModule` (`@preview_module`), singletons `RunTaskSettings` and `TaskSemaphore`,
   `TaskRunner`, `_RunTaskTool`, `_DelegableToolNames`, `_TaskStageWrapper`, `compile_task_manifest`,
-  `TaskOutputSink`.
+  `TaskOutputSink`, `TaskToolErrorException` (`_exceptions.py`), `TASK_SYSTEM_PROMPT` (`_task_prompt.py`).
+- `app_factory.py` — registers `TaskToolingModule`.
 - Docs: `CONFIGURATION.md`, `docs/agent.md`, `docs/README.md`; a `run_task_demo` app in
   `docker_compose_files/core/configuration/applications.json`.
