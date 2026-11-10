@@ -170,9 +170,9 @@ flowchart LR
   | Call site | `projects/` URL |
   |---|---|
   | file tools, `web_fetch`, file loader | v2 through `DialFileService` (PR1) |
-  | `dial_file_promoter.py` (DIAL branch) | v2 metadata (PR3) |
-  | `_attachment_resolver.py` | passes through (PR3) |
-  | `input_file_handler.py` (interpreter input) | fast tool error: "project files can't be passed to the interpreter yet" (PR3) |
+  | `dial_file_promoter.py` (DIAL branch) | v2 metadata (PR4) |
+  | `_attachment_resolver.py` | passes through (PR4) |
+  | `input_file_handler.py` (interpreter input) | fast tool error: "project files can't be passed to the interpreter yet" (PR4) |
 - **Read-only files:** write targets accept relative paths only, so nothing outside `artifacts/` is written (D4, UC-5).
 - **Prompt:** a `PromptPartProvider` adds sections after the app's own system prompt:
 
@@ -201,18 +201,7 @@ flowchart LR
   issues** stage (rendered after the system prompt is built) and a WARNING log; the turn continues without the
   instructions.
 
-### Downstream propagation (PR3)
-
-- Nested DIAL apps and MCP toolsets keep receiving `x-project-id` through the existing `X-*` catch-all (raw value).
-- Strip it from REST API tool calls (`rest_api_tooling/_rest_api_tool.py`): it carries the user's bucket and project
-  name to external hosts. The orchestrator model call goes through Core and keeps it.
-- Nested apps declare and get their own grants (#1930 resolves dependencies at every hop of a chain).
-- `AttachmentResolver`: home-relative and current-project URLs pass through without the v1 metadata call. A deployment
-  that can't read `projects/` URLs (anything but a QuickApp, C4) returns its own error, surfaced as a tool error.
-- Remove the remaining `files/`-only assumptions: lazy `get_content`, `config/dial_files.py`, the attachment
-  strategies, the promoter's DIAL branch (`dial_file_promoter.py`, v1 `files.get_metadata`).
-
-### User outputs into `artifacts/` (PR4)
+### User outputs into `artifacts/` (PR3)
 
 - Split the upload API by root:
 
@@ -227,13 +216,24 @@ flowchart LR
 - **Trade-off:** in a project chat, MCP/REST outputs saved to `artifacts/` can't be forwarded to a non-QuickApps
   deployment or to the interpreter (C4). Outside projects they still can.
 
+### Downstream propagation (PR4)
+
+- Nested DIAL apps and MCP toolsets keep receiving `x-project-id` through the existing `X-*` catch-all (raw value).
+- Strip it from REST API tool calls (`rest_api_tooling/_rest_api_tool.py`): it carries the user's bucket and project
+  name to external hosts. The orchestrator model call goes through Core and keeps it.
+- Nested apps declare and get their own grants (#1930 resolves dependencies at every hop of a chain).
+- `AttachmentResolver`: home-relative and current-project URLs pass through without the v1 metadata call. A deployment
+  that can't read `projects/` URLs (anything but a QuickApp, C4) returns its own error, surfaced as a tool error.
+- Remove the remaining `files/`-only assumptions: lazy `get_content`, `config/dial_files.py`, the attachment
+  strategies, the promoter's DIAL branch (`dial_file_promoter.py`, v1 `files.get_metadata`).
+
 ### External dependencies
 
 Status checked on 2026-11-05.
 
 | # | Owner | Need | Status | Blocks |
 |---|---|---|---|---|
-| C1 | Core | #1930: `projects` as a declarable target type (`projects/{current-user}/`) | The stack is not on `development`: rd/1–rd/3 are open ([PR#1940](https://github.com/epam/ai-dial-core/pull/1940)–[1942](https://github.com/epam/ai-dial-core/pull/1942)), rd/4–rd/9 are merged into rd/3. `projects` is not declarable until the stack is rebased ([PR#1946](https://github.com/epam/ai-dial-core/pull/1946)). | Any project access through Core: PR2 end to end, PR4 |
+| C1 | Core | #1930: `projects` as a declarable target type (`projects/{current-user}/`) | The stack is not on `development`: rd/1–rd/3 are open ([PR#1940](https://github.com/epam/ai-dial-core/pull/1940)–[1942](https://github.com/epam/ai-dial-core/pull/1942)), rd/4–rd/9 are merged into rd/3. `projects` is not declarable until the stack is rebased ([PR#1946](https://github.com/epam/ai-dial-core/pull/1946)). | Any project access through Core: PR2 end to end, PR3 |
 | C2 | Admin UI | Resource Dependencies tab + `projects` targets | [admin-frontend PR#5313](https://github.com/epam/ai-dial-admin-frontend/pull/5313) open. Consent works only for apps the admin can see (public). | Rollout |
 | C3 | Core | Per-file `If-Match` / `If-None-Match` on project file writes (today checked against the project ETag) | Issue drafted, not filed | Atomic conditional writes (one `PUT` instead of check + `PUT`) |
 | C4 | Ecosystem | `projects/` v2 URLs in adapter-dial, RAG, code interpreter, aidial-client | Nothing started | Sub-agents and interpreter on project files (out of scope) |
@@ -336,8 +336,8 @@ None for non-project chats. Project behaviour is preview-gated and triggered onl
 |---|---|---|---|
 | 1 | `ProjectContext` / `PROJECT_CONTEXT`, v2 client, `FileStorage` routing, write flows, streamed reads | — | yes (no header → no-op) |
 | 2 | Home = `artifacts/`, `projects/` prefix rule, prompt section + `PROJECT.md` warning, preflight, 403 secondary fix, L0–L2 docs | PR1 | yes, with preview off where Core lacks C1 (D9) |
-| 3 | REST header strip, attachment resolver, interpreter input error, remaining `files/` assumptions | PR2 | yes |
-| 4 | Split upload roots; user outputs into `artifacts/` | PR2 | yes, useful after C1 |
+| 3 | Split upload roots; user outputs into `artifacts/` | PR2 | yes, useful after C1 |
+| 4 | REST header strip, attachment resolver, interpreter input error, remaining `files/` assumptions | PR2 | yes |
 | 5 | Core-path integration suite (per-request key) in CI | PR1–4, C1 released | n/a |
 
 ## Summary of Changes
