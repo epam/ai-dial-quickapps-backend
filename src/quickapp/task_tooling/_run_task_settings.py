@@ -1,8 +1,3 @@
-import asyncio
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
-
-from injector import inject
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -34,35 +29,3 @@ class RunTaskSettings(BaseSettings):
         alias="RUN_TASK_MAX_CONCURRENT",
         gt=0,
     )
-
-
-@inject
-class TaskSemaphore:
-    """Caps concurrent tasks per process; excess tasks wait for a slot, for a bounded time.
-
-    Singleton: it protects the replica, which every concurrent request draws on. The
-    semaphore is built on first use because the DI graph is wired before a loop runs.
-    """
-
-    def __init__(self, settings: RunTaskSettings) -> None:
-        self._limit = settings.max_concurrent
-        self._semaphore: asyncio.Semaphore | None = None
-
-    @asynccontextmanager
-    async def hold(self, wait_seconds: float) -> AsyncIterator[None]:
-        """Hold a slot; raises ``TaskQueueTimeout`` if none frees up in ``wait_seconds``."""
-        if self._semaphore is None:
-            self._semaphore = asyncio.Semaphore(self._limit)
-        try:
-            async with asyncio.timeout(wait_seconds):
-                await self._semaphore.acquire()
-        except TimeoutError:
-            raise TaskQueueTimeout() from None
-        try:
-            yield
-        finally:
-            self._semaphore.release()
-
-
-class TaskQueueTimeout(Exception):
-    """No task slot freed up within the wait limit."""

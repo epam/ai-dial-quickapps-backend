@@ -6,12 +6,12 @@ from quickapp.common import TimedStageWrapper, ToolCallResult
 from quickapp.common.exceptions.tool_error import ToolErrorException
 from quickapp.common.utils import fenced_code_block
 
-from ._tool_config import INHERIT_TOOLS
+from ._tool_config import INHERIT_TOOLS, is_inherit
 
 
 def format_tools(tools: Any) -> str:
     """`tools` as the user reads it: inherit, a comma-separated list, or none."""
-    if tools == INHERIT_TOOLS or tools == [INHERIT_TOOLS]:
+    if is_inherit(tools):
         return INHERIT_TOOLS
     if isinstance(tools, list):
         return ", ".join(str(name) for name in tools) or "none"
