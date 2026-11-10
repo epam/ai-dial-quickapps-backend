@@ -14,7 +14,8 @@ from quickapp.common.staged_base_tool import StagedBaseTool
 from quickapp.config.application import StageDisplayLevel
 from quickapp.config.dial_files import DialFilesConfig
 from quickapp.config.tools.internal import InternalTool
-from quickapp.dial_core_services.dial_file_service import DialFileService, FolderEntry
+from quickapp.dial_core_services.dial_file_service import DialFileService
+from quickapp.dial_core_services.storage.file_storage import FolderEntry
 from quickapp.dial_files_tooling._dial_files_tool_error_exception import DialFilesToolErrorException
 from quickapp.dial_files_tooling._stage_wrapper import _FileStageWrapper
 from quickapp.dial_files_tooling._utils import is_root_reference

@@ -7,7 +7,7 @@ These have no dependency on `self`/DI, so they live here rather than on the
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.tool_names import INTERNAL_FILE_READ_CHARS_TOOL_NAME
 from quickapp.common.utils import fenced_code_block
-from quickapp.dial_core_services.dial_file_service import FolderEntry
+from quickapp.dial_core_services.storage.file_storage import FolderEntry
 
 # Read-back tools (read_lines, read_chars, search) are excluded from offload, so an
 # oversized result cannot be re-saved to a file and would go straight into the LLM

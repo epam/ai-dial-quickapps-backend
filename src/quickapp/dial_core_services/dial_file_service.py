@@ -12,8 +12,6 @@ from quickapp.dial_core_services.storage.file_storage import FileStorage, Folder
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["DialFileService", "FolderEntry"]
-
 
 @inject
 class DialFileService:

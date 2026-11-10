@@ -2,7 +2,7 @@ from typing import Any
 
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.tool_call_result import ToolCallResult
-from quickapp.dial_core_services.dial_file_service import FolderEntry
+from quickapp.dial_core_services.storage.file_storage import FolderEntry
 from quickapp.dial_files_tooling._base_file_tool import _MAX_DEPTH, _DialFileTool
 from quickapp.dial_files_tooling._glob import _glob_to_regex
 from quickapp.dial_files_tooling._utils import relative_to, render_listing
