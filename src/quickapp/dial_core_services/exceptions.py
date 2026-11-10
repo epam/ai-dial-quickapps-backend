@@ -72,3 +72,7 @@ class ProjectFileTooLargeException(ProjectFileOperationException):
             f"{url} is larger than {limit} bytes; copy/move of large project files is not "
             "supported."
         )
+
+
+class DialPromptLoadError(Exception):
+    """A DIAL prompt could not be loaded. The message is safe to show to users."""

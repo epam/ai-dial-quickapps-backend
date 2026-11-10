@@ -50,6 +50,7 @@ from quickapp.config.tools.display.paramenter import (
 )
 from quickapp.core.agent._attachment_filter import _AttachmentFilter
 from quickapp.core.agent._chat_completion_config_builder import _ChatCompletionConfigBuilder
+from quickapp.core.agent._dial_system_prompt_initializer import _DialSystemPromptInitializer
 from quickapp.core.agent._messages_transformers import _AddSystemPromptTransformer
 from quickapp.core.agent._orchestrator_deployment_initializer import (
     _OrchestratorDeploymentInitializer,
@@ -140,6 +141,11 @@ class AgentModule(Module):
             scope=request_scope,
         )
         binder.bind(
+            _DialSystemPromptInitializer,
+            to=_DialSystemPromptInitializer,
+            scope=request_scope,
+        )
+        binder.bind(
             _OrchestratorStaticToolsContext,
             to=_OrchestratorStaticToolsContext,
             scope=request_scope,
@@ -147,17 +153,24 @@ class AgentModule(Module):
 
     @multiprovider
     def _provide_completion_initializers(
-        self, initializer_provider: ProviderOf[_OrchestratorDeploymentInitializer]
+        self,
+        initializer_provider: ProviderOf[_OrchestratorDeploymentInitializer],
+        system_prompt_initializer_provider: ProviderOf[_DialSystemPromptInitializer],
     ) -> list[CompletionInitializer]:
-        return [initializer_provider.get()]
+        return [initializer_provider.get(), system_prompt_initializer_provider.get()]
 
     @multiprovider
     def _provide_initialization_exceptions(
-        self, initializer: _OrchestratorDeploymentInitializer
+        self,
+        initializer: _OrchestratorDeploymentInitializer,
+        system_prompt_initializer: _DialSystemPromptInitializer,
     ) -> list[InitializationException]:
         # Resolved by _InitializationErrorHandler after the initializers have run, so the
-        # list already holds whatever initialize() recorded.
-        return initializer.initialization_exceptions
+        # lists already hold whatever initialize() recorded.
+        return [
+            *system_prompt_initializer.initialization_exceptions,
+            *initializer.initialization_exceptions,
+        ]
 
     @provider
     def provide_orchestrator_capabilities(
