@@ -12,6 +12,21 @@ from quickapp.common.error_details import (
 )
 from quickapp.dial_deployment_tooling.constants import TOOLS_PARAM
 
+_MSG_TOOL_REJECTED_REQUEST = "The tool could not process the request."
+_MSG_TOOL_INTERNAL_ERROR = "The tool encountered an internal error."
+
+
+def _message_for_status(status: int | None) -> str | None:
+    if status is None:
+        return None
+    if status == 429:
+        return f"{MSG_AI_MODEL_RATE_LIMITED} {RETRY_SENTENCE}"
+    if 400 <= status < 500:
+        return _MSG_TOOL_REJECTED_REQUEST
+    if status >= 500:
+        return _MSG_TOOL_INTERNAL_ERROR
+    return None
+
 
 @inject
 class DeploymentStageWrapper(TimedStageWrapper):
@@ -31,12 +46,18 @@ class DeploymentStageWrapper(TimedStageWrapper):
             )
         # Backfills the status from `code` for mid-stream errors, which carry no HTTP status.
         details = extract_error_details(exception)
-        if details.status_code == 429:
-            message = sanitize_display_message(details.display_message or "") or (
-                f"{MSG_AI_MODEL_RATE_LIMITED} {RETRY_SENTENCE}"
+        # The `message` of these errors is internal and stays out of the stage.
+        message = sanitize_display_message(details.display_message or "") or _message_for_status(
+            details.status_code
+        )
+        if message is None:
+            return (
+                "> #### Exception:\n"
+                "General exception occurred while calling other DIAL deployment\n"
             )
-            return f"> #### Error:\n{message}\n> #### Status Code:\n{details.status_code}\n"
-        return "> #### Exception:\nGeneral exception occurred while calling other DIAL deployment\n"
+        if details.status_code is None:
+            return f"> #### Error:\n{message}\n"
+        return f"> #### Error:\n{message}\n> #### Status Code:\n{details.status_code}\n"
 
     def _build_debug_info_from_result(self, result: ToolCallResult) -> str:
         # For Deployment tools we stream content into choice on the tool execution level

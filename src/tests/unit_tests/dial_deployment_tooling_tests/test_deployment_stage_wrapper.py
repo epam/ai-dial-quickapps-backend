@@ -2,6 +2,7 @@ from unittest.mock import MagicMock
 
 import httpx
 import openai
+import pytest
 
 from quickapp.dial_deployment_tooling.deployment_stage_wrapper import DeploymentStageWrapper
 
@@ -60,16 +61,103 @@ def test_mid_stream_rate_limit_shows_cause_and_status_code():
     assert "General exception" not in rendered
 
 
-def test_non_rate_limit_openai_error_keeps_generic_text():
+@pytest.mark.parametrize(
+    ("status", "expected"),
+    [
+        (400, "The tool could not process the request."),
+        (404, "The tool could not process the request."),
+        (500, "The tool encountered an internal error."),
+        (503, "The tool encountered an internal error."),
+    ],
+)
+def test_upstream_status_shows_tool_message_and_status_code(status: int, expected: str):
     request = httpx.Request("POST", "http://dial-core/openai/deployments/image/chat/completions")
-    error = openai.InternalServerError(
-        "raw error detail", response=httpx.Response(500, request=request), body=None
+    error = openai.APIStatusError(
+        "raw error detail", response=httpx.Response(status, request=request), body=None
     )
 
     rendered = _make_wrapper()._build_debug_info_from_exception(error)
 
+    assert rendered == f"> #### Error:\n{expected}\n> #### Status Code:\n{status}\n"
+
+
+def test_display_message_wins_for_any_status():
+    request = httpx.Request("POST", "http://dial-core/openai/deployments/app/chat/completions")
+    error = openai.BadRequestError(
+        "raw error detail",
+        response=httpx.Response(400, request=request),
+        body={"error": {"display_message": "The document is too large"}},
+    )
+
+    rendered = _make_wrapper()._build_debug_info_from_exception(error)
+
+    assert rendered == "> #### Error:\nThe document is too large\n> #### Status Code:\n400\n"
+
+
+def test_display_message_without_status_omits_status_code():
+    request = httpx.Request("POST", "http://dial-core/openai/deployments/app/chat/completions")
+    error = openai.APIError(
+        "raw error detail",
+        request=request,
+        body={"code": "document_too_large", "display_message": "The document is too large"},
+    )
+
+    rendered = _make_wrapper()._build_debug_info_from_exception(error)
+
+    assert rendered == "> #### Error:\nThe document is too large\n"
+
+
+def test_document_processing_failure_shows_status_without_internal_detail():
+    request = httpx.Request("POST", "http://dial-core/openai/deployments/dial-rag/chat/completions")
+    internal_message = (
+        "Error on processing document: [Errno 2] No such file or directory: "
+        "'/tmp/tmpabc123/doc_file.pdf'"
+    )
+    error = openai.APIError(
+        internal_message,
+        request=request,
+        body={"message": internal_message, "type": "runtime_error", "code": "500"},
+    )
+
+    rendered = _make_wrapper()._build_debug_info_from_exception(error)
+
+    assert rendered == (
+        "> #### Error:\nThe tool encountered an internal error.\n> #### Status Code:\n500\n"
+    )
+
+
+def test_blank_display_message_falls_back_to_status_message():
+    request = httpx.Request("POST", "http://dial-core/openai/deployments/app/chat/completions")
+    error = openai.BadRequestError(
+        "raw error detail",
+        response=httpx.Response(400, request=request),
+        body={"error": {"display_message": "   "}},
+    )
+
+    rendered = _make_wrapper()._build_debug_info_from_exception(error)
+
+    assert rendered == (
+        "> #### Error:\nThe tool could not process the request.\n> #### Status Code:\n400\n"
+    )
+
+
+def test_non_error_status_keeps_generic_text():
+    request = httpx.Request("POST", "http://dial-core/openai/deployments/app/chat/completions")
+    error = openai.APIError("raw error detail", request=request, body={"code": "200"})
+
+    rendered = _make_wrapper()._build_debug_info_from_exception(error)
+
     assert "General exception" in rendered
-    assert "rate-limited" not in rendered
+
+
+def test_openai_error_without_status_keeps_generic_text():
+    request = httpx.Request("POST", "http://dial-core/openai/deployments/app/chat/completions")
+    error = openai.APIError("raw error detail", request=request, body=None)
+
+    rendered = _make_wrapper()._build_debug_info_from_exception(error)
+
+    assert "General exception" in rendered
+    assert "raw error detail" not in rendered
 
 
 def test_rate_limit_prefers_upstream_display_message():
