@@ -1,6 +1,7 @@
 # Design: Skill File References for Tool Calls
 
-- **Status:** Draft
+- **Status:** Implemented
+- **User-facing:** [skills.md - Passing a Bundled File to a Tool](../skills.md#passing-a-bundled-file-to-a-tool); [file_transfer.md](../file_transfer.md)
 - **Issue:** [epam/ai-dial-quickapps-backend#420](https://github.com/epam/ai-dial-quickapps-backend/issues/420)
 - **Scope:** An agent refers to a file bundled with a DIAL skill (typically a script) in a tool call, and the file
   reaches an **external MCP server** (a code interpreter) unchanged, without its content passing through the model.
