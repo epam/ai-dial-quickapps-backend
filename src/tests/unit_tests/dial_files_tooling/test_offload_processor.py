@@ -100,7 +100,7 @@ class TestToolCallResultOffloadProcessor:
     async def test_upload_failure_returns_original(self):
         content = "x" * 200
         result = ToolCallResult(content=content, content_type="text/plain")
-        svc = MagicMock()
+        svc = MagicMock(spec=AttachmentService)
         svc.upload_appdata_attachment = AsyncMock(side_effect=RuntimeError("storage down"))
         proc = ToolCallResultOffloadProcessor(config=_make_config(), attachment_service=svc)
         out = await proc.process(result, _make_ctx())
@@ -112,7 +112,7 @@ class TestToolCallResultOffloadProcessor:
         result = ToolCallResult(content=content, content_type="text/plain")
         no_url_attachment = MagicMock()
         no_url_attachment.url = None
-        svc = MagicMock()
+        svc = MagicMock(spec=AttachmentService)
         svc.upload_appdata_attachment = AsyncMock(return_value=no_url_attachment)
         proc = ToolCallResultOffloadProcessor(config=_make_config(), attachment_service=svc)
         out = await proc.process(result, _make_ctx())

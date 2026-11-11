@@ -128,7 +128,9 @@ class AttachmentService:
                     sanitize_url(attachment.url),
                 )
             except Exception:
-                logger.exception(
-                    "Exception during uploading attachment to DIAL. Original attachment left in place."
+                # Handled: the attachment keeps its inline data (CODESTYLE §9: WARNING).
+                logger.warning(
+                    "Could not upload the attachment to DIAL; the original attachment is left in place",
+                    exc_info=True,
                 )
         return attachment

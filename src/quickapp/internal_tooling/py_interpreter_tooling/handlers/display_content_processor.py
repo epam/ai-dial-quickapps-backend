@@ -52,15 +52,15 @@ class DisplayContentProcessor:
 
         for media_type, data in content_dict.items():
             if media_type in SUPPORTED_DISPLAY_MEDIA_TYPES:
-                bucket_url = await self._publish_to_bucket(media_type, data)
+                url = await self._upload_output(media_type, data)
 
-                if media_type and bucket_url:
-                    attachment = Attachment(type=media_type, url=bucket_url)
+                if media_type and url:
+                    attachment = Attachment(type=media_type, url=url)
                     attachments.append(attachment)
 
         return attachments
 
-    async def _publish_to_bucket(self, mime_type: str, data: str | dict[str, Any]) -> str:
+    async def _upload_output(self, mime_type: str, data: str | dict[str, Any]) -> str:
         uploaded = await self.__attachment_service.upload_output_bytes(
             data=self._prepare_content(mime_type, data),
             content_type=mime_type,
