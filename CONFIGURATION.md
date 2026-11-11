@@ -261,7 +261,7 @@ The project contains predefined configs of application and predefined tools
 |----------------|----------|---------|----------------------------------------------------------------------------------------------------------|------------------|---------------|
 | deployment     | Yes      | Object  | The DIAL deployment configuration. See [Deployment configuration](#deployment-configuration)             | -                | -             |
 | system_prompt  | Yes      | Object  | The configuration for the system prompt. See [System prompt configuration](#system-prompt-configuration) | -                | -             |
-| max_iterations | No       | Integer | The max count of orchestrator(agent) operations. -1 value for infinite                                   | Integer          | 15            |
+| max_iterations | No       | Integer | The max count of orchestrator(agent) operations                                                            | Integer          | 15            |
 | attachment_strategy | No  | Object  | How the orchestrator receives request-scoped attachments. See [Attachment strategy](#attachment-strategy-configuration) | - | `null` |
 | tool_discovery | No       | Object  | Dynamic tool discovery configuration. See [Tool discovery configuration](#tool-discovery-configuration) | -   | `null`        |
 
@@ -333,11 +333,18 @@ With custom fields sample:
 
 #### System prompt configuration
 
-| Field     | Required                    | Type                 | Description                                                      | Available Values | Default Value |
-|-----------|-----------------------------|----------------------|------------------------------------------------------------------|------------------|---------------|
-| type      | Yes                         | String               | The type of the System prompt                                    | `dial`, `custom` | -             |
-| variables | Yes                         | Dict[String, String] | Dict with variables that should be replaced in the system prompt | -                | -             |
-| content   | Yes (if `type` is `custom`) | String               | The system prompt itself                                         | -                | -             |
+| Field     | Required                        | Type                 | Description                                                      | Available Values               | Default Value |
+|-----------|---------------------------------|----------------------|------------------------------------------------------------------|--------------------------------|---------------|
+| type      | Yes                             | String               | The type of the System prompt                                    | `dial`, `custom`, `predefined` | -             |
+| variables | Yes (if `type` is `custom`)     | Dict[String, String] | Dict with variables that should be replaced in the system prompt | -                              | -             |
+| content   | Yes (if `type` is `custom`)     | String               | The system prompt itself                                         | -                              | -             |
+| path      | Yes (if `type` is `dial`)       | String               | Relative prompt URL in DIAL (e.g. `prompts/<bucket>/<path>`)     | -                              | -             |
+| template  | Yes (if `type` is `predefined`) | String               | The predefined template name for a system prompt                 | -                              | -             |
+
+A `dial` prompt is loaded from DIAL on each request. If the orchestrator's prompt cannot be loaded or is empty, the request fails. If a deployment tool's prompt cannot be loaded, the tool runs without it and the problem is shown in the "Initialization issues" stage.
+
+A deployment tool's prompt is sent as a `system` message. If the deployment is another Quick App, that app rejects
+the request with HTTP 400 unless its operator set `ALLOW_OVERRIDE_SYSTEM_MESSAGE=true`.
 
 <details>
 <summary><b>System prompt configuration JSON sample</b></summary>
@@ -352,6 +359,17 @@ Custom system prompt:
       "reason_of_life": "42"
     },
     "content": "This is base Agent prompt. The reason of life is {reason_of_life}"
+  }
+}
+```
+
+DIAL system prompt:
+
+```json
+{
+  "system_prompt": {
+    "type": "dial",
+    "path": "prompts/<bucket>/<path>"
   }
 }
 ```
@@ -477,7 +495,7 @@ external-fetch overrides; stage display falls back to `info` unless `DEFAULT_STA
 | `external_url_fetch`     | No       | Object         | Per-app override for fetching external (non-DIAL) URLs. See [External URL fetch configuration](#external-url-fetch-configuration).                                           | `{}`                                   |
 | `tool_access_filter`     | No       | Object or null | Per-user tool access filtering: hide DIAL deployment, application and `dial-mcp` toolset tools the calling user cannot access. See [Tool access filter configuration](#tool-access-filter-configuration). | `null`                                 |
 | `stage_display`          | No       | Object         | Which tool-execution stages appear in the DIAL UI. See [Stage display configuration](#stage-display-configuration).                                                          | `{"level": "info"}`                    |
-| `dial_files`             | No       | Object or null | Built-in DIAL workspace file tools. `null` (default) disables them. See [DIAL files configuration](#dial-files-configuration).                                               | `null`                                 |
+| `dial_files`             | No       | Object or null | Built-in DIAL workspace file tools. Omitted (default) exposes all tools, same as `{}`; `null` is accepted for backward compatibility and treated the same. See [DIAL files configuration](#dial-files-configuration). | `{}`                                   |
 | `web_fetch`              | No       | Object or null | Built-in `internal_web_fetch` tool. See [Web fetch configuration](#web-fetch-configuration).                                                                                 | `null`                                 |
 | `representation_tooling` | No       | Object or null | Tools that control how the agent surfaces output (e.g. add attachment to the answer). See [Representation tooling](#representation-tooling-configuration).                   | `null`                                 |
 
@@ -623,12 +641,17 @@ Controls which tool-execution stages are surfaced in the DIAL UI. The deployment
 
 #### DIAL files configuration
 
-Opt in to the built-in workspace file tools (`internal_file_*`). Omit `dial_files` or set it to
-`null` to leave file tools off. Setting `"dial_files": {}` enables **all** tools with defaults.
+The built-in workspace file tools (`internal_file_*`) are on by default: an app that omits `dial_files`
+behaves exactly like `"dial_files": {}` and gets **all** tools, including the mutating ones (`write`,
+`edit`, `delete`, `copy`, `move`). To expose only the non-mutating tools set
+`"enabled_tools": "read_only"`. There is no dedicated option to turn the file tools off.
+
+`"dial_files": null` is still accepted so that existing manifests and the published schema keep
+validating, but it is treated as the default. It used to mean "file tools off"; it no longer does.
 
 | Field                      | Required | Type                         | Description                                                                                                                                 | Default Value |
 |----------------------------|----------|------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------|---------------|
-| `enabled_tools`            | No       | `"all"` or Array[String]     | Which tools to expose. Short names: `list`, `read_lines`, `read_chars`, `search`, `find`, `write`, `edit`, `delete`, `copy`, `move`.     | `"all"`       |
+| `enabled_tools`            | No       | `"all"`, `"read_only"` or Array[String] | Which tools to expose. `"all"` = every tool, `"read_only"` = `list`, `read_lines`, `read_chars`, `search`, `find`. A list restricts to the given short names: `list`, `read_lines`, `read_chars`, `search`, `find`, `write`, `edit`, `delete`, `copy`, `move`. | `"all"` (also when `dial_files` is omitted) |
 | `agent_home_dir`           | No       | String                       | Relative sub-directory under appdata used as the root for relative paths. Must end with `/`; no `files/…`, leading `/`, or `..`. Empty = appdata root. | `""`          |
 | `max_files_scanned`        | No       | Integer (`≥ 1`)              | Folder-mode `search` cap: max files downloaded/scanned per call before truncation.                                                          | `50`          |
 | `tool_call_result_offload` | No       | Object or null               | `[Preview]` Offload oversized tool responses to a DIAL file. See below. Requires `read_lines` and `search` in `enabled_tools`.                          | defaults (see below) |
@@ -643,6 +666,8 @@ excluded from offload, so the cap is what keeps their output small.
 ##### Tool-call result offload
 
 Nested under `features.dial_files.tool_call_result_offload`. Requires `ENABLE_PREVIEW_FEATURES=true`.
+An app without a `dial_files` block (or with `"dial_files": null` / `{}`) gets the default block, so
+offload follows the env default below and does not need an explicit `dial_files` entry.
 Env defaults: `TOOL_CALL_RESULT_OFFLOAD__*`.
 
 Independently of this feature, a response of any tool that is still longer than 80000 characters after
@@ -1279,6 +1304,7 @@ The same as ApiKeyAuthorization but for mcp location is not configurable and alw
 | propagate_annotations_to_choice | No                          | Boolean | Only for `deployment-tool` and `dial-deployment-simple`. Propagate citation annotations returned by the deployment to the app's answer. See [Citation annotations](#citation-annotations)               | `true`, `false`  | `null`        |
 | conversation_mode               | No                          | Object  | Resumable subagent conversation. Applies to `deployment-tool`, `dial-deployment-simple`, and `dial-app` (chat-completion branch only). See [Conversation mode](#conversation-mode) | - | `null` |
 | content_propagation             | No                          | Object  | Header / **deprecated** history propagation. Prefer `conversation_mode`. See [Content propagation](#content-propagation-deprecated-history-flag) | - | `null` |
+| system_prompt                   | No                          | Object  | Only for `deployment-tool`. Sent to the deployment as a system message. Accepts `custom` and `dial`, not `predefined`. See [System prompt configuration](#system-prompt-configuration) | - | `null` |
 
 #### Conversation mode
 
@@ -1785,8 +1811,8 @@ your gateways or downstream services expect.
 | `LOG_PAYLOADS`                             | `false`                                                         | No       | Emit payload content (message bodies, tool-call arguments, tool/LLM response bodies) at DEBUG. When `false`, no payload content is logged at **any** level and the payload-capable third-party loggers (`openai`/`httpx`/`httpcore`) are capped at INFO. **Local development only** — see [Payload Logging](#payload-logging). |
 | `LOG_PAYLOADS_MAX_LENGTH`                  | `2000`                                                          | No       | Per-field character cap applied to each payload value when `LOG_PAYLOADS=true`; longer values are truncated. Inert when `LOG_PAYLOADS=false`. |
 | **Agent**                                  |                                                                 |          |                                                                                                              |
-| `DEFAULT_AGENT_MAX_ITERATIONS`             | `15`                                                            | No       | Maximum number of orchestrator iterations (`-1` for infinite)                                                |
-| `DEFAULT_ORCHESTRATOR_DEPLOYMENT_ID`       | —                                                               | Yes      | Default DIAL deployment id used as the orchestrator model when a QuickApp manifest omits `orchestrator.deployment`. Also surfaces as the JSON-schema `default` for that field so DIAL Core can pre-fill new manifests. Apps can override per-app. |
+| `DEFAULT_AGENT_MAX_ITERATIONS`             | `15`                                                            | No       | Maximum number of orchestrator iterations per turn                                                           |
+| `DEFAULT_ORCHESTRATOR_DEPLOYMENT_ID`       | —                                                               | No       | Default DIAL deployment id used as the orchestrator model when a QuickApp manifest omits `orchestrator.deployment`. When unset, every manifest must set `orchestrator.deployment`. Also surfaces as the JSON-schema `default` for that field so DIAL Core can pre-fill new manifests. Apps can override per-app. |
 | `SHOW_USAGE_STATISTICS`                    | `false`                                                         | No       | Show a "Usage Statistics" stage (a row per model with tokens and cost, including models used by nested apps) and request usage from deployment tools |
 | `SHOW_EXECUTION_TIME_STAGE`                | `false`                                                         | No       | Show execution time stage in the UI                                                                          |
 | `ALLOW_OVERRIDE_SYSTEM_MESSAGE`            | `false`                                                         | No       | Security switch (deployment-wide; apps cannot opt out once enabled). When `false` (default), a request whose `system` message has text is rejected with HTTP 400 so the client knows the application uses its own configured system prompt. When `true`, the inbound system message replaces only the configured prompt; other injected parts (skills, MCP resources, etc.) are still appended. |
@@ -1806,7 +1832,7 @@ your gateways or downstream services expect.
 | `TOOL_CALL_RESULT_OFFLOAD__ENABLED_BY_DEFAULT` | `true`                                                          | No       | Default value of the per-app `enabled` flag (`features.dial_files.tool_call_result_offload.enabled`). Apps override per-app; `enabled: false` disables offload for that app. |
 | `TOOL_CALL_RESULT_OFFLOAD__SIZE_THRESHOLD` | `40000`                                                         | No       | Default byte threshold above which a tool-call response is offloaded to a DIAL file. Apps override per-app via `features.dial_files.tool_call_result_offload.size_threshold`. |
 | `TOOL_CALL_RESULT_LIMIT__MAX_CHARS`        | `80000`                                                         | No       | Maximum length, in characters, of any tool response that reaches the model. A longer response (still over the limit after offload) is replaced by a "response too large" error. Must be at least `TOOL_CALL_RESULT_OFFLOAD__SIZE_THRESHOLD`, and at least any per-app `size_threshold`. |
-| `TOOL_CALL_RESULT_OFFLOAD__EXCLUDED_TOOLS` | `[]`                                                            | No       | Default JSON list of **additional** tool names exempt from offloading. The read-back tools (`internal_file_read_lines`, `internal_file_read_chars`, `internal_file_search`) are always excluded regardless of this value, so a large read-back slice is never re-offloaded. Apps add more per-app via `features.dial_files.tool_call_result_offload.excluded_tools`. |
+| `TOOL_CALL_RESULT_OFFLOAD__EXCLUDED_TOOLS` | `[]`                                                            | No       | Default JSON list of **additional** tool names exempt from offloading. The read-back tools (`internal_file_read_lines`, `internal_file_read_chars`, `internal_file_search`) and `read_skill` are always excluded regardless of this value, so a large read-back slice is never re-offloaded. Apps add more per-app via `features.dial_files.tool_call_result_offload.excluded_tools`. |
 | **External URL Egress**                    |                                                                 |          |                                                                                                              |
 | `EXTERNAL_URL_FETCH_ENABLED`                 | `false`                                                         | No       | Admin cap on fetching external (non-DIAL) URLs. When `false` (default), no app may fetch external URLs regardless of its manifest; the deployment-handoff branch (deployments with `features.url_attachments`) is unaffected. Apps can opt out per-app via `features.external_url_fetch.enabled=false` even when the admin allows. |
 | `EXTERNAL_URL_FETCH_HOST_ALLOWLIST`        | —                                                               | No       | Comma-separated allowlist of host patterns for external URL fetches. Unset (default) means no admin-level host restriction. Patterns: exact host (`example.com`) or `*.example.com` for any subdomain. Re-checked on every redirect hop. Per-app `features.external_url_fetch.host_allowlist` narrows further (intersection) but never expands. |

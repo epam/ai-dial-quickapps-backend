@@ -14,6 +14,7 @@ from quickapp.config.prompt import CustomSystemPromptConfig
 from quickapp.config.tools.base import AttachmentConfig
 from quickapp.config.toolsets.toolset import ToolSet
 from quickapp.dial_core_services.deployment_names_service import DeploymentNamesCoreService
+from quickapp.dial_core_services.dial_prompt_loader import DialPromptLoader
 from quickapp.shared.user_access import ToolAccessFilter
 from quickapp.skills import ResolvedSkill, SkillFileReader
 from quickapp.skills.skill_metadata import SkillMetadata
@@ -106,6 +107,12 @@ def make_deployment_names_service(names: list[str] | Exception) -> MagicMock:
     else:
         service.list_names = AsyncMock(return_value=names)
     return service
+
+
+def make_prompt_loader(content: str | None = None, error: Exception | None = None) -> MagicMock:
+    loader = MagicMock(spec=DialPromptLoader)
+    loader.load = AsyncMock(return_value=content, side_effect=error)
+    return loader
 
 
 def make_access_filter(

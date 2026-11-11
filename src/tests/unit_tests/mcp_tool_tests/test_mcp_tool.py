@@ -30,6 +30,8 @@ from quickapp.config.tools.base import AttachmentConfig
 from quickapp.config.toolsets.mcp import MCPProtocol, MCPServerInfo, MCPToolSet
 from quickapp.dial_core_services._interactive_login_settings import InteractiveLoginSettings
 from quickapp.dial_core_services.attachment_service import AttachmentService
+from quickapp.dial_core_services.storage._v1_file_storage import V1FileStorage
+from quickapp.dial_core_services.storage.file_storage import FileStorage
 from quickapp.mcp_tooling import MCPToolingModule
 from tests.unit_tests.common import create_test_app
 from tests.unit_tests.common.common import create_app_configuration, noop_timeout_resolver
@@ -152,6 +154,7 @@ async def test_mcp_tool(mock_get_tools_list, mock_call_mcp_tool):
         binder.bind(PerformanceTimer, to=PerformanceTimer)
         binder.bind(StageDisplayLevel, to=InstanceProvider(StageDisplayLevel.INFO))
         binder.bind(ForwardedHeaders, to=InstanceProvider(None))
+        binder.bind(FileStorage, to=V1FileStorage)  # type: ignore[type-abstract]
         binder.bind(ACCEPT_LANGUAGE, to=InstanceProvider(None))
         binder.bind(CLIENT_CHANNEL_ID, to=InstanceProvider(None))
         binder.bind(InteractiveLoginSettings, to=InteractiveLoginSettings())
@@ -326,6 +329,7 @@ async def test_mcp_tool_narrow_supported_types_skips_non_matching(
         binder.bind(PerformanceTimer, to=PerformanceTimer)
         binder.bind(StageDisplayLevel, to=InstanceProvider(StageDisplayLevel.INFO))
         binder.bind(ForwardedHeaders, to=InstanceProvider(None))
+        binder.bind(FileStorage, to=V1FileStorage)  # type: ignore[type-abstract]
         binder.bind(ACCEPT_LANGUAGE, to=InstanceProvider(None))
         binder.bind(CLIENT_CHANNEL_ID, to=InstanceProvider(None))
         binder.bind(InteractiveLoginSettings, to=InteractiveLoginSettings())

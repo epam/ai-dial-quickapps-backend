@@ -5,6 +5,7 @@ from aidial_client._exception import DialException, EtagMismatchError, ResourceN
 
 from quickapp.common.state_holder import StateHolder
 from quickapp.dial_core_services.dial_file_service import DialFileService
+from quickapp.dial_core_services.storage._v1_file_storage import V1FileStorage
 from quickapp.shared.config_resolvers.file_loading_size_limit_resolver import (
     FileLoadingSizeLimitResolver,
 )
@@ -30,9 +31,11 @@ def _make_mock_dial_client(
     mock_files.download = AsyncMock(return_value=mock_download_result)
     mock_files.upload = AsyncMock(return_value=mock_metadata)
 
-    # The service fetches file/folder metadata via metadata.get (not files.get_metadata).
+    # Downloads read metadata via files.get_metadata (which goes through metadata.get);
+    # listings call metadata.get directly to keep the trailing slash.
     mock_metadata_resource = MagicMock()
     mock_metadata_resource.get = AsyncMock(return_value=mock_metadata)
+    mock_files.get_metadata = mock_metadata_resource.get
 
     mock_bucket = MagicMock()
     mock_bucket.appdata = None
@@ -61,10 +64,11 @@ def _make_service(
     state_holder: StateHolder | None = None,
     size_limit_resolver: MagicMock | None = None,
 ) -> DialFileService:
+    dial_client = dial_client or _make_mock_dial_client()
     return DialFileService(
-        dial_client=dial_client or _make_mock_dial_client(),
+        dial_client=dial_client,
+        storage=V1FileStorage(dial_client, size_limit_resolver or _make_resolver()),
         state_holder=state_holder or StateHolder(),
-        size_limit_resolver=size_limit_resolver or _make_resolver(),
     )
 
 
@@ -79,7 +83,7 @@ class TestDownloadFile:
 
         assert data == file_bytes
         assert metadata is not None
-        mock_dial_client.metadata.get.assert_awaited_once_with("files", "files/test.txt")
+        mock_dial_client.files.get_metadata.assert_awaited_once_with("files/test.txt")
         mock_dial_client.files.download.assert_awaited_once_with("files/test.txt")
 
     @pytest.mark.asyncio
@@ -120,10 +124,13 @@ class TestDownloadFile:
 
     @pytest.mark.asyncio
     async def test_base_dialexception_404_raises_resource_not_found(self):
-        # metadata.get has no on_http_error handler, so a real 404 arrives as a base
-        # DialException. It must be normalized to ResourceNotFoundError.
+        # files.get_metadata goes through metadata.get, which has no on_http_error handler,
+        # so a real 404 arrives as a base DialException. It must be normalized to
+        # ResourceNotFoundError.
         mock_client = _make_mock_dial_client()
-        mock_client.metadata.get = AsyncMock(side_effect=DialException(message="", status_code=404))
+        mock_client.files.get_metadata = AsyncMock(
+            side_effect=DialException(message="", status_code=404)
+        )
         svc = _make_service(dial_client=mock_client)
 
         with pytest.raises(ResourceNotFoundError):

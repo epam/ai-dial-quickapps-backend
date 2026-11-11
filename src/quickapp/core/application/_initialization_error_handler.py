@@ -8,6 +8,7 @@ from quickapp.common.exceptions import (
     HookInitializationException,
     InitializationException,
     OffloadConfigurationException,
+    OrchestratorSystemPromptException,
     SkillCatastrophicInitializationException,
     SkillInitializationException,
     ToolInitializationException,
@@ -18,6 +19,7 @@ from quickapp.common.utils import fenced_code_block
 logger = logging.getLogger(__name__)
 
 _STAGE_NAME = "Initialization issues"
+_SYSTEM_PROMPT_SECTION = "#### System prompt"
 _TOOL_SECTION = "#### Tool initialization"
 _HOOK_SECTION = "#### Hook initialization"
 _SKILL_SECTION = "#### Skill loading"
@@ -53,6 +55,7 @@ class _InitializationErrorHandler:
         if not exceptions:
             return
 
+        system_prompt_lines: list[str] = []
         tool_lines: list[str] = []
         hook_lines: list[str] = []
         catastrophic_lines: list[str] = []
@@ -61,7 +64,9 @@ class _InitializationErrorHandler:
         offload_lines: list[str] = []
         deployment_parameter_lines: list[str] = []
         for exc in exceptions:
-            if isinstance(exc, ToolInitializationException):
+            if isinstance(exc, OrchestratorSystemPromptException):
+                system_prompt_lines.append(f"- {exc}")
+            elif isinstance(exc, ToolInitializationException):
                 tool_lines.append(f"- **{exc.tool_name}{exc.toolset_name}**: {exc}")
                 if exc.details:
                     tool_lines.append(fenced_code_block(exc.details))
@@ -94,6 +99,8 @@ class _InitializationErrorHandler:
                 )
 
         sections: list[list[str]] = []
+        if system_prompt_lines:
+            sections.append([_SYSTEM_PROMPT_SECTION, *system_prompt_lines])
         if tool_lines:
             sections.append([_TOOL_SECTION, *tool_lines])
         if hook_lines:

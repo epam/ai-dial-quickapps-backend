@@ -3,6 +3,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from quickapp.dial_core_services.dial_downloader import DialDownloader
+from quickapp.dial_core_services.storage._v1_file_storage import V1FileStorage
+from quickapp.dial_core_services.storage.file_storage import FileStorage
 from quickapp.shared.config_resolvers.file_loading_size_limit_resolver import (
     FileLoadingSizeLimitResolver,
 )
@@ -40,8 +42,9 @@ def _make_downloader(
     size_limit_resolver: MagicMock | None = None,
 ) -> DialDownloader:
     return DialDownloader(
-        dial_client=dial_client or _make_mock_dial_client(),
-        size_limit_resolver=size_limit_resolver or _make_resolver(),
+        storage=V1FileStorage(
+            dial_client or _make_mock_dial_client(), size_limit_resolver or _make_resolver()
+        )
     )
 
 
@@ -79,3 +82,13 @@ async def test_fetch_uses_resolver_value_for_limit():
 
     with pytest.raises(ValueError, match="exceeds the limit of 1024"):
         await downloader.fetch("files/medium.bin")
+
+
+@pytest.mark.asyncio
+async def test_fetch_delegates_to_the_storage():
+    storage = MagicMock(spec=FileStorage)
+    storage.download = AsyncMock(return_value=(b"data", MagicMock()))
+
+    await DialDownloader(storage=storage).fetch("projects/b/p/files/context/a.csv")
+
+    storage.download.assert_awaited_once_with("projects/b/p/files/context/a.csv")

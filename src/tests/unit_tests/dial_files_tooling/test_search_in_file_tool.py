@@ -6,7 +6,7 @@ from aidial_client._exception import ResourceNotFoundError
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.tool_names import INTERNAL_FILE_READ_CHARS_TOOL_NAME
 from quickapp.common.utils import fenced_code_block
-from quickapp.dial_core_services.dial_file_service import FolderEntry
+from quickapp.dial_core_services.storage.file_storage import FolderEntry
 from quickapp.dial_files_tooling._search_in_file_tool import _SearchInFileTool
 from quickapp.dial_files_tooling._tool_configs import SEARCH_IN_FILE_TOOL_CONFIG
 from quickapp.dial_files_tooling._utils import MAX_LINE_CHARS, MAX_OUTPUT_CHARS

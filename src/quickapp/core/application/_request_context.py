@@ -12,6 +12,7 @@ from quickapp.common import (
     ForwardedHeaders,
 )
 from quickapp.common.messages_mixin import MessagesMixin, RequestMessagesMixin
+from quickapp.common.project_context import PROJECT_CONTEXT
 from quickapp.config.application import ApplicationConfig
 
 # The _RequestContext class serves as a temporary storage for data extracted from a request.
@@ -59,6 +60,7 @@ class _RequestContext(MessagesMixin, RequestMessagesMixin):
     _extra_tools: list[Tool] | None = None
     _accept_language: ACCEPT_LANGUAGE = None
     _timezone_header_value: TIMEZONE_HEADER_VALUE = None
+    _project_context: PROJECT_CONTEXT = None
 
     @property
     def bearer(self) -> DIAL_BEARER:
@@ -180,3 +182,13 @@ class _RequestContext(MessagesMixin, RequestMessagesMixin):
         if self._timezone_header_value is not None:
             raise RuntimeError("Timezone header value is already set")
         self._timezone_header_value = value
+
+    @property
+    def project_context(self) -> PROJECT_CONTEXT:
+        return self._project_context
+
+    @project_context.setter
+    def project_context(self, value: PROJECT_CONTEXT) -> None:
+        if self._project_context is not None:
+            raise RuntimeError("Project context is already set")
+        self._project_context = value
