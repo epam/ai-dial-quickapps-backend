@@ -148,7 +148,7 @@ class TestWriteFile:
             content="hello",
         )
 
-        assert result == "files/b/generated-files/f.txt"
+        assert result.url == "files/b/generated-files/f.txt"
         mock_client.files.upload.assert_awaited_once()
         call_kwargs = mock_client.files.upload.call_args
         assert call_kwargs.kwargs.get("etag_if_none_match") == "*"
@@ -187,7 +187,7 @@ class TestWriteFile:
             url="files/b/generated-files/notes.md",
             content="# Notes\n",
         )
-        assert result == "files/b/generated-files/notes.md"
+        assert result.url == "files/b/generated-files/notes.md"
 
     @pytest.mark.asyncio
     async def test_overwrite_uploads_unconditionally(self):
@@ -199,7 +199,7 @@ class TestWriteFile:
 
         result = await svc.write_file(url="files/b/new.txt", content="hello", overwrite=True)
 
-        assert result == "files/b/new.txt"
+        assert result.url == "files/b/new.txt"
         mock_client.metadata.get.assert_not_called()
         mock_client.files.upload.assert_awaited_once()
         call_kwargs = mock_client.files.upload.call_args.kwargs

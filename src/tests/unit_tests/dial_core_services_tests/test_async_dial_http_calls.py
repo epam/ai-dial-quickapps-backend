@@ -393,9 +393,13 @@ class TestAttachmentServiceHttpCalls:
             type="text/plain",
         )
 
-        svc = AttachmentService(
-            dial_client=_dial_client(), file_service=MagicMock(spec=DialFileService), project=None
+        client = _dial_client()
+        file_service = DialFileService(
+            dial_client=client,
+            storage=V1FileStorage(client, _file_loading_size_limit_resolver()),
+            state_holder=StateHolder(),
         )
+        svc = AttachmentService(dial_client=client, file_service=file_service, project=None)
         result = await svc.upload_output_attachment(attachment)
 
         assert result.url == "files/my-bucket/test.txt"

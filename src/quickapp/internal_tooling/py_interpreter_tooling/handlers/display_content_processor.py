@@ -61,11 +61,12 @@ class DisplayContentProcessor:
         return attachments
 
     async def _publish_to_bucket(self, mime_type: str, data: str | dict[str, Any]) -> str:
-        return await self.__attachment_service.upload_output_bytes(
+        uploaded = await self.__attachment_service.upload_output_bytes(
             data=self._prepare_content(mime_type, data),
             content_type=mime_type,
             filename=generate_attachment_filename(mime_type),
         )
+        return uploaded.url
 
     @staticmethod
     def _prepare_content(mime_type: str, data: str | dict[str, Any]) -> bytes:
