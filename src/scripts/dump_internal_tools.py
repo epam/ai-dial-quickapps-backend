@@ -4,6 +4,9 @@
 # ``_provide_mcp_tools``). Each entry includes ``name``, ``description``, and the
 # parameter object schema
 #
+# Note: the string "dump-internal-tools" used throughout this script (deployment ids, keys, URLs,
+# message content) is a dummy placeholder name; it never refers to a real resource.
+#
 # Usage:
 #   python dump_internal_tools.py docs/generated-internal-tools.json
 #   python dump_internal_tools.py docs/generated-internal-tools.json --check

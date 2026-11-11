@@ -18,16 +18,11 @@ _SYSTEM_PROMPT = (
     "You are a routing assistant. Given a user request, pick the {kind}s from the catalog below "
     "that can help to fulfil it: at most {limit}, best match first. "
     "Pick only {kind}s that clearly fit; if none fits, return no matches. "
-    'Respond with a JSON object {{"matches": [{{"name": "<{kind} name>", "score": <number 0..1>}}]}} '
-    "only, where name is written exactly as in the catalog and score is how well the {kind} fits "
-    "the request (1 is a perfect fit). No explanation, no markdown.\n\n"
+    "For each pick, give its name exactly as written in the catalog and a score from 0 to 1 for "
+    "how well the {kind} fits the request (1 is a perfect fit).\n\n"
     "Catalog:\n{catalog}"
 )
-_USER_PROMPT = (
-    "Request: {query}\n\n"
-    'Answer with a JSON object like {{"matches": [{{"name": "name_a", "score": 0.9}}]}}, '
-    'or {{"matches": []}} if none fits.'
-)
+_USER_PROMPT = "Request: {query}"
 _MATCHES_KEY = "matches"
 _RESPONSE_FORMAT_NAME = "tool_routing"
 

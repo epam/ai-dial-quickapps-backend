@@ -5,6 +5,7 @@ import pytest
 from quickapp.tool_discovery._routing_prompt import (
     build_response_format,
     build_system_prompt,
+    build_user_prompt,
     parse_selection,
 )
 
@@ -75,11 +76,15 @@ class TestParseSelection:
 
 
 class TestBuildSystemPrompt:
-    def test_asks_for_the_same_object_format_the_schema_describes(self):
+    def test_lists_catalog_and_limit_without_a_json_object(self):
         prompt = build_system_prompt([{"name": "tool_a", "description": "A"}], "tool", 3)
 
-        assert '{"matches": [{"name": "<tool name>", "score": <number 0..1>}]}' in prompt
         assert "- tool_a: A" in prompt
+        assert "at most 3" in prompt
+        assert '{"matches"' not in prompt
+
+    def test_user_prompt_is_the_bare_request(self):
+        assert build_user_prompt("find x") == "Request: find x"
 
 
 class TestBuildResponseFormat:
