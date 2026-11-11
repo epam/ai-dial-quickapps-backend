@@ -3,7 +3,7 @@ import logging
 from injector import inject
 
 from quickapp.common.exceptions import InvalidToolCallParameterException
-from quickapp.file_transfer import FileSource
+from quickapp.shared.file_transfer import FileSource
 from quickapp.skills.registry import SkillsRegistry
 from quickapp.skills.skill_file_url import is_skill_reference, parse_skill_reference
 

@@ -4,9 +4,9 @@ from fastapi_injector import request_scope
 from injector import Binder, Module, multiprovider
 
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
-from quickapp.file_transfer._file_argument_transformer import _FileArgumentTransformer
-from quickapp.file_transfer._file_loader_service import FileLoaderService
-from quickapp.file_transfer.file_source import FileSource
+from quickapp.shared.file_transfer._file_argument_transformer import _FileArgumentTransformer
+from quickapp.shared.file_transfer._file_loader_service import FileLoaderService
+from quickapp.shared.file_transfer.file_source import FileSource
 
 logger = logging.getLogger(__name__)
 

@@ -9,12 +9,12 @@ from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.state_holder import StateHolder
 from quickapp.common.url_classification import UrlScheme, classify_url, unsupported_scheme_error
 from quickapp.dial_core_services.dial_downloader import DialDownloader
-from quickapp.file_transfer.file_source import FileSource
 from quickapp.shared.external_fetch.external_url_fetcher import (
     ExternalFetchDisabledError,
     ExternalFetchError,
     ExternalUrlFetcher,
 )
+from quickapp.shared.file_transfer.file_source import FileSource
 
 logger = logging.getLogger(__name__)
 

@@ -10,10 +10,10 @@ from quickapp.common.abstract.base_tool_argument_transformer import ToolArgument
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.state_holder import StateHolder
 from quickapp.dial_core_services.dial_downloader import DialDownloader
-from quickapp.file_transfer import FileSource, FileTransferModule
-from quickapp.file_transfer._file_loader_service import FileLoaderService
-from quickapp.file_transfer._file_prefix_handlers import FilePrefixHandlers
 from quickapp.shared.external_fetch.external_url_fetcher import ExternalUrlFetcher
+from quickapp.shared.file_transfer import FileSource, FileTransferModule
+from quickapp.shared.file_transfer._file_loader_service import FileLoaderService
+from quickapp.shared.file_transfer._file_prefix_handlers import FilePrefixHandlers
 from quickapp.skills.file_reference._skill_file_source import _SkillFileSource
 from quickapp.skills.file_reference.skill_file_reference_module import SkillFileReferenceModule
 from quickapp.skills.registry._skills_registry import SkillsRegistry

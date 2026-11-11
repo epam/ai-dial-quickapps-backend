@@ -11,11 +11,11 @@ from quickapp.common.state_holder import StateHolder
 from quickapp.config.tools.mcp import MCPTool
 from quickapp.dial_core_services.attachment_service import AttachmentService
 from quickapp.dial_core_services.dial_file_service import DialFileService
-from quickapp.file_transfer._file_argument_transformer import _FileArgumentTransformer
-from quickapp.file_transfer._file_loader_service import FileLoaderService
 from quickapp.mcp_tooling._mcp_stage_wrapper import _MCPStageWrapper
 from quickapp.mcp_tooling._mcp_tool import _MCPTool
 from quickapp.mcp_tooling._mcp_toolset_client import _MCPToolsetClient
+from quickapp.shared.file_transfer._file_argument_transformer import _FileArgumentTransformer
+from quickapp.shared.file_transfer._file_loader_service import FileLoaderService
 from tests.unit_tests.common.common import noop_timeout_resolver
 
 DIAL_URL = "https://dial.example.com"

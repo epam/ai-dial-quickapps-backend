@@ -5,7 +5,7 @@ from injector import Binder, Module, multiprovider
 
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.abstract.base_transformer import MessagesTransformer
-from quickapp.file_transfer import FileSource
+from quickapp.shared.file_transfer import FileSource
 from quickapp.skills.file_reference._inject_skill_file_reference_instruction_transformer import (
     _InjectSkillFileReferenceInstructionTransformer,
 )
