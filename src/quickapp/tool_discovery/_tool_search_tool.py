@@ -91,6 +91,8 @@ class _ToolSearchTool(StagedBaseTool):
             return result
 
         routing = await self.__strategy.search(query)
+        if isinstance(stage_wrapper, _ToolSearchStageWrapper):
+            stage_wrapper.add_warnings(routing.warnings)
 
         discovered: list[str] = []
         new_definitions = []

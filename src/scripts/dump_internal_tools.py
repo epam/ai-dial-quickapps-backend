@@ -72,7 +72,7 @@ def build_dump_application_config() -> ApplicationConfig:
                 variables={},
             ),
             attachment_strategy=LazyOnDemandAttachmentStrategy(),
-            tool_discovery=ToolDiscoveryConfig(enabled=True),
+            tool_discovery=ToolDiscoveryConfig(enabled=True, service_model="dump-internal-tools"),
         ),
         contexts=[
             FileContextConfig(

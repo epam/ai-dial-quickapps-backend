@@ -359,25 +359,42 @@ When the orchestrator calls `tool_search(query)`, its handler delegates to a new
 history and no system prompt from the main request:
 
 ```
-model:   service_model (config: defaults to orchestrator deployment)
-system:  "You are a routing assistant. Given a user request, pick the tools from the catalog
-          below that can help to fulfil it: at most {limit}, best match first. ...
-          Respond with a JSON array of {name, score} objects only ...
-          Catalog:
-          - {name}: {description}
-          ..."                                 ← injected from DeferredToolsContext
-messages:[{"role": "user", "content": "Request: <query> ..."}]
-tools:   none
+model:           service_model (config: required when enabled)
+system:          "You are a routing assistant. Given a user request, pick the tools from the
+                  catalog below that can help to fulfil it: at most {limit}, best match first. ...
+                  Respond with a JSON object {"matches": [{"name", "score"}]} only ...
+                  Catalog:
+                  - {name}: {description}
+                  ..."                         ← injected from DeferredToolsContext
+messages:        [{"role": "user", "content": "Request: <query> ..."}]
+tools:           none
+response_format: json_schema (strict) for {"matches": [{"name": str, "score": number}]}
 ```
 
-The agent asks the model for a JSON array of `{"name", "score"}` objects (score 0..1) and keeps
-the known names scoring at least `score_threshold`, best first, at most `limit`. A bare string
-is accepted as a perfect fit, a score that is present but unreadable (non-numeric, `null`, NaN)
-rejects the pick, duplicates keep their best score, and errors or unparsable answers yield an
-empty result (fail-open). The call goes through
-`DEPLOYMENT_AZURE_CLIENT`, not the orchestrator client: the latter is pinned to the orchestrator
-deployment and would ignore `service_model`. Because this call carries no conversation history
-and no application system prompt, its token cost is bounded by the catalog size alone.
+The call always requests **structured output**: `response_format` carries the JSON schema of
+`RoutingSelection` (`{"matches": [{"name", "score"}]}`, `additionalProperties: false`, item
+definition inlined because not every provider resolves `$ref`). `service_model` must therefore
+support structured output. Names are plain strings rather than an `enum` of the catalog, since
+providers cap schema size and a large catalog would be rejected.
+
+The answer is validated against that schema (`parse_selection`). The agent keeps the known names
+scoring at least `score_threshold` (scores are clamped to 0..1), best first, at most `limit`;
+duplicates keep their best score. There is no lenient parsing: an answer that does not match the
+schema (e.g. the provider ignored `response_format`) rejects the whole answer and yields an empty
+result. There is no plain-text fallback or retry. The call is otherwise fail-open: any
+`openai.OpenAIError` or unparsable answer yields an empty result.
+
+An HTTP 400 from the routing model (typically a deployment without structured output support,
+though context-length and content-filter rejections also surface as 400) is additionally recorded
+as a warning on the returned `RoutingResult.warnings` (not as state on the shared agent, so concurrent
+searches never see each other's warnings). Strategies merge and de-duplicate the warnings of all their
+calls, and `_ToolSearchTool` hands them to `_ToolSearchStageWrapper.add_warnings`, which renders them on
+the stage, pointing at `tool_discovery.service_model`.
+
+The call goes through `DEPLOYMENT_AZURE_CLIENT`, not the orchestrator client: the latter is pinned
+to the orchestrator deployment and would ignore `service_model`. Because this call carries no
+conversation history and no application system prompt, its token cost is bounded by the catalog
+size alone.
 
 How many such calls a search makes, and over which part of the catalog, is decided by the
 configured [search strategy](#search-strategies).
@@ -452,6 +469,7 @@ Orchestrator — iteration 1
               model   = service_model
               system  = routing prompt + catalog from DeferredToolsContext
               message = "I need to query Salesforce contacts"
+              format  = structured output {"matches": [{"name", "score"}]}
               → ["sf_query_contacts", "sf_list_contacts"]
            _ToolSearchTool: names → full OpenAiToolConfigDicts, written into
            LazyLoadedToolsHolder (request-scoped; orchestrator is not involved)
@@ -513,10 +531,13 @@ eagerly, no discovery overhead.
 ```
 
 - `deferred: true` (or unset/`null`) opts the toolset into `DeferredToolsContext`. Default: `true` (omitting the field defers by default).
-- `service_model` names the DIAL deployment used for the `AnonymousAgent` chat completion.
-  When omitted, falls back to the orchestrator's own deployment.
+- `service_model` (**required when `enabled: true`**) names the DIAL deployment used for the
+  `AnonymousAgent` chat completion. It must support structured output (`response_format` with a
+  JSON schema); there is no fallback to the orchestrator's deployment, so an enabled config
+  without `service_model` fails validation. A disabled `tool_discovery` block may omit it, which
+  keeps existing stored apps valid.
 - `min_tools_for_deferral` is the tool-count guard below which a deferred toolset is silently
-  promoted to eager. Default: `5`.
+  promoted to eager. Default: `10`.
 - Non-deferred and below-threshold toolsets populate `RequestContext` immediately, as today.
 
 #### Changes required (as built)
@@ -527,7 +548,7 @@ eagerly, no discovery overhead.
 | `config/tool_discovery.py` | New `ToolDiscoveryConfig` (`enabled`, `service_model`, `min_tools_for_deferral`, `strategy`), referenced by `OrchestratorConfig.tool_discovery`. `strategy` is the discriminated union `PlainSearchStrategyConfig` / `WindowSearchStrategyConfig` / `HierarchySearchStrategyConfig` (shared `top_k`, `score_threshold`) |
 | `shared/deferred_tools/` (`DeferredToolsContext`, `is_toolset_deferred`) | Request-scoped shared object aggregating `catalog`/`definitions` across all deferred toolsets in the request; `is_toolset_deferred` is the pure threshold predicate. Bound via its own `DeferredToolsModule`, spliced into `shared_module` |
 | REST, MCP, internal, `dial-deployment` toolset modules | After building each toolset's tools, evaluate `is_toolset_deferred`; register with `DeferredToolsContext` or leave in the eager `list[StagedBaseTool]` accordingly. `dial-deployment`'s initializer groups its per-tool config entries by owning `DeploymentToolSet` first, since it builds one tool per config entry rather than one call per toolset. `dial-app`-synthesized tools have no toolset owner and stay eager (always exactly one tool per `DialAppToolSet`, so deferral never applies) |
-| `tool_discovery/_anonymous_agent.py` (`_AnonymousAgent`), `_routing_prompt.py` | Fires a single isolated `chat.completions.create` call (no history, no app system prompt) through `DEPLOYMENT_AZURE_CLIENT` (provided by the shared `DeploymentClientModule`, so tool discovery does not depend on `DialDeploymentToolingModule`); an empty `choices` response fails open like any other error; takes a catalog, a user query, and `kind` / `limit` / `threshold`; returns a `RoutingResult` (names, best first, plus the call's token usage, which `_ToolSearchTool` attaches to its result for usage statistics). `_routing_prompt.py` holds the prompt builders and the scored-JSON parser |
+| `tool_discovery/_anonymous_agent.py` (`_AnonymousAgent`), `_routing_prompt.py` | Fires a single isolated `chat.completions.create` call (no history, no app system prompt) through `DEPLOYMENT_AZURE_CLIENT` (provided by the shared `DeploymentClientModule`, so tool discovery does not depend on `DialDeploymentToolingModule`); an empty `choices` response fails open like any other error; takes a catalog, a user query, and `kind` / `limit` / `threshold`; returns a `RoutingResult` (names, best first, plus the call's token usage, which `_ToolSearchTool` attaches to its result for usage statistics). `_routing_prompt.py` holds the prompt builders, the `RoutingSelection` model, the strict `response_format` builder and the schema-validating parser. The call always sends `response_format`; a 400 answer is returned as `RoutingResult.warnings`, which `_ToolSearchTool` renders on its stage through `_ToolSearchStageWrapper.add_warnings` |
 | `tool_discovery/strategies/` (`ToolSearchStrategy`, `PlainStrategy`, `WindowStrategy`, `HierarchyStrategy`) | The search strategies, see [Search strategies](#search-strategies). Chosen per request by `ToolDiscoveryModule._provide_search_strategy` |
 | `tool_discovery/_tool_search_tool.py` (`_ToolSearchTool`) | Internal `tool_search` (registered name: `internal_tool_search`) tool injected via `ToolDiscoveryModule`'s own `@multiprovider` (enabled by `tool_discovery.enabled`); calls the configured `ToolSearchStrategy`, looks up matched names in `DeferredToolsContext`, writes results into `LazyLoadedToolsHolder`, returns the matched names (`["name", ...]`) to the main LLM. Its own `enrich_openai_tool_schema` override appends a dynamic list of deferred toolset names/descriptions (`DeferredToolsContext.toolset_summaries`) to the static tool description |
 | `core/agent/lazy_loaded_tools_holder.py` (`LazyLoadedToolsHolder`) | Request-scoped holder of discovered `OpenAiToolConfigDict`s — replaces the originally-proposed lazy-initializer + orchestrator-side `_lazy_loaded_tools` state |
@@ -609,8 +630,9 @@ top of Option 6 incrementally.
    only for mixed toolsets where some tools are always-on. **Still open** — per-toolset is what
    shipped; per-tool granularity remains a possible future extension.
 
-2. ~~**`service_model` default**~~ — **Resolved, as built:** falls back to the orchestrator's
-   own deployment when omitted (`_AnonymousAgent.route`).
+2. ~~**`service_model` default**~~ — **Resolved, as built:** no default. `service_model` is
+   required when discovery is enabled (optional otherwise, for backward compatibility), because the routing call needs a deployment that supports structured output and the
+   orchestrator's deployment may not.
 
 3. ~~**Search implementation in MVP**~~ — **Resolved, as built:** pure LLM routing via
    `_AnonymousAgent`, no keyword-only fallback. Later extended with the configurable

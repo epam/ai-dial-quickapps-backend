@@ -26,7 +26,9 @@ def _make_toolset(deferred: bool | None = None) -> RestApiToolSet:
 def _make_discovery_config(
     enabled: bool = True, min_tools_for_deferral: int = 5
 ) -> ToolDiscoveryConfig:
-    return ToolDiscoveryConfig(enabled=enabled, min_tools_for_deferral=min_tools_for_deferral)
+    return ToolDiscoveryConfig(
+        enabled=enabled, service_model="m", min_tools_for_deferral=min_tools_for_deferral
+    )
 
 
 class TestIsToolsetDeferred:

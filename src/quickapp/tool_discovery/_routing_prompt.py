@@ -1,10 +1,11 @@
-import json
 import logging
-import math
 from collections.abc import Sequence
+from functools import cache
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from openai.types.shared_params import ResponseFormatJSONSchema
+from openai.types.shared_params.response_format_json_schema import JSONSchema
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from quickapp.common.deferred_tool_types import DeferredToolCatalogEntry, DeferredToolsetSummary
 
@@ -16,27 +17,41 @@ CatalogItem = DeferredToolCatalogEntry | DeferredToolsetSummary
 _SYSTEM_PROMPT = (
     "You are a routing assistant. Given a user request, pick the {kind}s from the catalog below "
     "that can help to fulfil it: at most {limit}, best match first. "
-    "Pick only {kind}s that clearly fit; if none fits, return an empty array. "
-    'Respond with a JSON array of objects {{"name": "<{kind} name>", "score": <number 0..1>}} '
-    "only, where name is written exactly as in the catalog and score is how well the {kind} "
-    "fits the request (1 is a perfect fit). No explanation, no markdown.\n\n"
+    "Pick only {kind}s that clearly fit; if none fits, return no matches. "
+    'Respond with a JSON object {{"matches": [{{"name": "<{kind} name>", "score": <number 0..1>}}]}} '
+    "only, where name is written exactly as in the catalog and score is how well the {kind} fits "
+    "the request (1 is a perfect fit). No explanation, no markdown.\n\n"
     "Catalog:\n{catalog}"
 )
 _USER_PROMPT = (
     "Request: {query}\n\n"
-    'Answer with a JSON array like [{{"name": "name_a", "score": 0.9}}], or [] if none fits.'
+    'Answer with a JSON object like {{"matches": [{{"name": "name_a", "score": 0.9}}]}}, '
+    'or {{"matches": []}} if none fits.'
 )
+_MATCHES_KEY = "matches"
+_RESPONSE_FORMAT_NAME = "tool_routing"
 
 
 class ScoredName(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    # `forbid` makes the generated JSON schema `additionalProperties: false`, which strict
+    # structured output requires.
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     name: str
-    score: float
+    # `allow_inf_nan=False` is validation-only: it does not appear in the JSON schema
+    score: float = Field(allow_inf_nan=False)
+
+
+class RoutingSelection(BaseModel):
+    """The structured routing answer; its JSON schema is the request's `response_format`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    matches: list[ScoredName]
 
 
 def render_catalog_line(entry: CatalogItem) -> str:
-    return f"- {entry['name']}: {entry.get('description') or ''}"
+    return f"- {entry['name']}: {entry['description'] or ''}"
 
 
 def build_system_prompt(catalog: Sequence[CatalogItem], kind: SelectionKind, limit: int) -> str:
@@ -51,45 +66,41 @@ def build_user_prompt(query: str) -> str:
     return _USER_PROMPT.format(query=query)
 
 
+@cache
+def build_response_format() -> ResponseFormatJSONSchema:
+    """The `response_format` that makes the model answer `{"matches": [{"name", "score"}]}`.
+
+    Names are plain strings, not an `enum` of the catalog: providers cap the schema size, and a
+    large catalog would be rejected. The score range, the limit and unknown names are not
+    expressed in the schema: `parse_selection` enforces all three.
+    """
+    schema = RoutingSelection.model_json_schema()
+    # Inline the item definition: not every provider resolves `$ref`.
+    schema["properties"][_MATCHES_KEY]["items"] = schema.pop("$defs")[ScoredName.__name__]
+    return ResponseFormatJSONSchema(
+        type="json_schema",
+        json_schema=JSONSchema(name=_RESPONSE_FORMAT_NAME, strict=True, schema=schema),
+    )
+
+
 def parse_selection(
     raw: str, known_names: set[str], *, limit: int, threshold: float
 ) -> list[ScoredName]:
-    # find/rfind skip a surrounding Markdown fence and any chatter around the array
-    start, end = raw.find("["), raw.rfind("]")
-    if start == -1 or end < start:
-        logger.warning("Routing call returned no JSON array (length=%d)", len(raw))
-        return []
+    """Validate the structured answer, then keep the best score per known name above `threshold`.
+
+    An answer that does not match the schema (the provider ignored `response_format`) yields `[]`.
+    """
     try:
-        items = json.loads(raw[start : end + 1])
-    except json.JSONDecodeError:
-        logger.warning("Routing call returned non-JSON response (length=%d)", len(raw))
+        selection = RoutingSelection.model_validate_json(raw)
+    except ValidationError:
+        logger.warning("Routing call returned an answer that does not match the schema")
         return []
 
     best_scores: dict[str, float] = {}
-    for item in items:
-        name, score = _read_item(item)
-        if name is None or name not in known_names or score < threshold:
-            continue
-        best_scores[name] = max(score, best_scores.get(name, 0.0))
+    for match in selection.matches:
+        score = min(max(match.score, 0.0), 1.0)
+        if match.name in known_names and score >= threshold:
+            best_scores[match.name] = max(score, best_scores.get(match.name, 0.0))
 
     ranked = sorted(best_scores.items(), key=lambda pair: pair[1], reverse=True)
     return [ScoredName(name=name, score=score) for name, score in ranked[:limit]]
-
-
-def _read_item(item: object) -> tuple[str | None, float]:
-    """A plain string or an object without a score is treated as a perfect fit (the model
-    skipped the score). A score that is present but unreadable is rejected, so it can neither
-    bypass the threshold nor outrank properly scored picks."""
-    if isinstance(item, str):
-        return item, 1.0
-    if not isinstance(item, dict) or not isinstance(item.get("name"), str):
-        return None, 0.0
-    if "score" not in item:
-        return item["name"], 1.0
-    try:
-        score = float(item["score"])
-    except (TypeError, ValueError, OverflowError):
-        return None, 0.0
-    if math.isnan(score):
-        return None, 0.0
-    return item["name"], min(max(score, 0.0), 1.0)

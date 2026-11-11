@@ -1,6 +1,6 @@
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic.fields import FieldInfo
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -114,7 +114,8 @@ class ToolDiscoveryConfig(BaseModel):
         default=None,
         description=(
             "DIAL deployment used for the anonymous routing call inside internal_tool_search. "
-            "When omitted, falls back to the orchestrator's own deployment."
+            "Required when `enabled` is true. "
+            "It must support structured output (`response_format` with a JSON schema)."
         ),
     )
     min_tools_for_deferral: int = _min_tools_for_deferral_field()  # type: ignore[assignment]
@@ -122,3 +123,9 @@ class ToolDiscoveryConfig(BaseModel):
         default_factory=PlainSearchStrategyConfig,
         description="How internal_tool_search finds tools in the deferred catalog: plain, window or hierarchy.",
     )
+
+    @model_validator(mode="after")
+    def _require_service_model_when_enabled(self) -> Self:
+        if self.enabled and not self.service_model:
+            raise ValueError("service_model is required when tool_discovery is enabled")
+        return self

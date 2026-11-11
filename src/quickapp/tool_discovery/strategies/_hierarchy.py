@@ -29,7 +29,7 @@ class HierarchyStrategy(ToolSearchStrategy[HierarchySearchStrategyConfig]):
     async def search(self, query: str) -> RoutingResult:
         candidates, stage_one = await self._pick_candidates(query)
         picked = await self._route_tools(query, candidates)
-        return RoutingResult(names=picked.names, usage=RoutingResult.total_usage(stage_one, picked))
+        return RoutingResult.combine(picked.names, stage_one, picked)
 
     async def _pick_candidates(
         self, query: str

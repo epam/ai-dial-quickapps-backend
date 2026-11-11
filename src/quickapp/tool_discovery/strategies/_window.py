@@ -42,18 +42,14 @@ class WindowStrategy(ToolSearchStrategy[WindowSearchStrategyConfig]):
         window_results = await self._search_windows(query, windows)
         candidate_names = list(dict.fromkeys(name for r in window_results for name in r.names))
         if not candidate_names:
-            return RoutingResult(usage=RoutingResult.total_usage(*window_results))
+            return RoutingResult.combine([], *window_results)
         if len(candidate_names) == 1:
             # nothing to filter or re-rank: skip the final LLM round-trip
-            return RoutingResult(
-                names=candidate_names, usage=RoutingResult.total_usage(*window_results)
-            )
+            return RoutingResult.combine(candidate_names, *window_results)
 
         entries_by_name = {entry["name"]: entry for entry in self._catalog}
         final = await self._route_tools(query, [entries_by_name[name] for name in candidate_names])
-        return RoutingResult(
-            names=final.names, usage=RoutingResult.total_usage(*window_results, final)
-        )
+        return RoutingResult.combine(final.names, *window_results, final)
 
     async def _search_windows(
         self, query: str, windows: list[list[DeferredToolCatalogEntry]]
