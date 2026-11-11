@@ -64,6 +64,15 @@ class DialDeploymentTool(BaseOpenAITool):
             "the matching `<cit data-id=\"...\"></cit>` anchors verbatim into its answer."
         ),
     )
+    propagate_form_to_choice: bool | None = Field(
+        default=None,
+        description=(
+            "Propagate the form returned by the deployment onto the app's choice. "
+            "The deployment's `custom_content.form_schema` is sent to the client "
+            "(the last one received wins), and the client's `custom_content.form_value` "
+            "is threaded back into the deployment's conversation history."
+        ),
+    )
     supports_url_attachments: bool = Field(
         default=False,
         description=(

@@ -80,6 +80,7 @@ class ChatStreamAccumulator:
         self.__usage_per_model: list[ModelUsage] = []
         self.__stages_by_index: dict[int, _AccumulatedStageData] = {}
         self.__state: dict[str, Any] = {}
+        self.__form_schema: dict[str, Any] | None = None
         self.__adopted_tool_stages: dict[str, AdoptedToolStage] = {}
 
     @property
@@ -180,6 +181,14 @@ class ChatStreamAccumulator:
     def merge_state(self, state_update: dict[str, Any]) -> None:
         if state_update:
             self.__state.update(state_update)
+
+    @property
+    def form_schema(self) -> dict[str, Any] | None:
+        return self.__form_schema
+
+    def set_form_schema(self, form_schema: dict[str, Any] | None) -> None:
+        # Replace semantics: the last chunk carrying form_schema wins ({} clears the form).
+        self.__form_schema = form_schema
 
     @property
     def attachments_or_none(self) -> list[Attachment] | None:

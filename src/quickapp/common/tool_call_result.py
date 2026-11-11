@@ -16,6 +16,7 @@ class ToolCallResult(BaseModel):
 
     propagate_to_choice: list[Attachment] = Field(default_factory=list)
     annotations: list[dict[str, Any]] = Field(default_factory=list)
+    form_schema: dict[str, Any] | None = None
 
     def to_tool_message(self):
         if not self.tool_call_id:

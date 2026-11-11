@@ -22,6 +22,8 @@ class NormalizedCustomContentBuilder:
         self._sdk_attachments: list[Attachment] = []
         self._stage_entries: list[tuple[int, dict[str, Any]]] = []
         self._state: dict[str, Any] | None = None
+        self._form_schema: dict[str, Any] | None = None
+        self._has_form_schema = False
 
     def add_attachments(self, raw_attachments: Any) -> NormalizedCustomContentBuilder:
         if not isinstance(raw_attachments, list):
@@ -47,13 +49,25 @@ class NormalizedCustomContentBuilder:
             self._state = raw_state
         return self
 
+    def set_form_schema(self, raw_form_schema: Any) -> NormalizedCustomContentBuilder:
+        if isinstance(raw_form_schema, dict):
+            self._form_schema = raw_form_schema
+            self._has_form_schema = True
+        return self
+
     def build(self) -> NormalizedCustomContent | None:
-        if not self._sdk_attachments and not self._stage_entries and self._state is None:
+        if (
+            not self._sdk_attachments
+            and not self._stage_entries
+            and self._state is None
+            and not self._has_form_schema
+        ):
             return None
         return NormalizedCustomContent(
             attachments=self._sdk_attachments,
             stage_entries=self._stage_entries,
             state=self._state,
+            form_schema=self._form_schema if self._has_form_schema else None,
         )
 
 
@@ -65,6 +79,7 @@ def _custom_content_from_dict(raw: dict[str, Any]) -> NormalizedCustomContent | 
         .add_attachments(raw.get("attachments"))
         .add_stages(raw.get("stages"))
         .set_state(raw.get("state"))
+        .set_form_schema(raw.get("form_schema"))
         .build()
     )
 

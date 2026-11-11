@@ -144,6 +144,8 @@ class BaseDeploymentTool(StagedBaseTool):
             result.content = result.content + f"\n\n[session_id: {session_id}]"
         if not tool_config.propagate_annotations_to_choice:
             result.annotations = []
+        if not tool_config.propagate_form_to_choice:
+            result.form_schema = None
         return result
 
     _SESSION_ID_PARAM = ConfigurableSchemaSimpleType(
@@ -272,6 +274,9 @@ class BaseDeploymentTool(StagedBaseTool):
                 ]
             if custom_content.state is not None:
                 cc_param["state"] = custom_content.state
+            form_value = (custom_content.model_extra or {}).get("form_value")
+            if form_value is not None:
+                cc_param["form_value"] = form_value
             if cc_param:
                 assistant_msg["custom_content"] = cc_param
 

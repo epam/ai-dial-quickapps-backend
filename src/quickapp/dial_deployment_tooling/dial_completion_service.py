@@ -102,6 +102,7 @@ class DialCompletionService:
             # check if result.attachments: would return false for empty array
             attachments=result.attachments_or_none,
             annotations=result.annotations,
+            form_schema=result.form_schema,
             state=result.state,
             usage=self.__get_deployment_usage(result, deployment_id, deployment_name),
         )
