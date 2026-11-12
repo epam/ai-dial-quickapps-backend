@@ -71,6 +71,11 @@ class TestProjectContext:
     def test_contains(self, url: str, expected: bool) -> None:
         assert ProjectContext(url="projects/b/My Project").contains(url) is expected
 
+    def test_absolute_core_url_is_not_contained(self) -> None:
+        # Relative form only: absolute Core URLs keep today's v1 path (see ``contains``).
+        project = ProjectContext(url="projects/b/p")
+        assert not project.contains("https://dial.example.com/v1/projects/b/p/files/a.md")
+
 
 @pytest.mark.parametrize(
     "url, expected",

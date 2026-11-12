@@ -1791,6 +1791,34 @@ calls made during that chat completion. No configuration is required.
 Use this for tracing (e.g. `X-Request-Id`, `X-Correlation-Id`), multi-tenancy (`X-Tenant-Id`), or any custom header
 your gateways or downstream services expect.
 
+## Projects
+
+`[Preview]` Requires `ENABLE_PREVIEW_FEATURES=true`. No manifest field: a chat inside a DIAL Chat project sends the
+`x-project-id` header, and QuickApps then reads the project instructions and context files and keeps its files in the
+project's `artifacts/` folder (see [docs/projects.md](./docs/projects.md)).
+
+The app needs access to the project. An admin declares it as resource dependencies of the app in DIAL Core and
+approves them (DIAL Core [#1930](https://github.com/epam/ai-dial-core/issues/1930); Admin UI → Resource Dependencies):
+
+```json
+"resourceDependencies": [
+  { "kind": "...", "linkId": "project-read",  "target": { "path": "projects/{current-user}/" }, "access": ["READ"],  "required": false },
+  { "kind": "...", "linkId": "project-write", "target": { "path": "projects/{current-user}/" }, "access": ["WRITE"], "required": false }
+]
+```
+
+Core checks the dependencies on every call to the app. Without the user's consent, `"required": true` makes Core reject
+every call to the app with 403 "Required resource dependencies are not accessible", even outside projects; with
+`"required": false` the app keeps working and only project chats end with `project_access_denied`. With consent both
+behave the same. Use `true` only for apps that make no sense outside a project.
+
+- `projects/{current-user}/` covers all of the requesting user's own projects. QuickApps itself touches only the
+  project in the header.
+- The exact `kind` values are to be confirmed when the Core feature is released.
+- Without an approved dependency a project chat fails at the start of the turn with 403 `project_access_denied`.
+- Keep `ENABLE_PREVIEW_FEATURES=false` where DIAL Core has no resource dependencies for projects: project chats then
+  run as ordinary chats.
+
 ## Environment Variables
 
 | Variable                                   | Default                                                         | Required | Description                                                                                                  |
@@ -1846,6 +1874,7 @@ your gateways or downstream services expect.
 | `DIAL_SKILLS_MAX_FILES`                    | `200`                                                           | No       | Maximum bundled files advertised to the agent per DIAL skill resource; beyond it the listing is truncated     |
 | `DIAL_SKILLS_LISTING_MAX_PAGES`            | `10`                                                            | No       | Maximum file-listing pages followed per DIAL skill resource, bounding a server-supplied cursor                |
 | `SKILL_INVOCATION_MAX_SKILLS`              | `10`                                                            | No       | Maximum distinct skills a user may have invoked from the messages of one conversation (`custom_content.skills`), counted newest first. Each one adds a `<skill>` block to the system prompt and one DIAL Core fetch per turn; beyond the cap the oldest picks stop being registered. See [docs/skills.md](docs/skills.md). |
+| `PROJECT_INSTRUCTIONS_MAX_CHARS`           | `32000`                                                         | No       | Maximum length, in characters, of the project's `PROJECT.md` body added to the system prompt in a project chat; a longer body is cut with a note. See [docs/projects.md](docs/projects.md). |
 | **Feature Gating**                         |                                                                 |          |                                                                                                              |
 | `ENABLE_PREVIEW_FEATURES`                  | `false`                                                         | No       | Enable preview features across the deployment (schema visibility + runtime activation)                       |
 | **Templates**                              |                                                                 |          |                                                                                                              |

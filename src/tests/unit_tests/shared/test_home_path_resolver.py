@@ -1,15 +1,20 @@
 import pytest
 
 from quickapp.common.exceptions import InvalidToolCallParameterException
-from quickapp.dial_files_tooling._utils import reject_absolute_path
+from quickapp.common.project_context import ProjectContext
 from quickapp.shared.home_path.home_path_resolver import HomePathResolver
 from tests.unit_tests.dial_files_tooling._helpers import make_config, make_service
 
 
-def _resolver(agent_home_dir: str = "", appdata: str | None = "appbucket") -> HomePathResolver:
+def _resolver(
+    agent_home_dir: str = "",
+    appdata: str | None = "appbucket",
+    project: ProjectContext | None = None,
+) -> HomePathResolver:
     return HomePathResolver(
         dial_file_service=make_service(appdata=appdata),
         dial_files_config=make_config(agent_home_dir),
+        project=project,
     )
 
 
@@ -101,12 +106,125 @@ class TestToDisplayPath:
         assert display == ""
 
 
-class TestRejectAbsolutePath:
-    def test_absolute_url_rejected(self):
-        with pytest.raises(InvalidToolCallParameterException) as exc:
-            reject_absolute_path("path", "write_file", "files/x/a.md")
-        assert exc.value.parameter_name == "path"
-        assert "relative" in exc.value.message
+_PROJECT = ProjectContext(url="projects/user-bucket/My Project")
+_ARTIFACTS = "projects/user-bucket/My%20Project/files/artifacts/"
+_CONTEXT_FILE = "projects/user-bucket/My%20Project/files/context/tickets.csv"
 
-    def test_relative_path_allowed(self):
-        reject_absolute_path("path", "write_file", "reports/a.md")  # no raise
+
+class TestProjectHome:
+    @pytest.mark.asyncio
+    async def test_home_is_artifacts_and_ignores_agent_home_dir(self):
+        resolver = _resolver(agent_home_dir="workspace/", project=_PROJECT)
+        assert await resolver.resolve_home_dir() == _ARTIFACTS
+
+    @pytest.mark.asyncio
+    async def test_home_skips_appdata_lookup(self):
+        service = make_service()
+        resolver = HomePathResolver(service, make_config(), _PROJECT)
+        await resolver.resolve_home_dir()
+        service.my_appdata_home.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_relative_path_resolves_under_artifacts(self):
+        url = await _resolver(project=_PROJECT).resolve_appdata_url("my notes/a.md")
+        assert url == f"{_ARTIFACTS}my%20notes/a.md"
+
+    @pytest.mark.asyncio
+    async def test_current_project_url_is_absolute(self):
+        url = "projects/user-bucket/My Project/files/context/tickets.csv"
+        assert await _resolver(project=_PROJECT).resolve_appdata_url(url) == _CONTEXT_FILE
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "projects/user-bucket/Other/files/x.md",
+            "projects/user-bucket/",
+            "projects/user-bucket/My Project/x.md",
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_other_projects_url_is_rejected(self, path):
+        with pytest.raises(InvalidToolCallParameterException) as excinfo:
+            await _resolver(project=_PROJECT).resolve_appdata_url(path)
+        assert "current project" in excinfo.value.message
+
+    @pytest.mark.asyncio
+    async def test_projects_url_is_rejected_without_project(self):
+        with pytest.raises(InvalidToolCallParameterException):
+            await _resolver().resolve_appdata_url("projects/user-bucket/My Project/files/x.md")
+
+    @pytest.mark.asyncio
+    async def test_files_url_still_absolute_in_project(self):
+        url = await _resolver(project=_PROJECT).resolve_appdata_url("files/appbucket/x.md")
+        assert url == "files/appbucket/x.md"
+
+    @pytest.mark.asyncio
+    async def test_display_path_relative_to_artifacts(self):
+        resolver = _resolver(project=_PROJECT)
+        assert await resolver.to_display_path(f"{_ARTIFACTS}a/b.md") == "a/b.md"
+        decoded = "projects/user-bucket/My Project/files/artifacts/a.md"
+        assert await resolver.to_display_path(decoded) == "a.md"
+
+    @pytest.mark.asyncio
+    async def test_display_path_shows_project_files_decoded(self):
+        resolver = _resolver(project=_PROJECT)
+        decoded = "projects/user-bucket/My Project/files/context/tickets.csv"
+        assert await resolver.to_display_path(_CONTEXT_FILE) == decoded
+        assert await resolver.to_display_path(f"{_ARTIFACTS}my%20notes/a.md") == "my notes/a.md"
+
+    @pytest.mark.asyncio
+    async def test_display_path_keeps_names_that_dont_round_trip_encoded(self):
+        # A literal `%41` in a name would decode to `A` when passed back.
+        url = f"{_ARTIFACTS}100%2541.md"
+        assert await _resolver(project=_PROJECT).to_display_path(url) == "100%2541.md"
+
+    @pytest.mark.asyncio
+    async def test_decoded_display_path_resolves_back(self):
+        resolver = _resolver(project=_PROJECT)
+        display = await resolver.to_display_path(_CONTEXT_FILE)
+        assert await resolver.resolve_appdata_url(display) == _CONTEXT_FILE
+
+    @pytest.mark.parametrize("path", ["%2e%2e/PROJECT.md", ".%2e/x", "a%2F..%2Fb", "a//b"])
+    @pytest.mark.asyncio
+    async def test_unsafe_relative_path_is_rejected_before_decoding(self, path):
+        with pytest.raises(InvalidToolCallParameterException) as excinfo:
+            await _resolver(project=_PROJECT).resolve_appdata_url(path)
+        assert excinfo.value.parameter_name == "path"
+
+    def test_is_absolute(self):
+        resolver = _resolver(project=_PROJECT)
+        assert resolver.is_absolute("files/appbucket/x.md")
+        assert resolver.is_absolute(_CONTEXT_FILE)
+        assert resolver.is_absolute("projects/user-bucket/Other/files/x.md")
+        assert _resolver().is_absolute(_CONTEXT_FILE)
+        assert not resolver.is_absolute("reports/projects/a.md")
+
+
+class TestResolveWriteUrl:
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "files/x/a.md",
+            _CONTEXT_FILE,
+            _PROJECT.instructions_url,
+            f"{_ARTIFACTS}a.md",
+            "projects/user-bucket/Other/files/a.md",
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_absolute_url_rejected(self, path):
+        with pytest.raises(InvalidToolCallParameterException) as exc:
+            await _resolver(project=_PROJECT).resolve_write_url("destination", path)
+        assert exc.value.parameter_name == "destination"
+        assert "relative path" in exc.value.message
+
+    @pytest.mark.asyncio
+    async def test_absolute_url_rejected_without_project(self):
+        with pytest.raises(InvalidToolCallParameterException):
+            await _resolver().resolve_write_url("path", "files/x/a.md")
+
+    @pytest.mark.asyncio
+    async def test_relative_path_resolves_under_the_home(self):
+        url = await _resolver(project=_PROJECT).resolve_write_url("path", "reports/a.md")
+
+        assert url == f"{_ARTIFACTS}reports/a.md"

@@ -14,7 +14,7 @@ class UrlScheme(str, Enum):
     UNSUPPORTED = "unsupported"
 
 
-_DIAL_RELATIVE_PATH = re.compile(r"^/*files/", re.IGNORECASE)
+_DIAL_RELATIVE_PATH = re.compile(r"^/*(?:files|projects)/", re.IGNORECASE)
 
 # Characters the DIAL UI forbids in resource names (ui-kit NOT_ALLOWED_SYMBOLS,
 # minus '/' which is the path separator); control chars are rejected separately.
@@ -72,8 +72,9 @@ def _dial_host(dial_base_url: str) -> str:
 def classify_url(url: str, dial_base_url: str) -> UrlScheme:
     """Classify a file reference URL against the configured DIAL base URL.
 
-    A bare DIAL relative path (e.g. ``files/bucket/foo.pdf``) or an absolute URL
-    whose host matches the configured DIAL host is :attr:`UrlScheme.DIAL`. Any
+    A bare DIAL relative path (e.g. ``files/bucket/foo.pdf`` or
+    ``projects/{bucket}/{path}/files/...``) or an absolute URL whose host matches the
+    configured DIAL host is :attr:`UrlScheme.DIAL`. Any
     other ``http(s)://`` URL is :attr:`UrlScheme.EXTERNAL`. A schemeless path
     matching :func:`is_appdir_relative` (e.g. ``reports/img.png``, ``some_dir/``)
     is :attr:`UrlScheme.DIAL_APPDIR_RELATIVE` — the agent-home-relative convention
