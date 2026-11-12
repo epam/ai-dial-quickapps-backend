@@ -105,7 +105,7 @@ class TestProjectPromptProvider:
 
         assert part.startswith("## Project instructions")
         assert "Answer in French." in part
-        assert "the instructions above win" in part
+        assert "the instruction outside wins" in part
 
     @pytest.mark.parametrize("instructions", [None, "", "   \n", "---\nname: x\n---\n\n"])
     @pytest.mark.asyncio

@@ -163,8 +163,8 @@ flowchart LR
 
 - **Home:** `HomePathResolver` returns `artifacts_root` when a project is present, and appdata otherwise. It owns the
   D8 rule: `files/` and `projects/` are absolute (`is_absolute`), `resolve_appdata_url` accepts a `projects/` URL only
-  under the current project's root, and `require_relative` rejects any absolute URL for write targets (file tools,
-  `web_fetch` `save_path`). `classify_url` matches the same prefixes, so it needs no project. A `projects/` URL is
+  under the current project's root, and write targets (file tools, `web_fetch` `save_path`) resolve only through
+  `resolve_write_url`, which rejects any absolute URL. `classify_url` matches the same prefixes, so it needs no project. A `projects/` URL is
   `UrlScheme.DIAL`:
 
   | Call site | `projects/` URL |

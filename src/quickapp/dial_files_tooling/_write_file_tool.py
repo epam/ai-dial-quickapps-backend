@@ -22,9 +22,7 @@ class _WriteFileTool(_DialFileTool):
         content_type: str = kwargs.get("content_type") or "text/plain"
         overwrite: bool = bool(kwargs.get("overwrite", False))
 
-        self._home_resolver.require_relative("path", path)
-
-        url = await self._home_resolver.resolve_appdata_url(path)
+        url = await self._home_resolver.resolve_write_url("path", path)
         display_path = await self._home_resolver.to_display_path(url)
 
         try:

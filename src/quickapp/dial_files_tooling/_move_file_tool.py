@@ -24,11 +24,8 @@ class _MoveFileTool(_DialFileTool):
         destination: str = kwargs["destination"]
         overwrite: bool = bool(kwargs.get("overwrite", False))
 
-        self._home_resolver.require_relative("source", source)
-        self._home_resolver.require_relative("destination", destination)
-
-        source_url = await self._home_resolver.resolve_appdata_url(source)
-        dest_url = await self._home_resolver.resolve_appdata_url(destination)
+        source_url = await self._home_resolver.resolve_write_url("source", source)
+        dest_url = await self._home_resolver.resolve_write_url("destination", destination)
         dest_display = await self._home_resolver.to_display_path(dest_url)
 
         try:

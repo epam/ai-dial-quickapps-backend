@@ -61,10 +61,15 @@ class HomePathResolver:
         type, so a home folder of that name can't be addressed by a relative path."""
         return path.startswith(("files/", "projects/"))
 
-    def require_relative(self, parameter_name: str, path: str) -> None:
-        """Reject an absolute URL where only a path under the agent home is accepted
-        (a write target): files outside the home, the project's read-only ones included,
-        are never written."""
+    async def resolve_write_url(self, parameter_name: str, path: str) -> str:
+        """Resolve a write target: only a path under the agent home is accepted, so files
+        outside it, the project's read-only ones included, are never written. Every tool
+        that writes, moves or deletes a file resolves its target here, never through
+        ``resolve_appdata_url``, which also accepts absolute URLs for reads."""
+        self._require_relative(parameter_name, path)
+        return await self.resolve_appdata_url(path)
+
+    def _require_relative(self, parameter_name: str, path: str) -> None:
         if self.is_absolute(path):
             raise InvalidToolCallParameterException(
                 parameter_name,

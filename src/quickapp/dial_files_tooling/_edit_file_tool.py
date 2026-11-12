@@ -25,8 +25,7 @@ class _EditFileTool(_DialFileTool):
                 "new_string", "new_string must differ from old_string"
             )
 
-        self._home_resolver.require_relative("path", path)
-        url = await self._home_resolver.resolve_appdata_url(path)
+        url = await self._home_resolver.resolve_write_url("path", path)
         display_path = await self._home_resolver.to_display_path(url)
 
         content, metadata = await self._download_text(url, display_path=path)

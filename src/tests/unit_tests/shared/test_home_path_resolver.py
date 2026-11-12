@@ -200,7 +200,7 @@ class TestProjectHome:
         assert not resolver.is_absolute("reports/projects/a.md")
 
 
-class TestRequireRelative:
+class TestResolveWriteUrl:
     @pytest.mark.parametrize(
         "path",
         [
@@ -211,15 +211,20 @@ class TestRequireRelative:
             "projects/user-bucket/Other/files/a.md",
         ],
     )
-    def test_absolute_url_rejected(self, path):
+    @pytest.mark.asyncio
+    async def test_absolute_url_rejected(self, path):
         with pytest.raises(InvalidToolCallParameterException) as exc:
-            _resolver(project=_PROJECT).require_relative("destination", path)
+            await _resolver(project=_PROJECT).resolve_write_url("destination", path)
         assert exc.value.parameter_name == "destination"
         assert "relative path" in exc.value.message
 
-    def test_absolute_url_rejected_without_project(self):
+    @pytest.mark.asyncio
+    async def test_absolute_url_rejected_without_project(self):
         with pytest.raises(InvalidToolCallParameterException):
-            _resolver().require_relative("path", "files/x/a.md")
+            await _resolver().resolve_write_url("path", "files/x/a.md")
 
-    def test_relative_path_allowed(self):
-        _resolver(project=_PROJECT).require_relative("path", "reports/a.md")  # no raise
+    @pytest.mark.asyncio
+    async def test_relative_path_resolves_under_the_home(self):
+        url = await _resolver(project=_PROJECT).resolve_write_url("path", "reports/a.md")
+
+        assert url == f"{_ARTIFACTS}reports/a.md"
