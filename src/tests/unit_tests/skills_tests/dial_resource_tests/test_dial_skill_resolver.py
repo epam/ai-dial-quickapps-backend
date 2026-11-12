@@ -140,18 +140,6 @@ class TestResolve:
         assert "Could not list bundled files: TimeoutError" in warning.reason
 
     @pytest.mark.asyncio
-    async def test_parser_warnings_are_logged_not_reported(self, caplog):
-        manifest = "---\nname: Refund_Policy\ndescription: d\n---\nbody"
-        resolver, _ = _make_resolver(manifest=manifest)
-
-        with caplog.at_level("WARNING"):
-            output = await resolver.resolve([_config("skills/b/s")])
-
-        assert output.resolved
-        assert output.exceptions == []
-        assert "does not match recommended format" in caplog.text
-
-    @pytest.mark.asyncio
     async def test_empty_config_list_does_no_io(self):
         resolver, client = _make_resolver()
 

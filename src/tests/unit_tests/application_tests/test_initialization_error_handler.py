@@ -118,8 +118,8 @@ class TestSkillInitializationWarningRendering:
     def test_warning_renders_under_warnings_subheader_and_keeps_completed(self):
         stage = MagicMock(spec=Stage)
         warning = SkillInitializationException(
-            reason="exceeds 64 characters",
-            url="prompts/bucket/long-name",
+            reason="Could not list bundled files",
+            url="skills/bucket/no-listing",
             severity="warning",
         )
         handler = _make_handler(stage, [warning])
@@ -128,8 +128,8 @@ class TestSkillInitializationWarningRendering:
 
         rendered = _stage_content(stage)
         assert "Warnings:" in rendered
-        assert "prompts/bucket/long-name" in rendered
-        assert "exceeds 64 characters" in rendered
+        assert "skills/bucket/no-listing" in rendered
+        assert "Could not list bundled files" in rendered
         assert "Errors:" not in rendered
         stage.close.assert_called_once_with(Status.COMPLETED)
 
