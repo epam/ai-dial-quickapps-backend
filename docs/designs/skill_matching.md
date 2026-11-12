@@ -191,7 +191,7 @@ history-less `chat.completions.create` call against `DEPLOYMENT_AZURE_CLIENT`, u
 `skill_matching.service_model` if set. (The orchestrator client is pinned to the orchestrator
 deployment and would ignore a different model.) The call is given the message text and the merged
 catalog (`name`, `description`, and enough to resolve later — `source` and `url`), and returns a
-JSON array of matched names (tool discovery's variant asks for `{name, score}` objects). Same
+JSON array of matched names (tool discovery's variant instead requests structured output: a `{"matches": [{"name", "score"}]}` object enforced by `response_format`). Same
 fail-open contract: any `openai.OpenAIError`, timeout, or malformed response becomes an empty
 match list, never an error surfaced to the user.
 

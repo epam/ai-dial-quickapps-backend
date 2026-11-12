@@ -4028,7 +4028,7 @@
             }
           ],
           "default": null,
-          "description": "DIAL deployment used for the anonymous routing call inside internal_tool_search. When omitted, falls back to the orchestrator's own deployment.",
+          "description": "DIAL deployment used for the anonymous routing call inside internal_tool_search. Required when `enabled` is true. It must support structured output (`response_format` with a JSON schema).",
           "title": "Service Model"
         },
         "min_tools_for_deferral": {

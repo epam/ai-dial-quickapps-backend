@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from typing import Any
 
 from injector import inject
@@ -7,6 +8,10 @@ from quickapp.common import TimedStageWrapper, ToolCallResult
 
 @inject
 class _ToolSearchStageWrapper(TimedStageWrapper):
+
+    def add_warnings(self, warnings: Sequence[str]) -> None:
+        for warning in warnings:
+            self.append_stage_content(f"> ##### Warning:\n{warning}\n")
 
     def _get_formatted_parameters(self, parameters: dict[str, Any]) -> str:
         query = parameters.get("query", "")

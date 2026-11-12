@@ -4,6 +4,11 @@ from collections.abc import Sequence
 import openai
 from injector import inject
 from openai.types import CompletionUsage
+from openai.types.chat import (
+    ChatCompletion,
+    ChatCompletionSystemMessageParam,
+    ChatCompletionUserMessageParam,
+)
 
 from quickapp.common import DEPLOYMENT_AZURE_CLIENT
 from quickapp.common.deployment_usage import ModelUsage
@@ -12,6 +17,7 @@ from quickapp.tool_discovery._routing_prompt import (
     CatalogItem,
     ScoredName,
     SelectionKind,
+    build_response_format,
     build_system_prompt,
     build_user_prompt,
     parse_selection,
@@ -26,7 +32,10 @@ class _AnonymousAgent:
     """Fires an isolated, non-streaming LLM call to route a query against a catalog.
 
     No conversation history or application system prompt is included — token cost is bounded
-    by the catalog size alone. The call is fail-open: errors and unparsable answers yield `[]`.
+    by the catalog size alone. The call always requests structured output (`response_format`),
+    so `tool_discovery.service_model` must support it. The call is fail-open: errors and
+    unparsable answers yield `[]`. A 400 answer (typically a model without structured output
+    support) is also reported as a warning on the returned `RoutingResult`.
     """
 
     def __init__(
@@ -53,25 +62,18 @@ class _AnonymousAgent:
             return RoutingResult()
 
         discovery = self.__config.orchestrator.tool_discovery
-        if discovery is None:
+        service_model = discovery.service_model if discovery is not None else None
+        if not service_model:
             logger.warning(
                 "Anonymous agent routing call invoked while tool_discovery is disabled — "
                 "returning no matches"
             )
             return RoutingResult()
-        service_model = (
-            discovery.service_model or self.__config.orchestrator.deployment.deployment_id
-        )
 
         try:
-            response = await self.__client.chat.completions.create(
-                model=service_model,
-                messages=[
-                    {"role": "system", "content": build_system_prompt(catalog, kind, limit)},
-                    {"role": "user", "content": build_user_prompt(query)},
-                ],
-                stream=False,
-            )
+            response = await self._request(service_model, query, catalog, kind, limit)
+        except openai.BadRequestError as exc:
+            return _rejected(service_model, exc)
         except openai.OpenAIError:
             logger.exception("Anonymous agent routing call failed")
             return RoutingResult()
@@ -88,6 +90,39 @@ class _AnonymousAgent:
             names=[item.name for item in picked],
             usage=_to_model_usage(service_model, response.usage),
         )
+
+    async def _request(
+        self,
+        service_model: str,
+        query: str,
+        catalog: Sequence[CatalogItem],
+        kind: SelectionKind,
+        limit: int,
+    ) -> ChatCompletion:
+        return await self.__client.chat.completions.create(
+            model=service_model,
+            messages=[
+                ChatCompletionSystemMessageParam(
+                    role="system", content=build_system_prompt(catalog, kind, limit)
+                ),
+                ChatCompletionUserMessageParam(role="user", content=build_user_prompt(query)),
+            ],
+            response_format=build_response_format(),
+            stream=False,
+        )
+
+
+def _rejected(service_model: str, exc: openai.BadRequestError) -> RoutingResult:
+    # The exception text carries the response body, so log only the status.
+    logger.warning("Anonymous agent routing call was rejected (status=%s)", exc.status_code)
+    detail = exc.body.get("error", {}).get("message") if isinstance(exc.body, dict) else None
+    return RoutingResult(
+        warnings=[
+            f"Routing model '{service_model}' rejected the request: {detail or 'bad request'}. "
+            "A possible cause is that `tool_discovery.service_model` does not support "
+            "structured output."
+        ]
+    )
 
 
 def _log_selection(

@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
-from quickapp.common.deferred_tool_types import DeferredToolCatalogEntry
+from quickapp.common.deferred_tool_types import DeferredToolCatalogEntry, DeferredToolsetSummary
 from quickapp.common.deployment_usage import ModelUsage
 from quickapp.config.tool_discovery import (
     HierarchySearchStrategyConfig,
@@ -118,7 +118,10 @@ class TestWindowStrategy:
 
 class TestHierarchyStrategy:
     CATALOG = [_entry("a1", "A"), _entry("a2", "A"), _entry("b1", "B")]
-    SUMMARIES = [{"name": "A"}, {"name": "B"}]
+    SUMMARIES: list[DeferredToolsetSummary] = [
+        {"name": "A", "description": None, "tool_count": 2},
+        {"name": "B", "description": None, "tool_count": 1},
+    ]
 
     @pytest.mark.asyncio
     async def test_scopes_second_stage_to_chosen_toolsets(self):
@@ -146,7 +149,7 @@ class TestHierarchyStrategy:
     async def test_single_toolset_skips_first_stage(self):
         agent = _stub_agent(["a1"])
         strategy = HierarchyStrategy(
-            agent, HierarchySearchStrategyConfig(), self.CATALOG, [{"name": "A"}]
+            agent, HierarchySearchStrategyConfig(), self.CATALOG, [self.SUMMARIES[0]]
         )
         assert (await strategy.search("q")).names == ["a1"]
         assert agent.route.await_count == 1
@@ -154,7 +157,7 @@ class TestHierarchyStrategy:
 
 class TestStrategyConfig:
     def test_default_is_plain(self):
-        config = ToolDiscoveryConfig()
+        config = ToolDiscoveryConfig(service_model="m")
         assert isinstance(config.strategy, PlainSearchStrategyConfig)
         assert (config.strategy.top_k, config.strategy.score_threshold) == (10, 0.5)
 
@@ -169,12 +172,19 @@ class TestStrategyConfig:
     def test_discriminator(self, type_, cls):
         assert isinstance(TypeAdapter(SearchStrategyConfig).validate_python({"type": type_}), cls)
 
+    def test_service_model_is_required_when_enabled(self):
+        with pytest.raises(ValidationError, match="service_model"):
+            ToolDiscoveryConfig(enabled=True)
+
+    def test_service_model_is_optional_when_disabled(self):
+        assert ToolDiscoveryConfig().service_model is None
+
     def test_window_defaults(self):
         strategy = WindowSearchStrategyConfig()
         assert (strategy.window_size_chars, strategy.per_window_top_k) == (40000, 3)
 
     def test_unknown_type_and_bad_threshold_rejected(self):
         with pytest.raises(ValidationError):
-            ToolDiscoveryConfig(strategy={"type": "bogus"})
+            ToolDiscoveryConfig(service_model="m", strategy={"type": "bogus"})
         with pytest.raises(ValidationError):
             PlainSearchStrategyConfig(score_threshold=1.5)
