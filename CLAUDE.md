@@ -93,7 +93,9 @@ Core's `/v2/skills` API — a folder with `SKILL.md` plus bundled text files the
 `SkillsRegistry` merges all three per request and owns precedence (predefined > dial-prompt > dial-skill).
 A user can also invoke one of their own skills from a message (`skills/invocation/`): the
 `custom_content.skills[*]` chips are resolved per request, registered ahead of every agent source, and
-injected as a synthetic `read_skill` pair.
+injected as a synthetic `read_skill` pair. A bundled file can be handed to a tool as a
+`skill://<name>/<path>` reference behind a `file:` prefix (`skills/file_reference/`); `file_transfer/` stays
+skill-agnostic and only exposes the `FileSource` extension point.
 
 The DI module array lives in `skills/skills_di.py`, not in `skills/__init__.py`, so the contract package
 never imports its own sources: `quickapp.skills` pulls in only the leaf contract modules and is safe to
@@ -118,7 +120,7 @@ See `CODESTYLE.md` for full details. Key rules:
 - **DI**: Constructor injection only — never instantiate services directly across module boundaries.
 - **Types**: Always add type hints. Use modern generics: `list[str]`, `dict[str, int]`, `str | None`.
 - **Data containers**: Use Pydantic `BaseModel` (not `@dataclass`) for value objects; use `model_config = ConfigDict(frozen=True)` when immutability is wanted.
-- **Visibility**: `_` prefix for all internal attributes/methods.
+- **Visibility**: `_` prefix for all internal attributes/methods. Never import from another package's `_`-prefixed module in production code; import from the package (re-export in its `__init__.py` if needed). Tests are exempt.
 - **Logging**: Use `logging` module; never `print()`. Logs carry structure, not content — never log message bodies, tool-call arguments, response bodies, header values, or URL query strings at any level. Route payload detail through `common.payload_logging.log_payload` (gated by `LOG_PAYLOADS`) and sanitize URLs with `common.url_sanitization.sanitize_url`. See `CODESTYLE.md` §9.
 - **Imports**: stdlib → third-party → local, explicit only (no `*` imports).
 

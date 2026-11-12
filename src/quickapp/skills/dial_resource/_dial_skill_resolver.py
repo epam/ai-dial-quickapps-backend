@@ -9,22 +9,25 @@ from quickapp.skills.dial_resource._dial_skill_reader import DialSkillReader
 from quickapp.skills.dial_resource._dial_skills_client import SkillInventory, _DialSkillsClient
 from quickapp.skills.dial_resource._exceptions import describe_exception
 from quickapp.skills.frontmatter import parse_frontmatter
+from quickapp.skills.skill_file_url import format_skill_reference
 from quickapp.skills.skill_resolver import DialSkillResourceResolver, SkillResolution
 from quickapp.skills.skills_provider import ResolvedSkill
 
 logger = logging.getLogger(__name__)
 
 
-def _build_skill_files_block(inventory: SkillInventory, max_files: int) -> str:
+def _build_skill_files_block(skill_name: str, inventory: SkillInventory, max_files: int) -> str:
     """Render the ``<skill_files>`` inventory appended to a skill's manifest.
 
+    Each file is shown as a ready-to-copy ``skill://<name>/<path>`` reference.
     Paths are emitted verbatim — deliberately not XML-escaped. Escaping would
     advertise `references/user's-guide.md` as `user&apos;s-guide.md`, a name no
     lookup resolves.
     """
     if not inventory.files:
         return ""
-    block = "\n".join(("<skill_files>", *inventory.files, "</skill_files>"))
+    references = (format_skill_reference(skill_name, path) for path in inventory.files)
+    block = "\n".join(("<skill_files>", *references, "</skill_files>"))
     if inventory.truncated:
         block += f"\nNote: file listing truncated at {max_files} entries."
     return block
@@ -113,7 +116,7 @@ class DialSkillResolver(DialSkillResourceResolver):
         parsed = parse_frontmatter(manifest, config.url)
 
         inventory, warnings = await self._list_files(config.url)
-        block = _build_skill_files_block(inventory, self._client.max_files)
+        block = _build_skill_files_block(parsed.metadata.name, inventory, self._client.max_files)
         content = f"{manifest.rstrip()}\n\n{block}\n" if block else manifest
 
         return ResolvedSkill(

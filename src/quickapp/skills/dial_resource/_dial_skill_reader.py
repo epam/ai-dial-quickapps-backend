@@ -4,12 +4,8 @@ from injector import inject
 
 from quickapp.skills.dial_resource._dial_skills_client import MANIFEST_NAME, _DialSkillsClient
 from quickapp.skills.exceptions import SkillFileNotFoundError
+from quickapp.skills.skill_file_url import normalize_skill_file_path
 from quickapp.skills.skills_provider import ResolvedSkill, SkillFileReader
-
-
-def _normalize_file_path(file_path: str) -> str:
-    """Strip the decorations a model tends to add around a listed path."""
-    return file_path.strip().lstrip("/").removeprefix("./")
 
 
 @inject
@@ -31,7 +27,7 @@ class DialSkillReader(SkillFileReader):
         separators and hidden files too, since the model can only ask for
         what it was told exists.
         """
-        normalized = _normalize_file_path(file_path)
+        normalized = normalize_skill_file_path(file_path, skill.metadata.name)
         if normalized == MANIFEST_NAME:
             # The manifest is not in the inventory; serve what read_skill would.
             return skill.content

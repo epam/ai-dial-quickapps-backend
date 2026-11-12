@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from quickapp.common.exceptions import InvalidToolCallParameterException
-from quickapp.file_transfer._file_loader_service import FileLoaderService
-from quickapp.file_transfer._file_prefix_handlers import FilePrefixHandlers
+from quickapp.shared.file_transfer._file_loader_service import FileLoaderService
+from quickapp.shared.file_transfer._file_prefix_handlers import FilePrefixHandlers
 
 
 @pytest.fixture

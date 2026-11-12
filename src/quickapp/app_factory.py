@@ -15,7 +15,6 @@ from quickapp.dial_app_tooling import DialAppToolingModule
 from quickapp.dial_core_services.dial_core_services_module import DialCoreServicesModule
 from quickapp.dial_deployment_tooling import DialDeploymentToolingModule
 from quickapp.dial_files_tooling.dial_files_tooling_module import DialFilesToolingModule
-from quickapp.file_transfer import FileTransferModule
 from quickapp.internal_tooling.internal_tooling_module import InternalToolModule
 from quickapp.mcp_tooling import MCPToolingModule
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand.lazy_on_demand_strategy_module import (
@@ -27,6 +26,7 @@ from quickapp.representation_tooling.representation_tooling_module import (
 )
 from quickapp.rest_api_tooling import RestApiToolingModule
 from quickapp.shared import shared_module
+from quickapp.shared.file_transfer import FileTransferModule
 from quickapp.skills.skills_di import skills_module
 from quickapp.starters.starters_module import StartersModule
 from quickapp.timestamp_tooling.timestamp_module import TimestampModule

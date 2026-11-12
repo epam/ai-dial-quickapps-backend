@@ -11,11 +11,11 @@ from quickapp.common.state_holder import StateHolder
 from quickapp.config.tools.mcp import MCPTool
 from quickapp.dial_core_services.attachment_service import AttachmentService
 from quickapp.dial_core_services.dial_file_service import DialFileService
-from quickapp.file_transfer._file_argument_transformer import _FileArgumentTransformer
-from quickapp.file_transfer._file_loader_service import FileLoaderService
 from quickapp.mcp_tooling._mcp_stage_wrapper import _MCPStageWrapper
 from quickapp.mcp_tooling._mcp_tool import _MCPTool
 from quickapp.mcp_tooling._mcp_toolset_client import _MCPToolsetClient
+from quickapp.shared.file_transfer._file_argument_transformer import _FileArgumentTransformer
+from quickapp.shared.file_transfer._file_loader_service import FileLoaderService
 from tests.unit_tests.common.common import noop_timeout_resolver
 
 DIAL_URL = "https://dial.example.com"
@@ -221,4 +221,98 @@ class TestPreProcessParams:
             await tool._pre_process_params(
                 doc_urls=["files/a.pdf", "https://external.example/b.pdf"]
             )
+        file_service.grant_permissions_to_files.assert_not_awaited()
+
+
+_SKILL_SCHEMA = {
+    "properties": {
+        "script_url": {"type": "string", "dial_url": True},
+        "scripts": {"type": "array", "items": {"type": "string"}, "dial_url": True},
+        "plain": {"type": "string"},
+    }
+}
+_SKILL_FILE = "skills/b/data-cleanup/files/scripts/clean.py"
+_SKILL_ROOT = "skills/b/data-cleanup"
+
+
+class TestSkillFileUrls:
+    @pytest.mark.asyncio
+    async def test_skill_file_is_granted_on_the_skill_root(self):
+        tool, file_service, _ = _make_tool(_SKILL_SCHEMA, dial_toolset_id="my-toolset")
+
+        result = await tool._pre_process_params(script_url=f"file:url::{_SKILL_FILE}")
+
+        assert result["script_url"] == _SKILL_FILE
+        file_service.grant_permissions_to_files.assert_awaited_once_with(
+            [_SKILL_ROOT], "my-toolset"
+        )
+
+    @pytest.mark.asyncio
+    async def test_files_of_one_skill_cost_one_grant(self):
+        tool, file_service, _ = _make_tool(_SKILL_SCHEMA, dial_toolset_id="my-toolset")
+
+        await tool._pre_process_params(
+            script_url=_SKILL_FILE,
+            scripts=[_SKILL_FILE, "skills/b/data-cleanup/files/scripts/other.py"],
+        )
+
+        file_service.grant_permissions_to_files.assert_awaited_once_with(
+            [_SKILL_ROOT], "my-toolset"
+        )
+
+    @pytest.mark.asyncio
+    async def test_files_of_two_skills_are_granted_in_input_order(self):
+        tool, file_service, _ = _make_tool(_SKILL_SCHEMA, dial_toolset_id="my-toolset")
+
+        await tool._pre_process_params(scripts=["skills/b/two/files/a.py", _SKILL_FILE])
+
+        file_service.grant_permissions_to_files.assert_awaited_once_with(
+            ["skills/b/two", _SKILL_ROOT], "my-toolset"
+        )
+
+    @pytest.mark.asyncio
+    async def test_skill_file_and_plain_dial_file_are_both_granted(self):
+        tool, file_service, _ = _make_tool(_SKILL_SCHEMA, dial_toolset_id="my-toolset")
+
+        await tool._pre_process_params(scripts=[_SKILL_FILE, "files/report.pdf"])
+
+        file_service.grant_permissions_to_files.assert_awaited_once_with(
+            [_SKILL_ROOT, "files/report.pdf"], "my-toolset"
+        )
+
+    @pytest.mark.asyncio
+    async def test_same_plain_file_is_granted_once(self):
+        tool, file_service, _ = _make_tool(_SKILL_SCHEMA, dial_toolset_id="my-toolset")
+
+        await tool._pre_process_params(scripts=["files/a.pdf", "files/a.pdf"])
+
+        file_service.grant_permissions_to_files.assert_awaited_once_with(
+            ["files/a.pdf"], "my-toolset"
+        )
+
+    @pytest.mark.asyncio
+    async def test_skill_file_without_toolset_id_fails_like_any_shared_file(self):
+        tool, file_service, _ = _make_tool(_SKILL_SCHEMA, dial_toolset_id=None)
+
+        with pytest.raises(
+            InvalidToolCallParameterException, match="dial_toolset_id is not configured"
+        ):
+            await tool._pre_process_params(script_url=_SKILL_FILE)
+        file_service.grant_permissions_to_files.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_skill_file_in_parameter_without_dial_url_flag_is_not_granted(self):
+        tool, file_service, _ = _make_tool(_SKILL_SCHEMA, dial_toolset_id="my-toolset")
+
+        result = await tool._pre_process_params(plain=_SKILL_FILE)
+
+        assert result["plain"] == _SKILL_FILE
+        file_service.grant_permissions_to_files.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_dot_segments_do_not_borrow_a_skill_grant(self):
+        tool, file_service, _ = _make_tool(_SKILL_SCHEMA, dial_toolset_id="my-toolset")
+
+        with pytest.raises(InvalidToolCallParameterException, match="unsupported URL"):
+            await tool._pre_process_params(script_url="skills/b/s/files/../../other/files/x")
         file_service.grant_permissions_to_files.assert_not_awaited()
