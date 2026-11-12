@@ -1,5 +1,4 @@
 import asyncio
-import logging
 
 from aidial_client import AsyncDial
 from injector import inject
@@ -8,19 +7,17 @@ from quickapp.common.exceptions import SkillInitializationException
 from quickapp.config.skill import DialPromptSkillConfig
 from quickapp.skills.exceptions import SkillValidationError
 from quickapp.skills.frontmatter import parse_frontmatter
-from quickapp.skills.skill_metadata import ParsedSkill
+from quickapp.skills.skill_metadata import SkillMetadata
 from quickapp.skills.skill_resolver import SkillResolution
 from quickapp.skills.skills_provider import ResolvedSkill
-
-logger = logging.getLogger(__name__)
 
 
 async def fetch_and_validate_dial_prompt_skill(
     client: AsyncDial, url: str
-) -> tuple[ParsedSkill, str]:
+) -> tuple[SkillMetadata, str]:
     """Fetch a DIAL prompt by URL and validate it as a skill.
 
-    Returns ``(parsed, content)``. Raises ``DialException`` if the fetch
+    Returns ``(metadata, content)``. Raises ``DialException`` if the fetch
     fails and ``SkillValidationError`` if the prompt is empty or its
     frontmatter is invalid.
     """
@@ -46,10 +43,8 @@ class DialPromptSkillResolver:
         - Deduplicates by URL before fetching.
         - Fetches in parallel with ``asyncio.gather(return_exceptions=True)``.
         - Deduplicates by skill name after fetching (first configured wins).
-        - Per-URL failures and non-fatal parser warnings both become
-          ``SkillInitializationException`` entries in the ``exceptions`` list,
-          distinguished by ``severity``. Both ride the unified
-          initialization-issues flow.
+        - Per-URL failures become ``SkillInitializationException`` entries in
+          the ``exceptions`` list and ride the unified initialization-issues flow.
         """
         seen_urls: set[str] = set()
         unique_configs: list[DialPromptSkillConfig] = []
@@ -76,11 +71,6 @@ class DialPromptSkillResolver:
                 exceptions.append(SkillInitializationException(url=url, reason=str(result)))
                 continue
 
-            for warning in result.warnings:
-                exceptions.append(
-                    SkillInitializationException(url=url, reason=warning, severity="warning")
-                )
-
             if result.metadata.name in seen_names:
                 exceptions.append(
                     SkillInitializationException(
@@ -102,12 +92,11 @@ class DialPromptSkillResolver:
         self,
         config: DialPromptSkillConfig,
     ) -> ResolvedSkill:
-        parsed, content = await fetch_and_validate_dial_prompt_skill(self._dial_client, config.url)
-        # Cosmetic frontmatter warnings are log-only, not shown to users.
-        for warning in parsed.warnings:
-            logger.warning("Skill '%s': %s", config.url, warning)
+        metadata, content = await fetch_and_validate_dial_prompt_skill(
+            self._dial_client, config.url
+        )
         return ResolvedSkill(
             url=config.url,
-            metadata=parsed.metadata,
+            metadata=metadata,
             content=content,
         )
