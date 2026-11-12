@@ -1,0 +1,16 @@
+# Accepted vulnerabilities. Each entry documents the blocker and why the
+# vulnerable code is not shipped or not reachable from this project.
+
+# torch: no fix available
+# https://avd.aquasec.com/nvd/cve-2026-4538
+# torch is only in the optional `integration` dependency group (used by
+# sentence-transformers in integration tests). It is not installed in the
+# runtime image.
+CVE-2026-4538 exp:2027-04-30
+
+# torch: fixed in 2.13.0
+# https://avd.aquasec.com/nvd/cve-2025-3000
+# torch is pinned to <2.11 because 2.11+ breaks the ORT license scan (see the
+# HACK comment in pyproject.toml). Only in the optional `integration`
+# dependency group; not installed in the runtime image.
+CVE-2025-3000 exp:2027-04-30
