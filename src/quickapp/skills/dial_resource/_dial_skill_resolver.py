@@ -111,6 +111,9 @@ class DialSkillResolver(DialSkillResourceResolver):
     async def _fetch_one(self, config: DialSkillConfig) -> ResolvedSkill:
         manifest = await self._client.read_manifest(config.url)
         parsed = parse_frontmatter(manifest, config.url)
+        # Cosmetic frontmatter warnings are log-only, not shown to users.
+        for warning in parsed.warnings:
+            logger.warning("Skill '%s': %s", config.url, warning)
 
         inventory, warnings = await self._list_files(config.url)
         block = _build_skill_files_block(inventory, self._client.max_files)
@@ -122,7 +125,7 @@ class DialSkillResolver(DialSkillResourceResolver):
             metadata=parsed.metadata,
             content=content,
             files=inventory.files,
-            warnings=[*parsed.warnings, *warnings],
+            warnings=warnings,
         )
 
     async def _list_files(self, url: str) -> tuple[SkillInventory, list[str]]:
