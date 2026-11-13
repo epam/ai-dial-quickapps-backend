@@ -261,7 +261,7 @@ The project contains predefined configs of application and predefined tools
 |----------------|----------|---------|----------------------------------------------------------------------------------------------------------|------------------|---------------|
 | deployment     | Yes      | Object  | The DIAL deployment configuration. See [Deployment configuration](#deployment-configuration)             | -                | -             |
 | system_prompt  | Yes      | Object  | The configuration for the system prompt. See [System prompt configuration](#system-prompt-configuration) | -                | -             |
-| max_iterations | No       | Integer | The max count of orchestrator(agent) operations. -1 value for infinite                                   | Integer          | 15            |
+| max_iterations | No       | Integer | The max count of orchestrator(agent) operations                                                            | Integer          | 15            |
 | attachment_strategy | No  | Object  | How the orchestrator receives request-scoped attachments. See [Attachment strategy](#attachment-strategy-configuration) | - | `null` |
 | tool_discovery | No       | Object  | Dynamic tool discovery configuration. See [Tool discovery configuration](#tool-discovery-configuration) | -   | `null`        |
 
@@ -333,11 +333,18 @@ With custom fields sample:
 
 #### System prompt configuration
 
-| Field     | Required                    | Type                 | Description                                                      | Available Values | Default Value |
-|-----------|-----------------------------|----------------------|------------------------------------------------------------------|------------------|---------------|
-| type      | Yes                         | String               | The type of the System prompt                                    | `dial`, `custom` | -             |
-| variables | Yes                         | Dict[String, String] | Dict with variables that should be replaced in the system prompt | -                | -             |
-| content   | Yes (if `type` is `custom`) | String               | The system prompt itself                                         | -                | -             |
+| Field     | Required                        | Type                 | Description                                                      | Available Values               | Default Value |
+|-----------|---------------------------------|----------------------|------------------------------------------------------------------|--------------------------------|---------------|
+| type      | Yes                             | String               | The type of the System prompt                                    | `dial`, `custom`, `predefined` | -             |
+| variables | Yes (if `type` is `custom`)     | Dict[String, String] | Dict with variables that should be replaced in the system prompt | -                              | -             |
+| content   | Yes (if `type` is `custom`)     | String               | The system prompt itself                                         | -                              | -             |
+| path      | Yes (if `type` is `dial`)       | String               | Relative prompt URL in DIAL (e.g. `prompts/<bucket>/<path>`)     | -                              | -             |
+| template  | Yes (if `type` is `predefined`) | String               | The predefined template name for a system prompt                 | -                              | -             |
+
+A `dial` prompt is loaded from DIAL on each request. If the orchestrator's prompt cannot be loaded or is empty, the request fails. If a deployment tool's prompt cannot be loaded, the tool runs without it and the problem is shown in the "Initialization issues" stage.
+
+A deployment tool's prompt is sent as a `system` message. If the deployment is another Quick App, that app rejects
+the request with HTTP 400 unless its operator set `ALLOW_OVERRIDE_SYSTEM_MESSAGE=true`.
 
 <details>
 <summary><b>System prompt configuration JSON sample</b></summary>
@@ -352,6 +359,17 @@ Custom system prompt:
       "reason_of_life": "42"
     },
     "content": "This is base Agent prompt. The reason of life is {reason_of_life}"
+  }
+}
+```
+
+DIAL system prompt:
+
+```json
+{
+  "system_prompt": {
+    "type": "dial",
+    "path": "prompts/<bucket>/<path>"
   }
 }
 ```
@@ -1300,6 +1318,7 @@ The same as ApiKeyAuthorization but for mcp location is not configurable and alw
 | propagate_annotations_to_choice | No                          | Boolean | Only for `deployment-tool` and `dial-deployment-simple`. Propagate citation annotations returned by the deployment to the app's answer. See [Citation annotations](#citation-annotations)               | `true`, `false`  | `null`        |
 | conversation_mode               | No                          | Object  | Resumable subagent conversation. Applies to `deployment-tool`, `dial-deployment-simple`, and `dial-app` (chat-completion branch only). See [Conversation mode](#conversation-mode) | - | `null` |
 | content_propagation             | No                          | Object  | Header / **deprecated** history propagation. Prefer `conversation_mode`. See [Content propagation](#content-propagation-deprecated-history-flag) | - | `null` |
+| system_prompt                   | No                          | Object  | Only for `deployment-tool`. Sent to the deployment as a system message. Accepts `custom` and `dial`, not `predefined`. See [System prompt configuration](#system-prompt-configuration) | - | `null` |
 
 #### Conversation mode
 
@@ -1786,6 +1805,34 @@ calls made during that chat completion. No configuration is required.
 Use this for tracing (e.g. `X-Request-Id`, `X-Correlation-Id`), multi-tenancy (`X-Tenant-Id`), or any custom header
 your gateways or downstream services expect.
 
+## Projects
+
+`[Preview]` Requires `ENABLE_PREVIEW_FEATURES=true`. No manifest field: a chat inside a DIAL Chat project sends the
+`x-project-id` header, and QuickApps then reads the project instructions and context files and keeps its files in the
+project's `artifacts/` folder (see [docs/projects.md](./docs/projects.md)).
+
+The app needs access to the project. An admin declares it as resource dependencies of the app in DIAL Core and
+approves them (DIAL Core [#1930](https://github.com/epam/ai-dial-core/issues/1930); Admin UI → Resource Dependencies):
+
+```json
+"resourceDependencies": [
+  { "kind": "...", "linkId": "project-read",  "target": { "path": "projects/{current-user}/" }, "access": ["READ"],  "required": false },
+  { "kind": "...", "linkId": "project-write", "target": { "path": "projects/{current-user}/" }, "access": ["WRITE"], "required": false }
+]
+```
+
+Core checks the dependencies on every call to the app. Without the user's consent, `"required": true` makes Core reject
+every call to the app with 403 "Required resource dependencies are not accessible", even outside projects; with
+`"required": false` the app keeps working and only project chats end with `project_access_denied`. With consent both
+behave the same. Use `true` only for apps that make no sense outside a project.
+
+- `projects/{current-user}/` covers all of the requesting user's own projects. QuickApps itself touches only the
+  project in the header.
+- The exact `kind` values are to be confirmed when the Core feature is released.
+- Without an approved dependency a project chat fails at the start of the turn with 403 `project_access_denied`.
+- Keep `ENABLE_PREVIEW_FEATURES=false` where DIAL Core has no resource dependencies for projects: project chats then
+  run as ordinary chats.
+
 ## Environment Variables
 
 | Variable                                   | Default                                                         | Required | Description                                                                                                  |
@@ -1806,8 +1853,8 @@ your gateways or downstream services expect.
 | `LOG_PAYLOADS`                             | `false`                                                         | No       | Emit payload content (message bodies, tool-call arguments, tool/LLM response bodies) at DEBUG. When `false`, no payload content is logged at **any** level and the payload-capable third-party loggers (`openai`/`httpx`/`httpcore`) are capped at INFO. **Local development only** — see [Payload Logging](#payload-logging). |
 | `LOG_PAYLOADS_MAX_LENGTH`                  | `2000`                                                          | No       | Per-field character cap applied to each payload value when `LOG_PAYLOADS=true`; longer values are truncated. Inert when `LOG_PAYLOADS=false`. |
 | **Agent**                                  |                                                                 |          |                                                                                                              |
-| `DEFAULT_AGENT_MAX_ITERATIONS`             | `15`                                                            | No       | Maximum number of orchestrator iterations (`-1` for infinite)                                                |
-| `DEFAULT_ORCHESTRATOR_DEPLOYMENT_ID`       | —                                                               | Yes      | Default DIAL deployment id used as the orchestrator model when a QuickApp manifest omits `orchestrator.deployment`. Also surfaces as the JSON-schema `default` for that field so DIAL Core can pre-fill new manifests. Apps can override per-app. |
+| `DEFAULT_AGENT_MAX_ITERATIONS`             | `15`                                                            | No       | Maximum number of orchestrator iterations per turn                                                           |
+| `DEFAULT_ORCHESTRATOR_DEPLOYMENT_ID`       | —                                                               | No       | Default DIAL deployment id used as the orchestrator model when a QuickApp manifest omits `orchestrator.deployment`. When unset, every manifest must set `orchestrator.deployment`. Also surfaces as the JSON-schema `default` for that field so DIAL Core can pre-fill new manifests. Apps can override per-app. |
 | `SHOW_USAGE_STATISTICS`                    | `false`                                                         | No       | Show a "Usage Statistics" stage (a row per model with tokens and cost, including models used by nested apps) and request usage from deployment tools |
 | `SHOW_EXECUTION_TIME_STAGE`                | `false`                                                         | No       | Show execution time stage in the UI                                                                          |
 | `ALLOW_OVERRIDE_SYSTEM_MESSAGE`            | `false`                                                         | No       | Security switch (deployment-wide; apps cannot opt out once enabled). When `false` (default), a request whose `system` message has text is rejected with HTTP 400 so the client knows the application uses its own configured system prompt. When `true`, the inbound system message replaces only the configured prompt; other injected parts (skills, MCP resources, etc.) are still appended. |
@@ -1827,7 +1874,7 @@ your gateways or downstream services expect.
 | `TOOL_CALL_RESULT_OFFLOAD__ENABLED_BY_DEFAULT` | `true`                                                          | No       | Default value of the per-app `enabled` flag (`features.dial_files.tool_call_result_offload.enabled`). Apps override per-app; `enabled: false` disables offload for that app. |
 | `TOOL_CALL_RESULT_OFFLOAD__SIZE_THRESHOLD` | `40000`                                                         | No       | Default byte threshold above which a tool-call response is offloaded to a DIAL file. Apps override per-app via `features.dial_files.tool_call_result_offload.size_threshold`. |
 | `TOOL_CALL_RESULT_LIMIT__MAX_CHARS`        | `80000`                                                         | No       | Maximum length, in characters, of any tool response that reaches the model. A longer response (still over the limit after offload) is replaced by a "response too large" error. Must be at least `TOOL_CALL_RESULT_OFFLOAD__SIZE_THRESHOLD`, and at least any per-app `size_threshold`. |
-| `TOOL_CALL_RESULT_OFFLOAD__EXCLUDED_TOOLS` | `[]`                                                            | No       | Default JSON list of **additional** tool names exempt from offloading. The read-back tools (`internal_file_read_lines`, `internal_file_read_chars`, `internal_file_search`) are always excluded regardless of this value, so a large read-back slice is never re-offloaded. Apps add more per-app via `features.dial_files.tool_call_result_offload.excluded_tools`. |
+| `TOOL_CALL_RESULT_OFFLOAD__EXCLUDED_TOOLS` | `[]`                                                            | No       | Default JSON list of **additional** tool names exempt from offloading. The read-back tools (`internal_file_read_lines`, `internal_file_read_chars`, `internal_file_search`) and `read_skill` are always excluded regardless of this value, so a large read-back slice is never re-offloaded. Apps add more per-app via `features.dial_files.tool_call_result_offload.excluded_tools`. |
 | **External URL Egress**                    |                                                                 |          |                                                                                                              |
 | `EXTERNAL_URL_FETCH_ENABLED`                 | `false`                                                         | No       | Admin cap on fetching external (non-DIAL) URLs. When `false` (default), no app may fetch external URLs regardless of its manifest; the deployment-handoff branch (deployments with `features.url_attachments`) is unaffected. Apps can opt out per-app via `features.external_url_fetch.enabled=false` even when the admin allows. |
 | `EXTERNAL_URL_FETCH_HOST_ALLOWLIST`        | —                                                               | No       | Comma-separated allowlist of host patterns for external URL fetches. Unset (default) means no admin-level host restriction. Patterns: exact host (`example.com`) or `*.example.com` for any subdomain. Re-checked on every redirect hop. Per-app `features.external_url_fetch.host_allowlist` narrows further (intersection) but never expands. |
@@ -1841,6 +1888,7 @@ your gateways or downstream services expect.
 | `DIAL_SKILLS_MAX_FILES`                    | `200`                                                           | No       | Maximum bundled files advertised to the agent per DIAL skill resource; beyond it the listing is truncated     |
 | `DIAL_SKILLS_LISTING_MAX_PAGES`            | `10`                                                            | No       | Maximum file-listing pages followed per DIAL skill resource, bounding a server-supplied cursor                |
 | `SKILL_INVOCATION_MAX_SKILLS`              | `10`                                                            | No       | Maximum distinct skills a user may have invoked from the messages of one conversation (`custom_content.skills`), counted newest first. Each one adds a `<skill>` block to the system prompt and one DIAL Core fetch per turn; beyond the cap the oldest picks stop being registered. See [docs/skills.md](docs/skills.md). |
+| `PROJECT_INSTRUCTIONS_MAX_CHARS`           | `32000`                                                         | No       | Maximum length, in characters, of the project's `PROJECT.md` body added to the system prompt in a project chat; a longer body is cut with a note. See [docs/projects.md](docs/projects.md). |
 | **Feature Gating**                         |                                                                 |          |                                                                                                              |
 | `ENABLE_PREVIEW_FEATURES`                  | `false`                                                         | No       | Enable preview features across the deployment (schema visibility + runtime activation)                       |
 | **Templates**                              |                                                                 |          |                                                                                                              |

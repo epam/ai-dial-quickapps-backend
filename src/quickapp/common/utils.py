@@ -4,7 +4,7 @@ import re
 from datetime import datetime
 from pathlib import PurePosixPath
 from typing import Any
-from urllib.parse import unquote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 
 from quickapp.config.tools.const import ALL_MIME_TYPES
 
@@ -145,6 +145,29 @@ def filename_from_url_path(url: str) -> str | None:
     if not last:
         return None
     return unquote(last) or None
+
+
+def canonical_url(url: str) -> str:
+    """A relative DIAL URL with each segment percent-encoded, the form Core lists.
+
+    Segments are decoded first, so a decoded (``My Project``) and an encoded (``My%20Project``)
+    spelling converge without double-encoding. An absolute URL is returned unchanged.
+    """
+    if urlsplit(url).netloc:
+        return url
+    return "/".join(quote(unquote(segment), safe="") for segment in url.split("/"))
+
+
+def readable_url(url: str) -> str:
+    """A relative DIAL URL with each segment decoded (``My Project``), for the model and the
+    stage titles.
+
+    ``canonical_url`` turns it back into the same URL. When it can't (a name with ``%``
+    escapes or an encoded ``/``), the canonical form is returned.
+    """
+    canonical = canonical_url(url)
+    decoded = "/".join(unquote(segment) for segment in canonical.split("/"))
+    return decoded if canonical_url(decoded) == canonical else canonical
 
 
 def to_plain_dict(obj: Any, _seen: set[int] | None = None) -> Any:

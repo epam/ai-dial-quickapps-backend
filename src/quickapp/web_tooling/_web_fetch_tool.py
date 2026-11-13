@@ -140,15 +140,6 @@ class _WebFetchTool(StagedBaseTool):
         return compose_truncated_content(notice, head)
 
     async def __save_to_workspace(self, save_path: str, fetched: FetchedBytes) -> ToolCallResult:
-        # A ``files/``-prefixed path would be returned verbatim by
-        # ``resolve_appdata_url``, escaping the agent home. Require a home-relative one.
-        if save_path.startswith("files/"):
-            raise InvalidToolCallParameterException(
-                "save_path",
-                "save_path must be a workspace-relative path under the agent home "
-                "(e.g. 'data.py' or 'docs/readme.md'), not an absolute 'files/...' URL.",
-            )
-
         content_type = fetched.content_type or "application/octet-stream"
         display_path = await self.__write_unique(save_path, fetched.data, content_type)
 
@@ -168,7 +159,7 @@ class _WebFetchTool(StagedBaseTool):
         """
         for attempt in range(_MAX_UNIQUE_ATTEMPTS):
             candidate = save_path if attempt == 0 else _with_suffix(save_path, attempt)
-            target_url = await self.__home_resolver.resolve_appdata_url(candidate)
+            target_url = await self.__home_resolver.resolve_write_url("save_path", candidate)
             display_path = await self.__home_resolver.to_display_path(target_url)
             try:
                 await self.__dial_file_service.write_bytes(

@@ -10,7 +10,11 @@ from injector import Injector, inject
 from quickapp.common import InitializerType, StagedBaseTool
 from quickapp.common.base_initializer import invoke_initializers
 from quickapp.common.error_details import new_error_reference
-from quickapp.common.exceptions import ConfigResolutionException, FallbackAgentStopException
+from quickapp.common.exceptions import (
+    ConfigResolutionException,
+    FallbackAgentStopException,
+    OrchestratorSystemPromptException,
+)
 from quickapp.common.lifecycle_logging import format_duration, format_event
 from quickapp.common.model_hidden_tool import ModelHiddenTool
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
@@ -85,16 +89,19 @@ class _QuickAppCompletion(ChatCompletion):
                 request_context_setup = self.__injector.get(_RequestContextSetup)
                 try:
                     await request_context_setup.setup_context(request, choice)
-                except ConfigResolutionException:
-                    # System prompt resolution is the only path that still raises;
-                    # tool / toolset failures are skip-and-record inside the resolver.
+                    self.__log_request_received(request)
+                    timer_service.add_milestone(
+                        self.__timer_period_name, "request context pre-init"
+                    )
+                    await invoke_initializers(self.__injector, InitializerType.completion)
+                except (ConfigResolutionException, OrchestratorSystemPromptException):
+                    # System prompt resolution is the only path that still raises (predefined in
+                    # setup_context, `dial` in its initializer); tool / toolset failures are
+                    # skip-and-record.
                     failed = True
                     outcome = "failed"
                     self.__injector.get(_InitializationErrorHandler).handle_initialization_issues()
                     return
-                self.__log_request_received(request)
-                timer_service.add_milestone(self.__timer_period_name, "request context pre-init")
-                await invoke_initializers(self.__injector, InitializerType.completion)
                 timer_service.add_milestone(self.__timer_period_name, "initializers")
                 await request_context_setup.setup_messages(request.messages)
                 timer_service.add_milestone(self.__timer_period_name, "messages finalized")

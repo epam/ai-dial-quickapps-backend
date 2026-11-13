@@ -5,8 +5,8 @@ from aidial_client._exception import DialException, EtagMismatchError, ResourceN
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.tool_call_result import ToolCallResult
+from quickapp.dial_core_services.exceptions import ProjectFileOperationException
 from quickapp.dial_files_tooling._base_file_tool import _DialFileTool
-from quickapp.dial_files_tooling._utils import reject_absolute_path
 
 
 class _CopyFileTool(_DialFileTool):
@@ -21,10 +21,8 @@ class _CopyFileTool(_DialFileTool):
         destination: str = kwargs["destination"]
         overwrite: bool = bool(kwargs.get("overwrite", False))
 
-        reject_absolute_path("destination", "copy_file", destination)
-
         source_url = await self._home_resolver.resolve_appdata_url(source)
-        dest_url = await self._home_resolver.resolve_appdata_url(destination)
+        dest_url = await self._home_resolver.resolve_write_url("destination", destination)
         dest_display = await self._home_resolver.to_display_path(dest_url)
 
         try:
@@ -39,8 +37,10 @@ class _CopyFileTool(_DialFileTool):
                 f"destination already exists: {dest_display}. Ask the user whether to "
                 "replace it; only if they approve, retry with overwrite=True.",
             ) from e
+        except ProjectFileOperationException as e:
+            raise InvalidToolCallParameterException("source", e.message) from e
         except DialException as e:
-            self._check_permission_denied(e, source, parameter_name="source")
+            self._check_permission_denied(e, source)
             raise
 
         result = ToolCallResult(content=f"Copied to: {dest_display}", content_type="text/plain")

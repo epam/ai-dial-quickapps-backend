@@ -33,8 +33,8 @@ config/predefined/skills/
     └── SKILL.md
 ```
 
-The directory name **must** match the `name` field in the YAML frontmatter. Skills that fail this check are skipped at
-startup.
+The directory name should match the `name` field in the YAML frontmatter. A mismatch is logged as a warning, and the
+skill still loads.
 
 ## Creating a Skill
 
@@ -58,6 +58,10 @@ Detailed instructions and guidelines for the agent...
 ```
 
 ## Metadata Fields
+
+Only a missing frontmatter, invalid YAML, a missing `name` or `description`, or an invalid `allowed-tools` format
+reject a skill. The other constraints below are recommendations: breaking them logs a warning, and the skill still
+loads.
 
 | Field           | Required | Description                                          | Constraints                                                                                        |
 |-----------------|----------|------------------------------------------------------|----------------------------------------------------------------------------------------------------|
@@ -118,8 +122,8 @@ optional features. The table below summarises what is and isn't supported.
 | Feature | Status | Notes |
 |---|---|---|
 | `SKILL.md` with YAML frontmatter | Supported | All standard frontmatter fields are parsed and validated. |
-| Directory-based layout (`skill-name/SKILL.md`) | Supported | Directory name must match `name` in frontmatter. |
-| `name` validation (length, charset, consecutive hyphens) | Supported | |
+| Directory-based layout (`skill-name/SKILL.md`) | Supported | Directory name should match `name` in frontmatter; a mismatch only logs a warning. |
+| `name` validation (length, charset, consecutive hyphens) | Partial | Violations log a warning; the skill still loads. |
 | `description`, `license`, `compatibility`, `metadata` | Supported | |
 | `allowed-tools` | Partial | Exposed in XML metadata but **not enforced** at runtime. |
 | Optional subdirectories (`scripts/`, `references/`, `assets/`) | Partial | Supported for [DIAL skill resources](#dial-skill-resources) (text files only). Predefined and DIAL-prompt skills read `SKILL.md` alone. |
@@ -164,8 +168,8 @@ The `url` field must be a relative path including the `prompts/` resource type p
 DIAL prompt skills are validated at request time using the same rules as predefined skills:
 
 - Must have YAML frontmatter delimited by `---`
-- `name` (required): max 64 chars, lowercase alphanumeric + hyphens
-- `description` (required): max 1024 chars
+- `name` (required): max 64 chars, lowercase alphanumeric + hyphens (a violation only logs a warning)
+- `description` (required): max 1024 chars (a violation only logs a warning)
 - Prompts with no content, empty content, or invalid frontmatter are silently skipped with a warning log
 
 ### Name Collision
@@ -409,7 +413,7 @@ the system prompt. Skills differ in several ways:
    ---
    ```
 
-   The `name` must match the directory name. The `description` should help the agent decide when to read the skill.
+   The `name` should match the directory name. The `description` should help the agent decide when to read the skill.
 
 3. Remove the `config/predefined/instructions/` directory.
 

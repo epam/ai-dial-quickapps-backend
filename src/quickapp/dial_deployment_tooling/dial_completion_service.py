@@ -5,6 +5,7 @@ from typing import Any
 from aidial_client.types.chat.request_param import (
     AssistantMessageParam,
     CustomContentParam,
+    SystemMessageParam,
     UserMessageParam,
 )
 from aidial_sdk.chat_completion import Choice, Stage
@@ -70,6 +71,7 @@ class DialCompletionService:
         history: list[UserMessageParam | AssistantMessageParam] | None = None,
         supports_url_attachments: bool = False,
         parent_stage: Stage | None = None,
+        system_prompt: str | None = None,
     ) -> ToolCallResult:
         # Expect params to be pre-processed by BaseDeploymentTool._pre_process_params
         content = params.get(CONTENT_PARAM, "")
@@ -83,7 +85,7 @@ class DialCompletionService:
         timeout = self.__timeout_resolver.resolve()
         async with translate_timeout(deployment_name, timeout):
             messages = await self.__build_request_messages(
-                content, relative_attachment_urls, history, supports_url_attachments
+                content, relative_attachment_urls, history, supports_url_attachments, system_prompt
             )
             chat_params = self._build_chat_completion_params(
                 params, deployment_id, messages, self.__forwarded_headers, self.__include_usage
@@ -108,7 +110,7 @@ class DialCompletionService:
     def _build_chat_completion_params(
         params: dict[str, Any],
         deployment_id: str,
-        messages: list[UserMessageParam | AssistantMessageParam],
+        messages: list[SystemMessageParam | UserMessageParam | AssistantMessageParam],
         forwarded_headers: ForwardedHeaders,
         include_usage: bool,
     ) -> dict[str, Any]:
@@ -199,8 +201,11 @@ class DialCompletionService:
         relative_attachment_urls: list[str] | None = None,
         history: list[UserMessageParam | AssistantMessageParam] | None = None,
         supports_url_attachments: bool = False,
-    ) -> list[UserMessageParam | AssistantMessageParam]:
-        messages: list[UserMessageParam | AssistantMessageParam] = []
+        system_prompt: str | None = None,
+    ) -> list[SystemMessageParam | UserMessageParam | AssistantMessageParam]:
+        messages: list[SystemMessageParam | UserMessageParam | AssistantMessageParam] = []
+        if system_prompt:
+            messages.append(SystemMessageParam(role="system", content=system_prompt))
         if history:
             messages.extend(history)
         messages.append(

@@ -4,10 +4,9 @@ These have no dependency on `self`/DI, so they live here rather than on the
 `_DialFileTool` base class (which holds the download/resolution behaviour).
 """
 
-from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.tool_names import INTERNAL_FILE_READ_CHARS_TOOL_NAME
 from quickapp.common.utils import fenced_code_block
-from quickapp.dial_core_services.dial_file_service import FolderEntry
+from quickapp.dial_core_services.storage.file_storage import FolderEntry
 
 # Read-back tools (read_lines, read_chars, search) are excluded from offload, so an
 # oversized result cannot be re-saved to a file and would go straight into the LLM
@@ -45,16 +44,6 @@ def cap_output(text: str, limit: int = MAX_OUTPUT_CHARS) -> tuple[str, bool]:
 def is_root_reference(path: str) -> bool:
     """Whether the path denotes the agent home directory itself ('', '.', './', '/')."""
     return path.strip() in ("", ".", "./", "/")
-
-
-def reject_absolute_path(parameter_name: str, tool_name: str, value: str) -> None:
-    """Reject an absolute 'files/...' URL for tools that only accept home-relative paths."""
-    if value.startswith("files/"):
-        raise InvalidToolCallParameterException(
-            parameter_name,
-            f"{tool_name} requires a relative path under agent_home_dir; "
-            "do not pass an absolute files/... URL",
-        )
 
 
 def relative_to(url: str, folder_url: str) -> str:

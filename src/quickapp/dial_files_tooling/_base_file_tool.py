@@ -14,7 +14,10 @@ from quickapp.common.staged_base_tool import StagedBaseTool
 from quickapp.config.application import StageDisplayLevel
 from quickapp.config.dial_files import DialFilesConfig
 from quickapp.config.tools.internal import InternalTool
-from quickapp.dial_core_services.dial_file_service import DialFileService, FolderEntry
+from quickapp.dial_core_services.dial_file_service import DialFileService
+from quickapp.dial_core_services.storage.file_storage import FolderEntry
+from quickapp.dial_files_tooling._dial_files_tool_error_exception import DialFilesToolErrorException
+from quickapp.dial_files_tooling._exceptions import DialFilePermissionException
 from quickapp.dial_files_tooling._stage_wrapper import _FileStageWrapper
 from quickapp.dial_files_tooling._utils import is_root_reference
 from quickapp.shared.home_path.home_path_resolver import HomePathResolver
@@ -139,11 +142,12 @@ class _DialFileTool(StagedBaseTool, ABC):
             raise InvalidToolCallParameterException("max_depth", f"must be in [1, {_MAX_DEPTH}]")
         return max_depth
 
+    def _tool_error(self, exc: Exception) -> DialFilesToolErrorException:
+        """A tool error carrying ``exc``'s message for the model, without retry framing."""
+        return DialFilesToolErrorException(self._resolve_tool_name(), str(exc))
+
     @staticmethod
-    def _check_permission_denied(
-        exc: DialException, url: str, parameter_name: str = "path"
-    ) -> None:
+    def _check_permission_denied(exc: DialException, url: str) -> None:
+        """Raise a non-retryable ``DialFilePermissionException`` for a Core 403."""
         if exc.status_code == 403:
-            raise InvalidToolCallParameterException(
-                parameter_name, f"access denied: {url}"
-            ) from exc
+            raise DialFilePermissionException(url) from exc

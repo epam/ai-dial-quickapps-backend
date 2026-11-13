@@ -7,6 +7,8 @@ from quickapp.common.exceptions import (
     ConfigResolutionException,
     HookInitializationException,
     OffloadConfigurationException,
+    OrchestratorSystemPromptException,
+    ProjectInstructionsException,
     SkillInitializationException,
     UnsupportedReasoningEffortException,
 )
@@ -200,4 +202,36 @@ class TestUnsupportedReasoningEffortRendering:
         assert "`reasoning_effort=high`" in rendered
         assert "`low`, `medium`" in rendered
         # Soft issue: the request still produced an answer.
+        stage.close.assert_called_once_with(Status.COMPLETED)
+
+
+class TestOrchestratorSystemPromptRendering:
+    def test_renders_under_system_prompt_section_as_a_failure(self):
+        stage = MagicMock(spec=Stage)
+        exc = OrchestratorSystemPromptException(
+            message="DIAL prompt has no content", path="prompts/b/p"
+        )
+        handler = _make_handler(stage, [exc])
+
+        handler.handle_initialization_issues()
+
+        rendered = _stage_content(stage)
+        assert rendered == (
+            "#### System prompt\n"
+            "- System prompt 'prompts/b/p' could not be loaded: DIAL prompt has no content"
+        )
+        stage.close.assert_called_once_with(Status.FAILED)
+
+
+class TestProjectInstructionsRendering:
+    def test_renders_under_project_instructions_as_a_warning(self):
+        stage = MagicMock(spec=Stage)
+        exc = ProjectInstructionsException("DIAL Core returned 500")
+        handler = _make_handler(stage, [exc])
+
+        handler.handle_initialization_issues()
+
+        rendered = _stage_content(stage)
+        assert "#### Project instructions" in rendered
+        assert "PROJECT.md could not be loaded (DIAL Core returned 500)" in rendered
         stage.close.assert_called_once_with(Status.COMPLETED)

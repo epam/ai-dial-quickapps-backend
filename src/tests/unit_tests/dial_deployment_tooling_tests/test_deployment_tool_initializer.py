@@ -2,7 +2,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from quickapp.common.exceptions import ToolInitializationException
+from quickapp.config.application import ApplicationConfig
 from quickapp.config.dial_deployment import DialDeploymentToolConfig, DialDeploymentToolParameters
+from quickapp.config.prompt import CustomSystemPromptConfig, DialSystemPromptConfig
 from quickapp.config.tool_access_filter import ToolAccessFilterConfig
 from quickapp.config.tool_discovery import ToolDiscoveryConfig
 from quickapp.config.tools.base import (
@@ -14,15 +17,19 @@ from quickapp.config.tools.base import (
 from quickapp.config.tools.deployment import ConversationMode, DialDeploymentTool
 from quickapp.config.tools.deployment_simple import DialDeploymentSimpleTool
 from quickapp.config.toolsets.deployment import DeploymentToolSet
+from quickapp.dial_core_services.dial_prompt_loader import DialPromptLoader
+from quickapp.dial_core_services.exceptions import DialPromptLoadError
 from quickapp.dial_deployment_tooling._deployment_deferred_tools_context import (
     _DeploymentDeferredToolsContext,
 )
 from quickapp.dial_deployment_tooling._deployment_tool_context import _DeploymentToolingContext
 from quickapp.dial_deployment_tooling._deployment_tool_initializer import _DeploymentToolInitializer
+from quickapp.shared.user_access import ToolAccessFilter
 from tests.unit_tests.common.common import (
     create_app_configuration,
     make_access_filter,
     make_deployment_names_service,
+    make_prompt_loader,
     make_provider,
 )
 
@@ -45,17 +52,31 @@ def _make_deployment_tool(name: str) -> DialDeploymentTool:
     )
 
 
-def _make_initializer(toolset: DeploymentToolSet, builder: MagicMock) -> _DeploymentToolInitializer:
+def _build_initializer(
+    app_config: ApplicationConfig,
+    builder: MagicMock,
+    *,
+    context: MagicMock | _DeploymentToolingContext | None = None,
+    deferred_context: MagicMock | _DeploymentDeferredToolsContext | None = None,
+    deployment_cache: MagicMock | None = None,
+    access_filter: ToolAccessFilter | None = None,
+    prompt_loader: MagicMock | None = None,
+) -> _DeploymentToolInitializer:
     return _DeploymentToolInitializer(
-        context=MagicMock(),
-        deferred_context=MagicMock(),
+        context=context or MagicMock(),
+        deferred_context=deferred_context or MagicMock(),
         tool_config_service=MagicMock(),
         builder=builder,
-        deployment_cache=MagicMock(),
+        deployment_cache=deployment_cache or MagicMock(),
         dial_tools_provider=make_provider([]),
-        app_config=create_app_configuration([toolset]),
-        access_filter=make_access_filter(),
+        app_config=app_config,
+        access_filter=access_filter or make_access_filter(),
+        prompt_loader=prompt_loader or MagicMock(spec=DialPromptLoader),
     )
+
+
+def _make_initializer(toolset: DeploymentToolSet, builder: MagicMock) -> _DeploymentToolInitializer:
+    return _build_initializer(create_app_configuration([toolset]), builder)
 
 
 @pytest.mark.asyncio
@@ -96,16 +117,8 @@ def _make_simple_initializer(
     deployment_cache = MagicMock()
     deployment_cache.fetch_basic_tool_config = AsyncMock(return_value=cached_config)
     toolset = DeploymentToolSet(name="deployment", tools=[simple_tool])
-    app_config = create_app_configuration([toolset])
-    return _DeploymentToolInitializer(
-        context=MagicMock(),
-        deferred_context=MagicMock(),
-        tool_config_service=MagicMock(),
-        builder=builder,
-        deployment_cache=deployment_cache,
-        dial_tools_provider=make_provider([]),
-        app_config=app_config,
-        access_filter=make_access_filter(),
+    return _build_initializer(
+        create_app_configuration([toolset]), builder, deployment_cache=deployment_cache
     )
 
 
@@ -205,15 +218,8 @@ def _make_initializer_with_discovery(
 ) -> _DeploymentToolInitializer:
     app_config = create_app_configuration([toolset])
     app_config.orchestrator.tool_discovery = discovery_cfg
-    return _DeploymentToolInitializer(
-        context=context,
-        deferred_context=deferred_context,
-        tool_config_service=MagicMock(),
-        builder=builder,
-        deployment_cache=MagicMock(),
-        dial_tools_provider=make_provider([]),
-        app_config=app_config,
-        access_filter=make_access_filter(),
+    return _build_initializer(
+        app_config, builder, context=context, deferred_context=deferred_context
     )
 
 
@@ -280,6 +286,82 @@ class TestDeferredDeploymentTools:
         deferred_context.register_deferred_tools.assert_not_called()
 
 
+class TestToolSystemPrompt:
+    @staticmethod
+    def _make_tool_initializer(
+        tool: DialDeploymentTool,
+        builder: MagicMock,
+        loader: MagicMock,
+        context: MagicMock | None = None,
+    ) -> _DeploymentToolInitializer:
+        toolset = DeploymentToolSet(name="ts", tools=[tool])
+        return _build_initializer(
+            create_app_configuration([toolset]), builder, context=context, prompt_loader=loader
+        )
+
+    @pytest.mark.asyncio
+    async def test_dial_prompt_content_is_filled(self):
+        tool = _make_deployment_tool("t")
+        tool.system_prompt = DialSystemPromptConfig(path="prompts/b/p")
+        builder = MagicMock()
+        loader = make_prompt_loader(content="Be brief")
+
+        await self._make_tool_initializer(tool, builder, loader).initialize()
+
+        built = builder.build.call_args.kwargs["tool_config"]
+        assert built.system_prompt.content == "Be brief"
+        loader.load.assert_awaited_once_with("prompts/b/p")
+
+    @pytest.mark.asyncio
+    async def test_failure_records_issue_and_keeps_tool_without_prompt(self):
+        tool = _make_deployment_tool("t")
+        # A manifest-supplied `content` must not survive a failed fetch.
+        tool.system_prompt = DialSystemPromptConfig(path="prompts/b/p", content="stale")
+        builder = MagicMock()
+        context = MagicMock()
+        loader = make_prompt_loader(error=DialPromptLoadError("no content"))
+
+        await self._make_tool_initializer(tool, builder, loader, context).initialize()
+
+        built = builder.build.call_args.kwargs["tool_config"]
+        assert built.system_prompt is None
+        exception = context.append_exception.call_args.args[0]
+        assert isinstance(exception, ToolInitializationException)
+        assert exception.tool_name == "t"
+        assert "prompts/b/p" in str(exception)
+
+    @pytest.mark.asyncio
+    async def test_custom_prompt_makes_no_fetch(self):
+        tool = _make_deployment_tool("t")
+        tool.system_prompt = CustomSystemPromptConfig(content="Own prompt", variables={})
+        loader = make_prompt_loader()
+
+        await self._make_tool_initializer(tool, MagicMock(), loader).initialize()
+
+        loader.load.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_inaccessible_tool_makes_no_fetch(self):
+        tool = _make_deployment_tool("denied_tool")
+        tool.deployment.deployment_id = "denied-app"
+        tool.system_prompt = DialSystemPromptConfig(path="prompts/b/p")
+        toolset = DeploymentToolSet(name="ts", tools=[tool])
+        app_config = create_app_configuration([toolset])
+        app_config.features.tool_access_filter = ToolAccessFilterConfig(enabled=True)
+        loader = make_prompt_loader(content="unused")
+        builder = MagicMock()
+
+        await _build_initializer(
+            app_config,
+            builder,
+            access_filter=make_access_filter(app_config, make_deployment_names_service([])),
+            prompt_loader=loader,
+        ).initialize()
+
+        loader.load.assert_not_awaited()
+        builder.build.assert_not_called()
+
+
 class TestToolAccessFiltering:
     @pytest.mark.asyncio
     async def test_inaccessible_tools_are_not_built_and_simple_tools_skip_metadata_fetch(self):
@@ -297,14 +379,10 @@ class TestToolAccessFiltering:
         deployment_cache = MagicMock()
         deployment_cache.fetch_basic_tool_config = AsyncMock()
 
-        await _DeploymentToolInitializer(
-            context=MagicMock(),
-            deferred_context=MagicMock(),
-            tool_config_service=MagicMock(),
-            builder=builder,
+        await _build_initializer(
+            app_config,
+            builder,
             deployment_cache=deployment_cache,
-            dial_tools_provider=make_provider([]),
-            app_config=app_config,
             access_filter=make_access_filter(app_config, names_service),
         ).initialize()
 
