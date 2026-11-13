@@ -40,17 +40,13 @@ class AgentSkillsProvider(SkillsProvider):
             try:
                 logger.debug(f"Loading skill `{file_stem}`")
                 content = self._provider.read_text(ContentType.SKILL, file_stem)
-                parsed = parse_frontmatter(content, file_stem)
+                metadata = parse_frontmatter(content, file_stem)
             except SkillValidationError as exc:
                 logger.warning(str(exc))
                 continue
             except Exception as exc:
                 logger.error(f"Failed to parse skill `{file_stem}`: {exc}")
                 continue
-
-            metadata = parsed.metadata
-            for warning in parsed.warnings:
-                logger.warning("Skill '%s': %s", file_stem, warning)
 
             if metadata.name != file_stem:
                 logger.warning(

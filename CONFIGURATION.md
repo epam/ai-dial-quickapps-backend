@@ -486,7 +486,8 @@ applicable).
 Omitting `features` (or setting `{}`) still constructs the default `Features` object — time
 awareness stays **on**, and nested objects like `file_loading` / `stage_display` use their defaults.
 Setting `"features": null` turns off those defaults (no timestamp feature, no per-app dial-files /
-external-fetch overrides; stage display falls back to `info` unless `DEFAULT_STAGE_DISPLAY_LEVEL` is set).
+external-fetch overrides; stage display falls back to `info` unless `DEFAULT_STAGE_DISPLAY_LEVEL` is set; the
+initialization issues level falls back to `DEFAULT_INITIALIZATION_ISSUES_LEVEL`).
 
 | Field                    | Required | Type           | Description                                                                                                                                                                  | Default Value                          |
 |--------------------------|----------|----------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------|
@@ -495,6 +496,7 @@ external-fetch overrides; stage display falls back to `info` unless `DEFAULT_STA
 | `external_url_fetch`     | No       | Object         | Per-app override for fetching external (non-DIAL) URLs. See [External URL fetch configuration](#external-url-fetch-configuration).                                           | `{}`                                   |
 | `tool_access_filter`     | No       | Object or null | Per-user tool access filtering: hide DIAL deployment, application and `dial-mcp` toolset tools the calling user cannot access. See [Tool access filter configuration](#tool-access-filter-configuration). | `null`                                 |
 | `stage_display`          | No       | Object         | Which tool-execution stages appear in the DIAL UI. See [Stage display configuration](#stage-display-configuration).                                                          | `{"level": "info"}`                    |
+| `initialization_issues`  | No       | Object         | Which issue levels the *Initialization issues* stage shows. See [Initialization issues configuration](#initialization-issues-configuration).                            | `{}`                                   |
 | `dial_files`             | No       | Object or null | Built-in DIAL workspace file tools. Omitted (default) exposes all tools, same as `{}`; `null` is accepted for backward compatibility and treated the same. See [DIAL files configuration](#dial-files-configuration). | `{}`                                   |
 | `web_fetch`              | No       | Object or null | Built-in `internal_web_fetch` tool. See [Web fetch configuration](#web-fetch-configuration).                                                                                 | `null`                                 |
 | `representation_tooling` | No       | Object or null | Tools that control how the agent surfaces output (e.g. add attachment to the answer). See [Representation tooling](#representation-tooling-configuration).                   | `null`                                 |
@@ -634,6 +636,32 @@ Controls which tool-execution stages are surfaced in the DIAL UI. The deployment
     "stage_display": {
       "level": "debug",
       "propagate_sub_stages": false
+    }
+  }
+}
+```
+
+#### Initialization issues configuration
+
+Controls which issues the *Initialization issues* stage shows. Issues below the level are left out of
+the stage but still logged. If every issue is hidden, the stage isn't shown. A per-app `level` overrides
+the deployment-wide `DEFAULT_INITIALIZATION_ISSUES_LEVEL`; unset (default) defers to it.
+
+| Field   | Required | Type   | Description                     | Available Values                 | Default Value                          |
+|---------|----------|--------|---------------------------------|----------------------------------|----------------------------------------|
+| `level` | No       | String | Lowest issue level that's shown | `warning`, `error`, `critical`   | `null` (uses `DEFAULT_INITIALIZATION_ISSUES_LEVEL`) |
+
+| Value      | Shown                                                                                                   |
+|------------|---------------------------------------------------------------------------------------------------------|
+| `warning`  | Everything, including skill warnings (e.g. too many skills invoked in one message)                      |
+| `error`    | Errors and critical issues: something was skipped (a skill, a hook, an unsupported parameter)           |
+| `critical` | Only issues that mark the stage failed, e.g. a tool or toolset that couldn't be initialized              |
+
+```json
+{
+  "features": {
+    "initialization_issues": {
+      "level": "error"
     }
   }
 }
@@ -1856,6 +1884,8 @@ behave the same. Use `true` only for apps that make no sense outside a project.
 | `DEFAULT_FILE_LOADING_SIZE_LIMIT`          | `10485760`                                                      | No       | Deployment-wide default maximum size (in bytes) for files the agent downloads. Apps can override per-app via `features.file_loading.size_limit`. |
 | **Stage Display**                          |                                                                 |          |                                                                                                              |
 | `DEFAULT_STAGE_DISPLAY_LEVEL`              | —                                                               | No       | Deployment-wide override for stage visibility threshold (`none`, `error`, `info`, `debug`; case-insensitive). When set, wins over every app's `features.stage_display.level`. Unset (default) defers to the per-app config, which defaults to `info`. |
+| **Initialization Issues**                  |                                                                 |          |                                                                                                              |
+| `DEFAULT_INITIALIZATION_ISSUES_LEVEL`      | `warning`                                                       | No       | Deployment-wide lowest level shown in the *Initialization issues* stage (`warning`, `error`, `critical`; case-insensitive). Apps can override per-app via `features.initialization_issues.level`. |
 | **DIAL Files — Tool-Response Offload**     |                                                                 |          |                                                                                                              |
 | `TOOL_CALL_RESULT_OFFLOAD__ENABLED_BY_DEFAULT` | `true`                                                          | No       | Default value of the per-app `enabled` flag (`features.dial_files.tool_call_result_offload.enabled`). Apps override per-app; `enabled: false` disables offload for that app. |
 | `TOOL_CALL_RESULT_OFFLOAD__SIZE_THRESHOLD` | `40000`                                                         | No       | Default byte threshold above which a tool-call response is offloaded to a DIAL file. Apps override per-app via `features.dial_files.tool_call_result_offload.size_threshold`. |

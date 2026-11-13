@@ -1,10 +1,16 @@
 from fastapi_injector import request_scope
 from injector import Binder, Module, provider, singleton
 
-from quickapp.config.application import StageDisplayLevel
+from quickapp.config.application import InitializationIssueLevel, StageDisplayLevel
 from quickapp.shared.config_resolvers.file_loading_settings import FileLoadingSettings
 from quickapp.shared.config_resolvers.file_loading_size_limit_resolver import (
     FileLoadingSizeLimitResolver,
+)
+from quickapp.shared.config_resolvers.initialization_issues_level_resolver import (
+    InitializationIssuesLevelResolver,
+)
+from quickapp.shared.config_resolvers.initialization_issues_settings import (
+    InitializationIssuesSettings,
 )
 from quickapp.shared.config_resolvers.stage_display_resolver import (
     PROPAGATE_SUB_STAGES,
@@ -25,6 +31,12 @@ class ConfigResolversModule(Module):
         )
         binder.bind(StageDisplaySettings, to=StageDisplaySettings, scope=singleton)
         binder.bind(StageDisplayResolver, to=StageDisplayResolver, scope=request_scope)
+        binder.bind(InitializationIssuesSettings, to=InitializationIssuesSettings, scope=singleton)
+        binder.bind(
+            InitializationIssuesLevelResolver,
+            to=InitializationIssuesLevelResolver,
+            scope=request_scope,
+        )
 
     @provider
     def __provide_stage_display_level(self, resolver: StageDisplayResolver) -> StageDisplayLevel:
@@ -35,3 +47,9 @@ class ConfigResolversModule(Module):
         self, resolver: StageDisplayResolver
     ) -> PROPAGATE_SUB_STAGES:
         return resolver.resolve_propagate_sub_stages()
+
+    @provider
+    def __provide_initialization_issue_level(
+        self, resolver: InitializationIssuesLevelResolver
+    ) -> InitializationIssueLevel:
+        return resolver.resolve()

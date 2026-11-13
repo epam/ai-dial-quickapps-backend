@@ -2,6 +2,7 @@
 
 - **Status:** Implemented
 - **Approved:** 2026-04-23
+- **User-facing:** [Skills](../skills.md)
 - **Dependencies:**
   - [Agent Skills and File Transfer](skills_and_file_transfer.md) (implemented)
 
@@ -161,12 +162,15 @@ otherwise raise or produce an unhelpful "no frontmatter" error.
 
 **Validation rules** (same as predefined skills, enforced by `parse_frontmatter`):
 - Must have YAML frontmatter delimited by `---`
-- `name`: required, max 64 chars, lowercase alphanumeric + hyphens, no consecutive hyphens
-- `description`: required, max 1024 chars
-- Other fields (`license`, `compatibility`, `metadata`, `allowed-tools`): optional, validated per spec
+- `name` and `description`: required, non-empty
+- YAML must be a mapping; `allowed-tools` must be a list or a space-delimited string
+- Other fields (`license`, `compatibility`, `metadata`): optional
+
+The spec's length and naming limits aren't checked (#737): a QuickApp request is the wrong place to
+validate a skill authored before the app existed.
 
 **Key design choice — frontmatter parsing is reused, not duplicated.** The static method
-`AgentSkillsProvider._parse_frontmatter()` already implements full Agent Skills spec validation. The resolver
+`AgentSkillsProvider._parse_frontmatter()` already implements frontmatter parsing and its structural checks. The resolver
 calls it directly rather than reimplementing validation. To enable this,
 `_parse_frontmatter` is promoted from a private static method on `AgentSkillsProvider` to a standalone module-level
 function in `skills/` (e.g. `skills/_frontmatter.py`), importable by both the provider and the resolver.

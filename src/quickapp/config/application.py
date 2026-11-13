@@ -36,6 +36,25 @@ class StageDisplayLevel(str, Enum):
     DEBUG = "debug"
 
 
+class InitializationIssueLevel(str, Enum):
+    WARNING = "warning"
+    ERROR = "error"
+    CRITICAL = "critical"
+
+
+class InitializationIssuesConfig(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    level: InitializationIssueLevel | None = Field(
+        default=None,
+        description=(
+            "Lowest issue level shown in the Initialization issues stage: warning=all issues; "
+            "error=errors and critical failures; critical=critical failures only. "
+            "Hidden issues are still logged. Unset defers to `DEFAULT_INITIALIZATION_ISSUES_LEVEL`."
+        ),
+    )
+
+
 class StageDisplayConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -215,6 +234,10 @@ class Features(BaseModel):
     stage_display: StageDisplayConfig = Field(
         default_factory=StageDisplayConfig,
         description="Controls which stage levels are rendered to the user.",
+    )
+    initialization_issues: InitializationIssuesConfig = Field(
+        default_factory=InitializationIssuesConfig,
+        description="Controls which issue levels the Initialization issues stage shows.",
     )
     dial_files: DialFilesConfig | None = Field(
         default_factory=DialFilesConfig,
