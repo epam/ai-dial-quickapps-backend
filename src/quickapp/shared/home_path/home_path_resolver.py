@@ -69,6 +69,22 @@ class HomePathResolver:
         self._require_relative(parameter_name, path)
         return await self.resolve_appdata_url(path)
 
+    def resolve_handoff_url(self, parameter_name: str, url: str) -> str:
+        """Check a DIAL URL that QuickApps passes on to another service (an MCP grant, an
+        attachment). The receiver reads it with its own grant, not through
+        ``ProjectFileStorage``, so a ``projects/...`` URL is accepted only where the agent may
+        read (``ProjectContext.can_read``) and comes back canonical. Any other URL comes back
+        unchanged. Takes the relative form, like ``ProjectContext.contains``."""
+        if not url.startswith("projects/"):
+            return url
+        if self._project is None or not self._project.can_read(url):
+            raise InvalidToolCallParameterException(
+                parameter_name,
+                f"{parameter_name} accepts a projects/... URL only under the current project's "
+                "context/ or artifacts/ folder",
+            )
+        return canonical_url(url)
+
     def _require_relative(self, parameter_name: str, path: str) -> None:
         if self.is_absolute(path):
             raise InvalidToolCallParameterException(

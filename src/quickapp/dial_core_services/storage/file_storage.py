@@ -18,9 +18,10 @@ class FolderEntry(BaseModel):
 class FileStorage(ABC):
     """File I/O against one DIAL storage API, by relative URL.
 
-    No caching and no policy: ``DialFileService`` owns those. Errors are aidial-client's
-    typed exceptions (``ResourceNotFoundError``, ``EtagMismatchError``, ``DialException``)
-    and ``FileTooLargeError``.
+    No caching and no write policy: ``DialFileService`` owns those. The project storage also
+    narrows a project to what the agent may read (see ``ProjectFileStorage``). Errors are
+    aidial-client's typed exceptions (``ResourceNotFoundError``, ``EtagMismatchError``,
+    ``DialException``) and ``FileTooLargeError``.
     """
 
     @abstractmethod

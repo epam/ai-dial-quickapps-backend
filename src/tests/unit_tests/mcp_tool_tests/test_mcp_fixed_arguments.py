@@ -269,6 +269,7 @@ def _make_tool(
         login_service=MagicMock(),
         timeout_resolver=noop_timeout_resolver(),
         dial_settings=dial_settings,
+        home_resolver=MagicMock(),
         argument_transformers=[transformer] if transformer else None,
         fixed_arguments=fixed_arguments,
     )

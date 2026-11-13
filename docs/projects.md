@@ -13,9 +13,9 @@ A project lives under Core's `projects/{bucket}/{path}/files/`:
 
 | Path | Content | Agent access |
 |---|---|---|
-| `PROJECT.md` | Project instructions (YAML frontmatter + body) | read |
+| `PROJECT.md` | Project instructions (YAML frontmatter + body) | none (the body is in the system prompt) |
 | `context/` | Files the user added to the project | read |
-| `conversations/` | The project's chats (Chat only) | read |
+| `conversations/` | The project's chats (Chat only) | none |
 | `artifacts/` | Files produced in the project, shown by Chat as **Outputs** | read + write (the working folder) |
 
 ## In a project chat
@@ -37,9 +37,14 @@ A project lives under Core's `projects/{bucket}/{path}/files/`:
 4. **Project URLs.** A path starting with `projects/` is an absolute URL, like `files/...`, in every chat. The DIAL
    files tools and `web_fetch` accept full URLs of the current project (`projects/{bucket}/{path}/files/...`)
    wherever they accept a `files/...` URL; any other `projects/...` URL is rejected ("only files of the current
-   project"). Other consumers (`get_content`, attachments, DIAL deployments, the
-   code interpreter) don't take project URLs yet: see [Known issues](#known-issues).
-5. **Read-only files.** Write-side tools (`write_file`, `edit_file`, `delete_file`, the `move_file` source,
+   project"). `files/...` URLs (app context files, shared files, appdata) work as in any chat. Other consumers
+   (`get_content`, attachments, DIAL deployments, the code interpreter) don't take project URLs yet: see
+   [Known issues](#known-issues).
+5. **Read scope.** Inside the project the agent reads only `context/` and `artifacts/`. Listing the project folder
+   shows just those two; reading or listing any other project path (`PROJECT.md`, `conversations/`), directly, by a
+   `file:text::` / `file:base64::` / `file:data::` argument or as a `copy_file` source, is refused ("access denied")
+   without calling Core. A project URL in an MCP `dial_url` parameter is accepted only under those two folders.
+6. **Read-only files.** Write-side tools (`write_file`, `edit_file`, `delete_file`, the `move_file` source,
    `copy_file` / `move_file` destinations, `web_fetch` `save_path`) accept relative paths only, so they never write
    outside `artifacts/`. Given any `files/...` or `projects/...` URL, they ask for a relative path.
 
@@ -54,6 +59,7 @@ denied; the app has no permission for it"). It goes through the tool's fallback 
 | The approved dependency opens **all** of the user's projects to the app, not only the current one | Phase-1 static grant | QuickApps itself touches only the project in the header |
 | Project files can't be passed to DIAL deployments (RAG, adapters) or to the code interpreter | These don't read `projects/` URLs yet | Copy the content into the conversation, or use a nested QuickApp |
 | MCP `dial_url` parameters with project files are unverified | Per-file grants on `projects/` URLs depend on Core | Avoid project URLs in `dial_url` parameters |
+| A nested app or MCP server can still read the project's `conversations/` if it gets a URL elsewhere | The Core grant covers the whole project; QuickApps narrows only its own reads and the URLs it passes on | None yet: needs a narrower resource-dependency target in Core ([Core I#1930](https://github.com/epam/ai-dial-core/issues/1930)) |
 | After a project rename, files attached in earlier turns return 404 | Attachments keep the old URL | Attach the file again |
 | The system-prompt cache has one entry per project and is rewritten when `PROJECT.md` changes | The project instructions are part of the system prompt | None needed; the first turn after a change costs a cache write |
 
