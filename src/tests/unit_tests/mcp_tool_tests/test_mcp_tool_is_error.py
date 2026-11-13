@@ -48,6 +48,7 @@ def _make_mcp_tool(
         login_service=MagicMock(),
         timeout_resolver=noop_timeout_resolver(),
         dial_settings=MagicMock(url="https://dial.example.com"),
+        home_resolver=MagicMock(),
         stage_display_level=StageDisplayLevel.INFO,
     )
     return mcp_tool, toolset_client

@@ -75,7 +75,7 @@ def _make_service(
     storage: FileStorage = (
         v1
         if project is None
-        else RoutedFileStorage(v1, ProjectFileStorage(project_files, resolver), project)
+        else RoutedFileStorage(v1, ProjectFileStorage(project_files, resolver, project), project)
     )
     return DialFileService(
         dial_client=dial_client,

@@ -38,6 +38,9 @@ class ProjectContext(BaseModel):
     - ``context/``: the user's context files;
     - ``conversations/``: the project's chats, written by Chat only;
     - ``artifacts/``: files produced for the user (shown by Chat as the project's Outputs).
+
+    The agent reads only ``context/`` and ``artifacts/`` (``can_read``) and writes only
+    ``artifacts/`` (its home).
     """
 
     model_config = ConfigDict(frozen=True)
@@ -61,7 +64,8 @@ class ProjectContext(BaseModel):
         return canonical_url(raw)
 
     @property
-    def _content_root(self) -> str:
+    def content_root(self) -> str:
+        """The project folder, ``{url}/files/``: all project content lives under it."""
         return f"{self.url}/files/"
 
     def contains(self, url: str) -> bool:
@@ -72,19 +76,27 @@ class ProjectContext(BaseModel):
         """
         if has_unsafe_segments(url):
             return False
-        return canonical_url(url).startswith(self._content_root)
+        return canonical_url(url).startswith(self.content_root)
+
+    def can_read(self, url: str) -> bool:
+        """Whether the agent may read ``url``: a file or folder under ``context/`` or
+        ``artifacts/`` of this project. ``PROJECT.md`` (already in the system prompt),
+        ``conversations/`` and the project folder itself are not readable."""
+        if not self.contains(url):
+            return False
+        return canonical_url(url).startswith((self.context_root, self.artifacts_root))
 
     @property
     def instructions_url(self) -> str:
-        return f"{self._content_root}PROJECT.md"
+        return f"{self.content_root}PROJECT.md"
 
     @property
     def context_root(self) -> str:
-        return f"{self._content_root}context/"
+        return f"{self.content_root}context/"
 
     @property
     def artifacts_root(self) -> str:
-        return f"{self._content_root}artifacts/"
+        return f"{self.content_root}artifacts/"
 
 
 def extract_project_context(headers: ForwardedHeaders) -> "ProjectContext | None":
