@@ -70,6 +70,7 @@ def _build_tool_side_effect(tool, tool_config, toolset_client=None, **kwargs):
         login_service=MagicMock(),
         timeout_resolver=noop_timeout_resolver(),
         dial_settings=MagicMock(url="https://dial.example.com"),
+        home_resolver=MagicMock(),
     )
 
 

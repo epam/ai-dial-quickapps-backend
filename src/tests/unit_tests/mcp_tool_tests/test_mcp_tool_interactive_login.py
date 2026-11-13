@@ -43,6 +43,7 @@ def _make_mcp_tool(
         login_service=login_service,
         timeout_resolver=noop_timeout_resolver(),
         dial_settings=MagicMock(url="https://dial.example.com"),
+        home_resolver=MagicMock(),
     )
     return mcp_tool, toolset_client, login_service
 

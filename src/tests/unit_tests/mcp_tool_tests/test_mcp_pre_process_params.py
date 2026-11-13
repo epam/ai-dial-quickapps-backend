@@ -7,7 +7,9 @@ import pytest
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
+from quickapp.common.project_context import ProjectContext
 from quickapp.common.state_holder import StateHolder
+from quickapp.config.dial_files import DialFilesConfig
 from quickapp.config.tools.mcp import MCPTool
 from quickapp.dial_core_services.attachment_service import AttachmentService
 from quickapp.dial_core_services.dial_file_service import DialFileService
@@ -16,6 +18,7 @@ from quickapp.file_transfer._file_loader_service import FileLoaderService
 from quickapp.mcp_tooling._mcp_stage_wrapper import _MCPStageWrapper
 from quickapp.mcp_tooling._mcp_tool import _MCPTool
 from quickapp.mcp_tooling._mcp_toolset_client import _MCPToolsetClient
+from quickapp.shared.home_path.home_path_resolver import HomePathResolver
 from tests.unit_tests.common.common import noop_timeout_resolver
 
 DIAL_URL = "https://dial.example.com"
@@ -24,6 +27,7 @@ DIAL_URL = "https://dial.example.com"
 def _make_tool(
     input_schema: dict | None = None,
     dial_toolset_id: str | None = None,
+    project: ProjectContext | None = None,
 ) -> tuple[_MCPTool, MagicMock, MagicMock]:
     """Create an _MCPTool with mocked dependencies.
 
@@ -67,6 +71,9 @@ def _make_tool(
         login_service=MagicMock(),
         timeout_resolver=noop_timeout_resolver(),
         dial_settings=dial_settings,
+        home_resolver=HomePathResolver(
+            dial_file_service=file_service, dial_files_config=DialFilesConfig(), project=project
+        ),
         argument_transformers=[file_transformer],
     )
     return mcp_tool, file_service, file_loader
@@ -222,3 +229,53 @@ class TestPreProcessParams:
                 doc_urls=["files/a.pdf", "https://external.example/b.pdf"]
             )
         file_service.grant_permissions_to_files.assert_not_awaited()
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "projects/b/My Project/files/conversations/chat.json",
+            "projects/b/My Project/files/PROJECT.md",
+            "projects/b/Other/files/context/a.csv",
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_dial_url_project_file_outside_context_and_artifacts_is_not_granted(self, url):
+        tool, file_service, _ = _make_tool(
+            input_schema={"properties": {"doc_url": {"type": "string", "dial_url": True}}},
+            dial_toolset_id="my-toolset",
+            project=ProjectContext(url="projects/b/My Project"),
+        )
+
+        with pytest.raises(InvalidToolCallParameterException) as excinfo:
+            await tool._pre_process_params(doc_url=url)
+
+        assert excinfo.value.parameter_name == "doc_url"
+        assert "context/ or artifacts/" in excinfo.value.message
+        file_service.grant_permissions_to_files.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_dial_url_project_context_file_is_granted_in_canonical_form(self):
+        tool, file_service, _ = _make_tool(
+            input_schema={"properties": {"doc_url": {"type": "string", "dial_url": True}}},
+            dial_toolset_id="my-toolset",
+            project=ProjectContext(url="projects/b/My Project"),
+        )
+
+        await tool._pre_process_params(doc_url="projects/b/My Project/files/context/a.csv")
+
+        file_service.grant_permissions_to_files.assert_awaited_once_with(
+            ["projects/b/My%20Project/files/context/a.csv"], "my-toolset"
+        )
+
+    @pytest.mark.asyncio
+    async def test_dial_url_absolute_files_url_is_granted_unchanged_in_a_project(self):
+        tool, file_service, _ = _make_tool(
+            input_schema={"properties": {"doc_url": {"type": "string", "dial_url": True}}},
+            dial_toolset_id="my-toolset",
+            project=ProjectContext(url="projects/b/My Project"),
+        )
+        url = f"{DIAL_URL}/v1/files/bucket/report.pdf"
+
+        await tool._pre_process_params(doc_url=url)
+
+        file_service.grant_permissions_to_files.assert_awaited_once_with([url], "my-toolset")

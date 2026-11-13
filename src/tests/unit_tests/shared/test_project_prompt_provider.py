@@ -5,8 +5,8 @@ from aidial_client import DialException, ResourceNotFoundError
 
 from quickapp.common.exceptions import ProjectInstructionsException
 from quickapp.common.project_context import ProjectContext
-from quickapp.dial_core_services.dial_file_service import DialFileService
 from quickapp.dial_core_services.exceptions import FileTooLargeError
+from quickapp.dial_core_services.storage._project_file_storage import ProjectFileStorage
 from quickapp.shared.project._project_instructions import _ProjectInstructions, strip_frontmatter
 from quickapp.shared.project._project_prompt_provider import _ProjectPromptProvider
 from quickapp.shared.project._settings import ProjectSettings
@@ -15,18 +15,18 @@ PROJECT = ProjectContext(url="projects/b/My Project")
 
 
 def _service(instructions: str | None = "Answer in French.") -> MagicMock:
-    service = MagicMock(spec=DialFileService)
+    service = MagicMock(spec=ProjectFileStorage)
     if instructions is None:
-        service.download_file = AsyncMock(side_effect=ResourceNotFoundError(message="missing"))
+        service.read_instructions = AsyncMock(side_effect=ResourceNotFoundError(message="missing"))
     else:
-        service.download_file = AsyncMock(return_value=(instructions.encode(), None))
+        service.read_instructions = AsyncMock(return_value=(instructions.encode(), None))
     return service
 
 
 def _instructions(
     service: MagicMock, project: ProjectContext | None = PROJECT
 ) -> _ProjectInstructions:
-    return _ProjectInstructions(project=project, dial_file_service=service)
+    return _ProjectInstructions(project=project, project_storage=service)
 
 
 def _provider(
@@ -50,7 +50,7 @@ class TestProjectInstructions:
 
         assert await instructions.body() == "Body"
         assert await instructions.body() == "Body"
-        service.download_file.assert_awaited_once_with("projects/b/My%20Project/files/PROJECT.md")
+        service.read_instructions.assert_awaited_once_with()
         assert instructions.exceptions == []
 
     @pytest.mark.asyncio
@@ -58,7 +58,7 @@ class TestProjectInstructions:
         service = _service()
 
         assert await _instructions(service, project=None).body() == ""
-        service.download_file.assert_not_awaited()
+        service.read_instructions.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_missing_file_is_not_an_issue(self):
@@ -77,7 +77,7 @@ class TestProjectInstructions:
     @pytest.mark.asyncio
     async def test_unreadable_file_is_a_warning_for_the_user(self, error, reason, caplog):
         service = _service()
-        service.download_file = AsyncMock(side_effect=error)
+        service.read_instructions = AsyncMock(side_effect=error)
         instructions = _instructions(service)
 
         with caplog.at_level("WARNING"):
@@ -97,7 +97,7 @@ class TestProjectPromptProvider:
         service = _service()
 
         assert await _provider(service, project=None).get_prompt_part() == ""
-        service.download_file.assert_not_awaited()
+        service.read_instructions.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_instructions_are_framed_as_user_context(self):
@@ -118,7 +118,9 @@ class TestProjectPromptProvider:
     @pytest.mark.asyncio
     async def test_unreadable_instructions_add_no_section(self):
         service = _service()
-        service.download_file = AsyncMock(side_effect=DialException(message="x", status_code=500))
+        service.read_instructions = AsyncMock(
+            side_effect=DialException(message="x", status_code=500)
+        )
 
         part = await _provider(service).get_prompt_part()
 

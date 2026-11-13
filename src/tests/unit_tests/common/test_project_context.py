@@ -47,6 +47,7 @@ class TestProjectContext:
     def test_layout(self) -> None:
         project = ProjectContext(url="projects/b/My Project")
 
+        assert project.content_root == "projects/b/My%20Project/files/"
         assert project.instructions_url == "projects/b/My%20Project/files/PROJECT.md"
         assert project.context_root == "projects/b/My%20Project/files/context/"
         assert project.artifacts_root == "projects/b/My%20Project/files/artifacts/"
@@ -70,6 +71,29 @@ class TestProjectContext:
     )
     def test_contains(self, url: str, expected: bool) -> None:
         assert ProjectContext(url="projects/b/My Project").contains(url) is expected
+
+    @pytest.mark.parametrize(
+        "url, expected",
+        [
+            ("projects/b/My%20Project/files/context/tickets.csv", True),
+            ("projects/b/My Project/files/context/", True),
+            ("projects/b/My Project/files/context/sub/a.md", True),
+            ("projects/b/My Project/files/artifacts/notes.md", True),
+            ("projects/b/My Project/files/artifacts/", True),
+            ("projects/b/My Project/files/PROJECT.md", False),
+            ("projects/b/My Project/files/conversations/chat.json", False),
+            ("projects/b/My Project/files/conversations/", False),
+            ("projects/b/My Project/files/", False),
+            ("projects/b/My Project/files/contextual/a.md", False),
+            ("projects/b/My Project/files/context", False),
+            ("projects/b/My Project/files/context/../conversations/chat.json", False),
+            ("projects/b/My Project/files/context/%2e%2e/conversations/chat.json", False),
+            ("projects/b/Other/files/context/a.md", False),
+            ("files/b/My Project/files/context/a.md", False),
+        ],
+    )
+    def test_can_read(self, url: str, expected: bool) -> None:
+        assert ProjectContext(url="projects/b/My Project").can_read(url) is expected
 
     def test_absolute_core_url_is_not_contained(self) -> None:
         # Relative form only: absolute Core URLs keep today's v1 path (see ``contains``).
