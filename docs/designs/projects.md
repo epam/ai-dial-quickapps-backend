@@ -99,7 +99,7 @@ flowchart LR
 | D3 | Agent home in a project = `artifacts/`, shared by every app in the project. `agent_home_dir` is ignored. | Chat shows `artifacts/` as Outputs and keeps it out of its `contentVersion`, so agent writes don't make the user's edit fail with 409 ([PR#9692](https://github.com/epam/ai-dial-chat/pull/9692)). |
 | D4 | The agent writes only under `artifacts/`, enforced by the existing home confinement (write-side tools accept relative paths only, no `..`). No separate guard. | Core grants WRITE on the whole project, so it won't protect `PROJECT.md` / `context/` / `conversations/`. Home confinement already blocks every write path outside the home. |
 | D5 | User-facing tool outputs keep today's naming and overwrite behaviour. Only the root changes: `artifacts/` instead of the appdata root. | Parity with non-project behaviour. Collision-safe names are a separate change. |
-| D6 | Large-result offloads and promoted external URLs stay in appdata. | Offloads are internal context. Promoted URLs feed deployments and the interpreter, which can't read `projects/` URLs (C4). |
+| D6 | Large-result offloads and promoted external URLs stay in appdata. | Offloads are internal context: in `artifacts/` they would clutter the project's Outputs. Promoted URLs feed deployments and the interpreter, which can't read `projects/` URLs (C4). |
 | D7 | Permissions come from Core (#1930 resource dependencies). QuickApps never grants itself anything. Phase 1 = static dependencies with admin consent. | The header carries no permission. Core forwards it but grants nothing from it. |
 | D8 | A `projects/…` path is an absolute URL, like `files/…`, in every chat; only URLs under the request project's root resolve, any other is rejected. | One prefix rule everywhere, no project needed to classify a URL. A `projects/…` string the model meant as a project URL never lands silently in `artifacts/`. Like `files`, a home folder named `projects` is then not reachable by a relative path. Also narrows the phase-1 grant, which opens all of the user's projects, to the current one on QuickApps' side. |
 | D9 | No access → hard fail (UC-4). Projects stay on the shared `ENABLE_PREVIEW_FEATURES` flag; no project-only switch. Environments whose Core lacks C1 keep the flag off (owner: the deployment's config). | A degraded mode would answer without the project and hide the missing grant. Accepted cost: the flag off also disables the other preview features there (tool-result offload, MCP per-tool config). |
@@ -203,16 +203,19 @@ flowchart LR
 
 ### User outputs into `artifacts/` (PR3)
 
-- Split the upload API by root:
+- Split the upload API by root (`AttachmentService.upload_output_*` / `upload_appdata_*`):
 
   | Caller | Root |
   |---|---|
-  | MCP tool files (`_mcp_tool.py` → `upload_attachment_to_core`) | output root: `artifacts/` in a project, the appdata root otherwise (as today) |
+  | MCP tool files (`_mcp_tool.py` → `upload_output_attachment`) | output root: `artifacts/` in a project, the appdata root otherwise (as today) |
   | REST response files (`_rest_api_tool.py`) | output root |
-  | Interpreter charts (`_publish_to_bucket`, folded into `AttachmentService`) | output root |
+  | Interpreter charts (`display_content_processor.py` → `upload_output_bytes`) | output root |
   | Offloads (`_offload_processor.py`) | appdata (D6) |
   | Promoted external URLs (`dial_file_promoter.py`) | appdata (D6) |
 
+- Both roots write through `DialFileService.write_bytes` (unconditional). `FileStorage.upload` returns the file's
+  metadata: Core's for v1; for a project file it is built from the write, because Core's v2 `PUT` returns only the
+  project's ETag.
 - **Trade-off:** in a project chat, MCP/REST outputs saved to `artifacts/` can't be forwarded to a non-QuickApps
   deployment or to the interpreter (C4). Outside projects they still can.
 
@@ -347,8 +350,8 @@ None for non-project chats. Project behaviour is preview-gated and triggered onl
 | `common/project_context.py` (new), `core/application/` (`AppModule`, request context) | `ProjectContext`, `PROJECT_CONTEXT` |
 | `shared/project/` (new, PR2) | `ProjectModule` (`@preview_module`): project prompt provider, access preflight |
 | `shared/home_path/` | home = `artifacts/` in a project |
-| `dial_core_services/` | `_project_files.py` (v2 client); `storage/` (`FileStorage`, v1 and project storages, `RoutedFileStorage` = current-project routing); `PartialMoveException` in `exceptions.py`; `AttachmentService` split into home-rooted and appdata-rooted uploads |
+| `dial_core_services/` | `_project_files.py` (v2 client); `storage/` (`FileStorage`, v1 and project storages, `RoutedFileStorage` = current-project routing); `PartialMoveException` in `exceptions.py`; `AttachmentService` split into output-root and appdata-root uploads |
 | `shared/home_path/home_path_resolver.py`, `dial_files_tooling/` (`_base_file_tool.py`, write tools), `web_tooling/`, `common/url_classification.py` | `projects/` prefix as absolute; `require_relative`; `DialFilePermissionException` on 403 |
 | `rest_api_tooling/`, `dial_deployment_tooling/_attachment_resolver.py`, `dial_core_services/dial_file_promoter.py`, `internal_tooling/…/input_file_handler.py` | REST strip; project URLs pass through; interpreter input error |
-| `internal_tooling/py_interpreter_tooling/handlers/display_content_processor.py` | `_publish_to_bucket` folded into `AttachmentService` |
+| `internal_tooling/py_interpreter_tooling/handlers/display_content_processor.py` | own upload replaced by `AttachmentService.upload_output_bytes` |
 | `docs/README.md`, `CONFIGURATION.md`, `docs/projects.md` | L0–L2 |

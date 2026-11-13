@@ -7,6 +7,7 @@ from aidial_sdk.chat_completion import Attachment
 from quickapp.common.abstract.tool_call_result_processor import ProcessingContext
 from quickapp.common.deployment_usage import DeploymentUsage
 from quickapp.common.tool_call_result import ToolCallResult
+from quickapp.dial_core_services.attachment_service import AttachmentService
 from quickapp.dial_files_tooling._offload_config import ResolvedOffloadConfig
 from quickapp.dial_files_tooling._offload_processor import ToolCallResultOffloadProcessor
 
@@ -19,8 +20,8 @@ def _make_config(**overrides) -> ResolvedOffloadConfig:
 
 def _make_attachment_service(upload_url: str = "https://storage/offloaded.txt") -> MagicMock:
     uploaded = Attachment(title="offloaded.txt", url=upload_url, type="text/plain")
-    svc = MagicMock()
-    svc.upload_attachment_to_core = AsyncMock(return_value=uploaded)
+    svc = MagicMock(spec=AttachmentService)
+    svc.upload_appdata_attachment = AsyncMock(return_value=uploaded)
     return svc
 
 
@@ -99,8 +100,8 @@ class TestToolCallResultOffloadProcessor:
     async def test_upload_failure_returns_original(self):
         content = "x" * 200
         result = ToolCallResult(content=content, content_type="text/plain")
-        svc = MagicMock()
-        svc.upload_attachment_to_core = AsyncMock(side_effect=RuntimeError("storage down"))
+        svc = MagicMock(spec=AttachmentService)
+        svc.upload_appdata_attachment = AsyncMock(side_effect=RuntimeError("storage down"))
         proc = ToolCallResultOffloadProcessor(config=_make_config(), attachment_service=svc)
         out = await proc.process(result, _make_ctx())
         assert out.content == content
@@ -111,8 +112,8 @@ class TestToolCallResultOffloadProcessor:
         result = ToolCallResult(content=content, content_type="text/plain")
         no_url_attachment = MagicMock()
         no_url_attachment.url = None
-        svc = MagicMock()
-        svc.upload_attachment_to_core = AsyncMock(return_value=no_url_attachment)
+        svc = MagicMock(spec=AttachmentService)
+        svc.upload_appdata_attachment = AsyncMock(return_value=no_url_attachment)
         proc = ToolCallResultOffloadProcessor(config=_make_config(), attachment_service=svc)
         out = await proc.process(result, _make_ctx())
         assert out.content == content
@@ -174,6 +175,8 @@ class TestToolCallResultOffloadProcessor:
         svc = _make_attachment_service()
         proc = ToolCallResultOffloadProcessor(config=_make_config(), attachment_service=svc)
         await proc.process(result, _make_ctx())
-        uploaded_att: Attachment = svc.upload_attachment_to_core.call_args[0][0]
+        uploaded_att: Attachment = svc.upload_appdata_attachment.call_args[0][0]
+        # Offloads are internal context: always appdata, never the user output root (D6).
+        svc.upload_output_attachment.assert_not_called()
         assert uploaded_att.data is not None
         assert base64.b64decode(uploaded_att.data) == content.encode("utf-8")

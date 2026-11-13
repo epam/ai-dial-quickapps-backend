@@ -1,5 +1,6 @@
 from typing import Literal
 
+import httpx
 from aidial_client import EtagMismatchError
 from aidial_client.types.file import FileDownloadResponse
 from aidial_client.types.metadata import FileMetadata
@@ -11,6 +12,7 @@ from quickapp.dial_core_services.storage._transfer import copy_via_download, mov
 from quickapp.dial_core_services.storage.file_storage import (
     FileStorage,
     FolderEntry,
+    UploadedFile,
     ensure_within_size_limit,
 )
 from quickapp.shared.config_resolvers.file_loading_size_limit_resolver import (
@@ -42,7 +44,7 @@ class ProjectFileStorage(FileStorage):
         *,
         if_none_match: Literal["*"] | None = None,
         if_match: str | None = None,
-    ) -> str:
+    ) -> UploadedFile:
         """Check the precondition, then one plain PUT.
 
         Core checks ``If-Match`` / ``If-None-Match`` on a project file against the ETag of
@@ -56,8 +58,12 @@ class ProjectFileStorage(FileStorage):
         if if_match is not None and await self.__project_files.file_etag(url) != if_match:
             raise EtagMismatchError(message=f"File has changed: {url}")
         await self.__project_files.put(url, content, content_type)
-        # Same form v1 returns in `metadata.url`.
-        return canonical_url(url)
+        # Core's v2 PUT returns no file metadata (only the project's ETag), so it is built
+        # from what was written. The URL is canonical, like v1's `metadata.url`; the file's
+        # own ETag is unknown here.
+        return project_file_metadata(
+            canonical_url(url), httpx.Headers({"content-type": content_type}), len(content)
+        )
 
     async def delete(self, url: str) -> None:
         await self.__project_files.delete(url)

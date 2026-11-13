@@ -198,7 +198,16 @@ class TestWrites:
     async def test_write_returns_the_url(self):
         svc = _make_service(_make_project_files())
 
-        assert await svc.write_file(PROJECT_FILE, "hi", overwrite=True) == PROJECT_FILE
+        uploaded = await svc.write_file(PROJECT_FILE, "hi", overwrite=True)
+
+        # Core's v2 PUT returns no file metadata: it is built from the write.
+        assert (uploaded.url, uploaded.name, uploaded.content_type, uploaded.content_length) == (
+            PROJECT_FILE,
+            PROJECT_FILE.rsplit("/", 1)[-1],
+            "text/plain",
+            2,
+        )
+        assert uploaded.etag is None
 
     @pytest.mark.asyncio
     async def test_create_only_checks_absence_then_puts_once(self):
@@ -368,11 +377,11 @@ class TestReviewFixes:
             _make_project_files(), project=ProjectContext(url="projects/b/My Project")
         )
 
-        url = await svc.write_file(
+        uploaded = await svc.write_file(
             "projects/b/My Project/files/artifacts/ä b.md", "x", overwrite=True
         )
 
-        assert url == "projects/b/My%20Project/files/artifacts/%C3%A4%20b.md"
+        assert uploaded.url == "projects/b/My%20Project/files/artifacts/%C3%A4%20b.md"
 
     @pytest.mark.asyncio
     async def test_traversal_out_of_the_project_is_not_dispatched_to_v2(self):
