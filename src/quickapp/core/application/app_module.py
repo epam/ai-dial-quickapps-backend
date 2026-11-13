@@ -15,12 +15,14 @@ from quickapp.common import (
     TOOL_CHOICE,
     ForwardedHeaders,
 )
+from quickapp.common.abstract.completion_runner import BaseCompletionRunner
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.feature_settings import FeatureSettings
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.presentation_settings import PresentationSettings
 from quickapp.common.project_context import PROJECT_CONTEXT
+from quickapp.common.tool_allowlist import ToolAllowlist
 from quickapp.common.tool_timeout_utils import build_async_dial_timeout
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.predefined_content_provider import (
@@ -29,6 +31,7 @@ from quickapp.config.predefined_content_provider import (
 )
 from quickapp.shared.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
 
+from ._completion_runner import CompletionRunner
 from ._initialization_error_handler import _InitializationErrorHandler
 from ._messages_setup import _MessagesSetup
 from ._otel_settings import _OtelSettings
@@ -59,6 +62,7 @@ class AppModule(Module):
         binder.bind(_OtelSettings, to=_OtelSettings, scope=singleton)
         binder.bind(_RequestContext, to=_RequestContext, scope=request_scope)
         binder.bind(_RequestContextSetup, to=_RequestContextSetup, scope=request_scope)
+        binder.bind(CompletionRunner, to=CompletionRunner, scope=request_scope)
         binder.bind(_MessagesSetup, to=_MessagesSetup, scope=request_scope)
         binder.bind(PresentationSettings, to=PresentationSettings, scope=singleton)
         binder.bind(PredefinedSettings, to=PredefinedSettings, scope=singleton)
@@ -67,6 +71,14 @@ class AppModule(Module):
         binder.bind(
             _InitializationErrorHandler, to=_InitializationErrorHandler, scope=request_scope
         )
+
+    @provider
+    def __provide_base_completion_runner(self, runner: CompletionRunner) -> BaseCompletionRunner:
+        return runner
+
+    @provider
+    def __provide_tool_allowlist(self, context: _RequestContext) -> ToolAllowlist:
+        return context.tool_allowlist
 
     @provider
     def __provide_bearer(self, context: _RequestContext) -> DIAL_BEARER:

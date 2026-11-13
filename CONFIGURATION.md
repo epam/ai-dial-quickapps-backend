@@ -725,6 +725,48 @@ initialization fails with a hard `ToolInitializationException` — fix the egres
 }
 ```
 
+#### Run task configuration
+
+> **Preview:** requires `ENABLE_PREVIEW_FEATURES=true`; otherwise the field is ignored.
+
+When enabled, exposes `internal_run_task(name, prompt, tools)`. The agent hands a self-contained task to an
+isolated child run and gets back only the final answer, so the task's intermediate tool calls don't fill the
+conversation. The child uses this app's model, contexts, skills and `on_request_start` hooks. Its system
+prompt is a built-in task prompt followed by this app's system prompt, so the app's rules still apply.
+`on_completion` hooks don't run for tasks. The task sees only its prompt, not the conversation or the user's
+attached files.
+
+A tool with a `hard_stop` fallback stops the whole turn even when it fails inside a task. When a task
+succeeds, its token usage is added to the turn's usage statistics.
+
+The agent picks the task's tools per call:
+
+- `["inherit"]` — every tool the agent has, except `internal_run_task` (a task cannot run tasks).
+- A list of tool names — only those tools. Unknown names fail the call. The readers for the app's skills,
+  attachments and MCP resources, and the file readers that large (offloaded) tool results point at, are always
+  added.
+- `[]` — no tools beyond those readers; the task only reasons over its prompt.
+
+Each call renders a `Task: <name>` stage that shows the task's progress. A task that runs out of time or iterations,
+or ends without an answer, returns an error to the agent instead of an empty answer.
+
+| Field             | Required | Type              | Description                                                                                     | Default Value |
+|-------------------|----------|-------------------|-------------------------------------------------------------------------------------------------|---------------|
+| `enabled`         | No       | Boolean           | Expose `internal_run_task`                                                                      | `false`       |
+| `max_iterations`  | No       | Integer (`> 0`)   | Iteration budget for one task                                                                   | `orchestrator.max_iterations` |
+| `timeout_seconds` | No       | Number (`> 0`)    | Time budget for one task, counted once it starts running. Can shorten the `RUN_TASK_TIMEOUT_SECONDS` limit, not extend it | env `RUN_TASK_TIMEOUT_SECONDS` (`600`) |
+
+```json
+{
+  "features": {
+    "run_task": {
+      "enabled": true,
+      "max_iterations": 10
+    }
+  }
+}
+```
+
 #### Representation tooling configuration
 
 Omit or set `null` to disable the whole section.
@@ -1869,6 +1911,9 @@ behave the same. Use `true` only for apps that make no sense outside a project.
 | `EXTERNAL_URL_FETCH_USER_AGENT`            | `QuickApps-ExternalFetch/1.0 (+https://github.com/epam/ai-dial-quickapps-backend)` | No       | `User-Agent` header sent on external URL fetches. Some sites (e.g. Wikipedia) reject generic library user agents with `403`. Must not be empty. |
 | **Dynamic Tool Discovery**                 |                                                                 |          |                                                                                                              |
 | `MIN_TOOLS_FOR_DEFERRAL`                   | `10`                                                            | No       | Deployment-wide minimum toolset size for deferral to apply. Toolsets with fewer tools than this threshold are promoted to eager loading even when `deferred=true`. Apps override per-app via `orchestrator.tool_discovery.min_tools_for_deferral`. |
+| **Run Task (preview)**                     |                                                                 |          |                                                                                                              |
+| `RUN_TASK_TIMEOUT_SECONDS`                 | `600`                                                           | No       | Limit on how long one `internal_run_task` call may run. An app's `features.run_task.timeout_seconds` may shorten it, never extend it. |
+| `RUN_TASK_MAX_CONCURRENT`                  | `4`                                                             | No       | Maximum tasks running at once per process, across all requests. Extra tasks wait for a slot for up to the task's time budget, then the call fails; the wait doesn't count toward the run's budget. |
 | **Skills**                                 |                                                                 |          |                                                                                                              |
 | `DIAL_SKILLS_FILE_MAX_BYTES`               | `262144`                                                        | No       | Cap on a single file read from a DIAL skill resource, `SKILL.md` included. Must exceed the largest manifest you expect: an over-cap manifest drops the skill. See [docs/skills.md](docs/skills.md). |
 | `DIAL_SKILLS_MAX_FILES`                    | `200`                                                           | No       | Maximum bundled files advertised to the agent per DIAL skill resource; beyond it the listing is truncated     |

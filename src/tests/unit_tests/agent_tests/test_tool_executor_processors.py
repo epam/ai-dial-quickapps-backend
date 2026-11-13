@@ -6,6 +6,7 @@ from quickapp.common.abstract.tool_call_result_processor import (
     ProcessingContext,
     ToolCallResultProcessor,
 )
+from quickapp.common.tool_allowlist import ToolAllowlist
 from quickapp.common.tool_call_result import ToolCallResult
 from quickapp.core.agent.tool_executor import ToolExecutor
 
@@ -74,6 +75,7 @@ class TestToolExecutorProcessors:
             enrichers=[],
             perf_timer=MagicMock(),
             processors=[_AppendProcessor("!")],
+            allowlist=ToolAllowlist(),
         )
 
         results = await executor.execute([_make_tool_call("my_tool")])
@@ -93,6 +95,7 @@ class TestToolExecutorProcessors:
             enrichers=[],
             perf_timer=MagicMock(),
             processors=[_AppendProcessor("!"), _DoubleProcessor()],
+            allowlist=ToolAllowlist(),
         )
 
         results = await executor.execute([_make_tool_call("my_tool")])
@@ -109,6 +112,7 @@ class TestToolExecutorProcessors:
             enrichers=[],
             perf_timer=MagicMock(),
             processors=[],
+            allowlist=ToolAllowlist(),
         )
 
         results = await executor.execute([_make_tool_call("my_tool")])
@@ -134,6 +138,7 @@ class TestToolExecutorProcessors:
             enrichers=[],
             perf_timer=MagicMock(),
             processors=[_CaptureProcessor()],
+            allowlist=ToolAllowlist(),
         )
 
         await executor.execute([_make_tool_call("specific_tool", tc_id="call_abc")])
@@ -149,6 +154,7 @@ class TestToolExecutorProcessors:
             enrichers=[],
             perf_timer=MagicMock(),
             processors=[],
+            allowlist=ToolAllowlist(),
         )
 
         results = await executor.execute(
@@ -170,6 +176,7 @@ class TestToolExecutorProcessors:
             enrichers=[],
             perf_timer=MagicMock(),
             processors=[],
+            allowlist=ToolAllowlist(),
         )
 
         results = await executor.execute(
@@ -196,6 +203,7 @@ class TestToolExecutorModelHiddenTools:
             enrichers=[],
             perf_timer=MagicMock(),
             processors=[],
+            allowlist=ToolAllowlist(),
         )
 
     @pytest.mark.asyncio
@@ -236,3 +244,26 @@ class TestToolExecutorModelHiddenTools:
         hidden.arun.assert_not_called()
         assert results[0].content == "found"
         assert "not available to you" in results[1].content
+
+
+class TestToolExecutorAllowlist:
+    @pytest.mark.asyncio
+    async def test_tool_outside_the_allowlist_is_unknown_and_does_not_run(self):
+        allowed = _make_tool("search", ToolCallResult(content="found", content_type="text/plain"))
+        blocked = _make_tool("delete", ToolCallResult(content="x", content_type="text/plain"))
+        executor = ToolExecutor(
+            tools=[allowed, blocked],
+            model_hidden_tools=[],
+            enrichers=[],
+            perf_timer=MagicMock(),
+            processors=[],
+            allowlist=ToolAllowlist(names=frozenset({"search"})),
+        )
+
+        results = await executor.execute(
+            [_make_tool_call("search", tc_id="a"), _make_tool_call("delete", tc_id="b")]
+        )
+
+        blocked.arun.assert_not_called()
+        assert results[0].content == "found"
+        assert "does not exist" in results[1].content

@@ -1862,6 +1862,19 @@
           ],
           "default": null,
           "description": "Enables tools that control how the agent surfaces its output to the user. Omit or set to null to disable the whole section. Set to {} to enable with defaults, or set individual sub-fields to false to disable specific tools while keeping the section enabled."
+        },
+        "run_task": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RunTaskConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Built-in internal_run_task tool: run a self-contained task in an isolated child run that returns only its final answer. Omit or set to null to disable; set `enabled` to true to turn it on.",
+          "x-preview": true
         }
       },
       "title": "Features",
@@ -3676,6 +3689,47 @@
         }
       },
       "title": "RetryStrategyModel",
+      "type": "object"
+    },
+    "RunTaskConfig": {
+      "description": "Per-app config for the built-in ``internal_run_task`` tool.\n\nThe tool runs a self-contained task in an isolated child run and returns only its\nfinal answer. The child uses this app's deployment and inherits its contexts,\nskills and ``on_request_start`` hooks; the delegating agent picks its tools per call.",
+      "properties": {
+        "enabled": {
+          "default": false,
+          "description": "Whether to expose the internal_run_task tool to the LLM.",
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "max_iterations": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Iteration budget for one task. When unset, the app's `orchestrator.max_iterations` applies.",
+          "title": "Max Iterations"
+        },
+        "timeout_seconds": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Wall-clock budget for one task. May shorten the `RUN_TASK_TIMEOUT_SECONDS` ceiling, never extend it.",
+          "title": "Timeout Seconds"
+        }
+      },
+      "title": "RunTaskConfig",
       "type": "object"
     },
     "StageDisplayConfig": {

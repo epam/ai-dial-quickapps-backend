@@ -75,6 +75,7 @@ Require `ENABLE_PREVIEW_FEATURES=true`. May change without a major version bump.
 | Capability | Configure (L1) | Behaviour (L2) | Design (L3) |
 |------------|----------------|----------------|-------------|
 | MCP per-tool configuration | [CONFIGURATION — MCP per-tool](../CONFIGURATION.md#mcp-per-tool-configuration) | — | — |
+| Run task (`internal_run_task`) | [CONFIGURATION — Run task](../CONFIGURATION.md#run-task-configuration) | [agent.md](./agent.md#run-task) | [run_task_tool.md](./designs/run_task_tool.md) |
 | Tool-result offload | [CONFIGURATION — DIAL files offload](../CONFIGURATION.md#tool-call-result-offload) | — | [large_tool_responses.md](./designs/large_tool_responses.md) |
 | Projects (`x-project-id`) | [CONFIGURATION — Projects](../CONFIGURATION.md#projects) | [projects.md](./projects.md) | [projects.md](./designs/projects.md) |
 
