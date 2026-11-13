@@ -464,7 +464,7 @@ def test_repeated_tool_resolution_does_not_grow_deferred_registry():
     )
     app_config = create_app_configuration([toolset])
     app_config.orchestrator.tool_discovery = ToolDiscoveryConfig(
-        enabled=True, min_tools_for_deferral=1
+        enabled=True, service_model="m", min_tools_for_deferral=1
     )
 
     def configure(binder: Binder):

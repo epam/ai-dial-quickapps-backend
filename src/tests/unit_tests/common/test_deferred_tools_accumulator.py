@@ -26,7 +26,9 @@ def _make_toolset(deferred: bool | None = None) -> RestApiToolSet:
 def _make_discovery_config(
     enabled: bool = True, min_tools_for_deferral: int = 5
 ) -> ToolDiscoveryConfig:
-    return ToolDiscoveryConfig(enabled=enabled, min_tools_for_deferral=min_tools_for_deferral)
+    return ToolDiscoveryConfig(
+        enabled=enabled, service_model="m", min_tools_for_deferral=min_tools_for_deferral
+    )
 
 
 class TestIsToolsetDeferred:
@@ -111,7 +113,9 @@ class TestRegisterDeferredTools:
         tool_config = _make_rest_api_tool_with_const_param()
         context.register_deferred_tools(_make_toolset(), [_make_staged_tool(tool_config)])
 
-        assert context.catalog == [{"name": "test_tool", "description": "A test tool"}]
+        assert context.catalog == [
+            {"name": "test_tool", "description": "A test tool", "toolset": "my-toolset"}
+        ]
 
     def test_deferred_names_reflects_registered_tools(self):
         context = DeferredToolsAccumulator()

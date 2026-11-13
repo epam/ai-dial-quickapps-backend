@@ -386,8 +386,21 @@ tool schemas through an isolated LLM call.
 | Field                  | Required | Type    | Description                                                                                                                                                | Available Values | Default Value |
 |------------------------|----------|---------|-------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------|---------------|
 | enabled                | No       | Boolean | Enable dynamic tool discovery. When `true`, toolsets with `deferred: true` are withheld from the initial LLM payload and surfaced via the `internal_tool_search` meta-tool. | -                 | `false`       |
-| service_model          | No       | String  | DIAL deployment used for the anonymous routing call inside `internal_tool_search`. Falls back to the orchestrator's own deployment when omitted.                      | -                 | -             |
+| service_model          | When `enabled` is `true` | String  | DIAL deployment used for the anonymous routing call inside `internal_tool_search`. It must support structured output (`response_format` with a JSON schema); when it rejects the request (HTTP 400), tool search finds nothing and the error is shown as a warning in the tool search stage. | -                 | -             |
 | min_tools_for_deferral | No       | Integer | Minimum number of tools in a toolset for deferral to apply. Toolsets smaller than this threshold are promoted to eager loading even when `deferred: true`. Deployment-wide default set by `MIN_TOOLS_FOR_DEFERRAL`. | -    | `10`          |
+| strategy               | No       | Object  | How `internal_tool_search` finds tools. Discriminated by `type`; see the table below. | `plain`, `window`, `hierarchy` | `{"type": "plain"}` |
+
+Search strategies (`tool_discovery.strategy`). All routing calls use `service_model`; the model scores each pick from 0 to 1.
+
+| `type`      | Behaviour | Own fields (default) |
+|-------------|-----------|----------------------|
+| `plain`     | One routing call over the whole deferred catalog. | - |
+| `window`    | The catalog is split into windows searched in parallel, then one final call filters the union. Best recall on large catalogs; reads the whole catalog on every search. | `window_size_chars` (`40000`, window size in characters of rendered catalog text), `per_window_top_k` (`3`) |
+| `hierarchy` | First call picks toolsets from their descriptions, second picks tools among the chosen toolsets. Cheapest on large catalogs; recall is bounded by the toolset choice. | `toolset_top_k` (`3`) |
+
+Every strategy also accepts `top_k` (default `10`, maximum tools returned) and `score_threshold` (default `0.5`, picks scored lower are dropped; `hierarchy` also applies it to toolsets in its first call).
+
+> **Behaviour change for existing apps with `tool_discovery.enabled`:** even with the default `plain` strategy, `internal_tool_search` now returns at most `top_k` (10) tools, drops picks scored below `0.5`, uses a scoring routing prompt, and returns tool names only (`["name", ...]`) to the model instead of `{name, description}` objects. `service_model` now takes effect for the routing call (it was previously ignored). `service_model` is also now **required** whenever a `tool_discovery` block is present (even with `enabled: false`) and must name a deployment that supports structured output: the routing call always sends `response_format`, with no plain-text fallback, and an answer that does not match the schema yields no matches. Existing configs with a `tool_discovery` block must add `service_model` before upgrading.
 
 <details>
 <summary><b>Tool discovery configuration JSON sample</b></summary>
@@ -399,7 +412,8 @@ tool schemas through an isolated LLM call.
     "tool_discovery": {
       "enabled": true,
       "service_model": "gpt-4o-mini",
-      "min_tools_for_deferral": 5
+      "min_tools_for_deferral": 5,
+      "strategy": { "type": "window", "window_size_chars": 40000, "top_k": 10 }
     }
   }
 }

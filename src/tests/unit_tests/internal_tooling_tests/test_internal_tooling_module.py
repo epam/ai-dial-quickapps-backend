@@ -65,7 +65,9 @@ class TestProvideInternalTools:
     def test_registers_deferred_toolset_with_deferred_context(self):
         tool_config = _make_internal_tool_config()
         toolset = InternalToolSet(name="internal", deferred=True, tools=[tool_config])
-        discovery_cfg = ToolDiscoveryConfig(enabled=True, min_tools_for_deferral=1)
+        discovery_cfg = ToolDiscoveryConfig(
+            enabled=True, service_model="m", min_tools_for_deferral=1
+        )
         app_config = _make_app_config(toolset, discovery_cfg)
         staged_tool, py_builder = _make_py_builder(tool_config)
         deferred_context = MagicMock(spec=_InternalDeferredToolsContext)
@@ -79,7 +81,9 @@ class TestProvideInternalTools:
     def test_does_not_defer_below_threshold(self):
         tool_config = _make_internal_tool_config()
         toolset = InternalToolSet(name="internal", deferred=True, tools=[tool_config])
-        discovery_cfg = ToolDiscoveryConfig(enabled=True, min_tools_for_deferral=5)
+        discovery_cfg = ToolDiscoveryConfig(
+            enabled=True, service_model="m", min_tools_for_deferral=5
+        )
         app_config = _make_app_config(toolset, discovery_cfg)
         staged_tool, py_builder = _make_py_builder(tool_config)
         deferred_context = MagicMock(spec=_InternalDeferredToolsContext)
@@ -109,7 +113,7 @@ def test_repeated_tool_resolution_does_not_grow_deferred_registry():
     tool_config = _make_internal_tool_config()
     toolset = InternalToolSet(name="internal", deferred=True, tools=[tool_config])
     app_config = _make_app_config(
-        toolset, ToolDiscoveryConfig(enabled=True, min_tools_for_deferral=1)
+        toolset, ToolDiscoveryConfig(enabled=True, service_model="m", min_tools_for_deferral=1)
     )
 
     def configure(binder: Binder):
