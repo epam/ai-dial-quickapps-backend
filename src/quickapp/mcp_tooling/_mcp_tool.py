@@ -36,6 +36,7 @@ from quickapp.mcp_tooling._mcp_toolset_client import _MCPToolsetClient
 from quickapp.mcp_tooling._mcp_unauthorized_exception import MCPUnauthorizedException
 from quickapp.shared.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
 from quickapp.skills.skill_file_url import skill_root_of_file_url
+from quickapp.shared.home_path.home_path_resolver import HomePathResolver
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +63,7 @@ class _MCPTool(StagedBaseTool):
         login_service: InteractiveLoginService,
         timeout_resolver: ToolTimeoutResolver,
         dial_settings: DialSettings,
+        home_resolver: HomePathResolver,
         stage_display_level: StageDisplayLevel = StageDisplayLevel.INFO,
         argument_transformers: list[ToolArgumentTransformer] | None = None,
         fixed_arguments: dict[str, Any] | None = None,
@@ -86,6 +88,7 @@ class _MCPTool(StagedBaseTool):
         self.__login_service: InteractiveLoginService = login_service
         self.__timeout_resolver: ToolTimeoutResolver = timeout_resolver
         self.__dial_url: str = dial_settings.url
+        self.__home_resolver: HomePathResolver = home_resolver
         self.__fixed_arguments: dict[str, Any] = fixed_arguments or {}
 
     async def _pre_process_params(self, **kwargs: Any) -> dict[str, Any]:
@@ -121,7 +124,9 @@ class _MCPTool(StagedBaseTool):
 
         External or unsupported URLs are rejected with a parameter-aware
         ``InvalidToolCallParameterException`` — ``dial_url`` parameters require a
-        DIAL file because permission-grant has no meaning for external resources.
+        DIAL file because permission-grant has no meaning for external resources. A
+        ``projects/...`` URL must be under the current project's ``context/`` or
+        ``artifacts/`` (``HomePathResolver.resolve_handoff_url``).
         """
         properties = self.__tool.inputSchema.get("properties", {})
         resources: list[str] = []
@@ -145,7 +150,8 @@ class _MCPTool(StagedBaseTool):
         if skill_root is not None:
             return skill_root
         self._validate_dial_file(key, candidate)
-        return candidate
+        # The toolset reads the file with the grant, outside the project view.
+        return self.__home_resolver.resolve_handoff_url(key, candidate)
 
     def _validate_dial_file(self, key: str, candidate: str) -> None:
         scheme = classify_url(candidate, self.__dial_url)

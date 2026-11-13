@@ -14,8 +14,10 @@ from quickapp.dial_core_services.dial_file_service import DialFileService
 from quickapp.dial_core_services.storage._project_file_storage import ProjectFileStorage
 from quickapp.dial_core_services.storage._routed_file_storage import RoutedFileStorage
 from quickapp.dial_core_services.storage._v1_file_storage import V1FileStorage
+from quickapp.dial_files_tooling._list_files_tool import _ListFilesTool
 from quickapp.dial_files_tooling._read_file_lines_tool import _ReadFileLinesTool
 from quickapp.dial_files_tooling._tool_configs import (
+    LIST_FILES_TOOL_CONFIG,
     READ_FILE_LINES_TOOL_CONFIG,
     WRITE_FILE_TOOL_CONFIG,
 )
@@ -36,7 +38,7 @@ def _service() -> DialFileService:
     size_limit.resolve.return_value = 1024 * 1024
     storage = RoutedFileStorage(
         V1FileStorage(dial, size_limit),
-        ProjectFileStorage(ProjectFilesClient(dial), size_limit),
+        ProjectFileStorage(ProjectFilesClient(dial), size_limit, PROJECT),
         PROJECT,
     )
     return DialFileService(dial_client=dial, storage=storage, state_holder=StateHolder())
@@ -78,3 +80,50 @@ async def test_write_then_read_a_relative_path_lands_in_artifacts(httpx_mock):
     assert b"line 1\nline 2\n" in put.content
     # Nothing went to the v1 files API or the appdata lookup.
     assert all("/v1/" not in str(request.url) for request in httpx_mock.get_requests())
+
+
+@pytest.mark.asyncio
+async def test_a_conversation_is_not_read_and_core_is_not_called(httpx_mock):
+    read = make_tool(
+        _ReadFileLinesTool, READ_FILE_LINES_TOOL_CONFIG, service=_service(), project=PROJECT
+    )
+
+    result = await read.arun(
+        "call-1",
+        stage_level=StageDisplayLevel.NONE,
+        path="projects/b/My Project/files/conversations/chat.json",
+        start_line=0,
+        end_line=10,
+    )
+
+    assert "access denied" in result.content
+    assert httpx_mock.get_requests() == []
+
+
+@pytest.mark.asyncio
+async def test_listing_the_project_folder_shows_only_context_and_artifacts(httpx_mock):
+    root = "projects/b/My%20Project/files/"
+    httpx_mock.add_response(
+        method="GET",
+        url=f"{BASE_URL}/v2/metadata/{root.rstrip('/')}",
+        json={
+            "items": [
+                {"url": f"{root}PROJECT.md", "nodeType": "ITEM"},
+                {"url": f"{root}context", "nodeType": "FOLDER"},
+                {"url": f"{root}conversations", "nodeType": "FOLDER"},
+                {"url": f"{root}artifacts", "nodeType": "FOLDER"},
+            ]
+        },
+    )
+    list_files = make_tool(
+        _ListFilesTool, LIST_FILES_TOOL_CONFIG, service=_service(), project=PROJECT
+    )
+
+    result = await list_files.arun(
+        "call-1", stage_level=StageDisplayLevel.NONE, path="projects/b/My Project/files/"
+    )
+
+    assert "context/" in result.content
+    assert "artifacts/" in result.content
+    assert "conversations" not in result.content
+    assert "PROJECT.md" not in result.content

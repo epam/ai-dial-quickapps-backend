@@ -13,9 +13,9 @@ A project lives under Core's `projects/{bucket}/{path}/files/`:
 
 | Path | Content | Agent access |
 |---|---|---|
-| `PROJECT.md` | Project instructions (YAML frontmatter + body) | read |
+| `PROJECT.md` | Project instructions (YAML frontmatter + body) | none (the body is in the system prompt) |
 | `context/` | Files the user added to the project | read |
-| `conversations/` | The project's chats (Chat only) | read |
+| `conversations/` | The project's chats (Chat only) | none |
 | `artifacts/` | Files produced in the project, shown by Chat as **Outputs** | read + write (the working folder) |
 
 ## In a project chat
@@ -41,14 +41,18 @@ A project lives under Core's `projects/{bucket}/{path}/files/`:
    tools report it as "access denied"). DIAL
    deployments and the code interpreter don't read project URLs yet: see **Downstream** below and
    [Known issues](#known-issues).
-5. **Read-only files.** Write-side tools (`write_file`, `edit_file`, `delete_file`, the `move_file` source,
+5. **Read scope.** Inside the project the agent reads only `context/` and `artifacts/`. Listing the project folder
+   shows just those two; reading or listing any other project path (`PROJECT.md`, `conversations/`), directly, by a
+   `file:text::` / `file:base64::` / `file:data::` argument or as a `copy_file` source, is refused ("access denied")
+   without calling Core. A project URL in an MCP `dial_url` parameter is accepted only under those two folders.
+6. **Read-only files.** Write-side tools (`write_file`, `edit_file`, `delete_file`, the `move_file` source,
    `copy_file` / `move_file` destinations, `web_fetch` `save_path`) accept relative paths only, so they never write
    outside `artifacts/`. Given any `files/...` or `projects/...` URL, they ask for a relative path.
-6. **Tool outputs.** Files that tools produce for the user (MCP tool files, REST response files, code interpreter
+7. **Tool outputs.** Files that tools produce for the user (MCP tool files, REST response files, code interpreter
    charts) are saved to `artifacts/`, so Chat lists them as the project's **Outputs**. Internal files (large-result
    offloads, external URLs downloaded for a deployment or the interpreter) stay in the app's appdata. Outside a
    project both go to appdata, as before.
-7. **Downstream.** DIAL deployment attachments accept home-relative paths in every chat, like `get_content`. Project
+8. **Downstream.** DIAL deployment attachments accept home-relative paths in every chat, like `get_content`. Project
    files go to deployments as `url` attachments as is; a deployment or the code interpreter that can't read `projects/` URLs answers with its own error, shown as a tool
    error. Nested apps, MCP servers and REST API tools receive `x-project-id` like any other `X-*` header.
 
@@ -64,6 +68,7 @@ denied; the app has no permission for it"). It goes through the tool's fallback 
 | Project files can't be passed to DIAL deployments (RAG, adapters) or to the code interpreter | These don't read `projects/` URLs yet | Copy the content into the conversation, or use a nested QuickApp |
 | MCP `dial_url` parameters with project files are unverified | Per-file grants on `projects/` URLs depend on Core | Avoid project URLs in `dial_url` parameters |
 | A tool output replaces a file with the same name in `artifacts/`, including one from another chat or added by the user | Outputs keep the tool's file name and are written without a check ([I#725](https://github.com/epam/ai-dial-quickapps-backend/issues/725)) | None yet |
+| A nested app or MCP server can still read the project's `conversations/` if it gets a URL elsewhere | The Core grant covers the whole project; QuickApps narrows only its own reads and the URLs it passes on | None yet: needs a narrower resource-dependency target in Core ([Core I#1930](https://github.com/epam/ai-dial-core/issues/1930)) |
 | After a project rename, files attached in earlier turns return 404 | Attachments keep the old URL | Attach the file again |
 | The system-prompt cache has one entry per project and is rewritten when `PROJECT.md` changes | The project instructions are part of the system prompt | None needed; the first turn after a change costs a cache write |
 

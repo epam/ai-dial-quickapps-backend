@@ -73,7 +73,7 @@ def _make_service(
     dial_client = dial_client or _make_dial_client()
     v1 = V1FileStorage(dial_client, resolver)
     storage: FileStorage = RoutedFileStorage(
-        v1, ProjectFileStorage(project_files, resolver), project
+        v1, ProjectFileStorage(project_files, resolver, project), project
     )
     return DialFileService(
         dial_client=dial_client,

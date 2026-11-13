@@ -200,6 +200,48 @@ class TestProjectHome:
         assert not resolver.is_absolute("reports/projects/a.md")
 
 
+class TestResolveHandoffUrl:
+    @pytest.mark.parametrize(
+        "path, expected",
+        [
+            ("projects/user-bucket/My Project/files/context/tickets.csv", _CONTEXT_FILE),
+            (f"{_ARTIFACTS}report.pdf", f"{_ARTIFACTS}report.pdf"),
+            ("files/other-bucket/shared/a.pdf", "files/other-bucket/shared/a.pdf"),
+            (
+                "https://dial.example.com/v1/files/other-bucket/a.pdf",
+                "https://dial.example.com/v1/files/other-bucket/a.pdf",
+            ),
+        ],
+    )
+    def test_readable_and_non_project_urls_pass(self, path, expected):
+        resolver = _resolver(project=_PROJECT)
+        assert resolver.resolve_handoff_url("attachment_urls", path) == expected
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "projects/user-bucket/My Project/files/conversations/chat.json",
+            "projects/user-bucket/My Project/files/PROJECT.md",
+            "projects/user-bucket/My Project/files/",
+            "projects/user-bucket/Other/files/context/a.csv",
+        ],
+    )
+    def test_project_urls_outside_context_and_artifacts_are_refused(self, path):
+        with pytest.raises(InvalidToolCallParameterException) as excinfo:
+            _resolver(project=_PROJECT).resolve_handoff_url("attachment_urls", path)
+        assert excinfo.value.parameter_name == "attachment_urls"
+        assert "context/ or artifacts/" in excinfo.value.message
+
+    def test_project_url_is_refused_without_project(self):
+        with pytest.raises(InvalidToolCallParameterException):
+            _resolver().resolve_handoff_url("doc_url", _CONTEXT_FILE)
+
+    def test_files_url_unchanged_without_project(self):
+        assert _resolver().resolve_handoff_url("doc_url", "files/appbucket/x.md") == (
+            "files/appbucket/x.md"
+        )
+
+
 class TestResolveWriteUrl:
     @pytest.mark.parametrize(
         "path",
