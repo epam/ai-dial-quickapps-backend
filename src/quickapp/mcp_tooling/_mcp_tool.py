@@ -129,6 +129,8 @@ class _MCPTool(StagedBaseTool):
             elif isinstance(value, list):
                 candidates.extend(elem for elem in value if isinstance(elem, str))
             for candidate in candidates:
+                # A `projects/` URL is a DIAL file here; per-file grants on `projects/` URLs
+                # depend on Core (unverified, see docs/projects.md).
                 scheme = classify_url(candidate, self.__dial_url)
                 if scheme == UrlScheme.EXTERNAL:
                     raise InvalidToolCallParameterException(

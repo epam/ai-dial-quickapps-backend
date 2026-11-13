@@ -287,3 +287,36 @@ class TestGetContentTool:
         assert payload is not None
         assert payload.status == GetContentStatus.FAIL
         assert payload.status_message == "Orchestrator deployment does not accept this file type."
+
+
+class TestProjectUrls:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "projects/b/P/files/context/a.pdf",
+            "https://dial.local/v1/projects/b/P/files/context/a.pdf",
+        ],
+    )
+    async def test_project_url_passes_through(self, url: str):
+        home_resolver = _make_home_resolver()
+        tool = _make_tool(["application/pdf"], home_resolver=home_resolver)
+
+        result = await tool._run_in_stage_async(stage_wrapper=None, attachment_url=url)
+
+        home_resolver.resolve_appdata_url.assert_not_awaited()
+        assert result.attachments is not None
+        assert result.attachments[0].url == "projects/b/P/files/context/a.pdf"
+        assert result.attachments[0].type == "application/pdf"
+
+    @pytest.mark.asyncio
+    async def test_absolute_files_url_still_rejected(self):
+        tool = _make_tool(["application/pdf"])
+
+        result = await tool._run_in_stage_async(
+            stage_wrapper=None, attachment_url="https://dial.local/v1/files/b/a.pdf"
+        )
+
+        payload = GetContentToolResponse.from_state(result.state)
+        assert payload is not None
+        assert payload.status == GetContentStatus.FAIL

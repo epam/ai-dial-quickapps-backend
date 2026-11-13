@@ -30,6 +30,40 @@ async def test_stream_returns_the_headers_and_the_body(httpx_mock) -> None:
 
 
 @pytest.mark.asyncio
+async def test_file_metadata_reads_the_first_byte_and_the_total_size(httpx_mock) -> None:
+    httpx_mock.add_response(
+        method="GET",
+        url=f"{BASE_URL}/v2/{FILE_URL}",
+        status_code=206,
+        content=b"h",
+        headers={"content-range": "bytes 0-0/1234", "content-type": "text/markdown"},
+    )
+
+    metadata = await _client().file_metadata(FILE_URL)
+
+    assert httpx_mock.get_requests()[0].headers["Range"] == "bytes=0-0"
+    assert metadata.url == FILE_URL
+    assert metadata.name == "notes.md"
+    assert metadata.content_type == "text/markdown"
+    assert metadata.content_length == 1234
+
+
+@pytest.mark.asyncio
+async def test_file_metadata_when_range_is_ignored(httpx_mock) -> None:
+    httpx_mock.add_response(method="GET", url=f"{BASE_URL}/v2/{FILE_URL}", content=b"hello")
+
+    assert (await _client().file_metadata(FILE_URL)).content_length == 5
+
+
+@pytest.mark.asyncio
+async def test_file_metadata_404_is_not_found(httpx_mock) -> None:
+    httpx_mock.add_response(method="GET", url=f"{BASE_URL}/v2/{FILE_URL}", status_code=404)
+
+    with pytest.raises(ResourceNotFoundError):
+        await _client().file_metadata(FILE_URL)
+
+
+@pytest.mark.asyncio
 async def test_file_etag_is_none_for_a_missing_file(httpx_mock) -> None:
     httpx_mock.add_response(method="GET", url=f"{BASE_URL}/v2/{FILE_URL}", status_code=404)
 

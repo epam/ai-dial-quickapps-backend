@@ -1,6 +1,12 @@
 import pytest
 
-from quickapp.common.url_classification import UrlScheme, classify_url, is_appdir_relative
+from quickapp.common.url_classification import (
+    UrlScheme,
+    classify_url,
+    is_appdir_relative,
+    is_dial_storage_path,
+    to_relative_project_url,
+)
 
 DIAL_URL = "https://dial.example.com"
 
@@ -166,3 +172,45 @@ class TestProjectUrls:
 
     def test_projects_folder_inside_a_relative_path_stays_relative(self):
         assert classify_url("reports/projects/a.md", DIAL_URL) == UrlScheme.DIAL_APPDIR_RELATIVE
+
+
+class TestToRelativeProjectUrl:
+    @pytest.mark.parametrize(
+        ("url", "base_url"),
+        [
+            (f"{DIAL_URL}/v1/projects/b/My%20Project/files/x.md", DIAL_URL),
+            ("HTTPS://DIAL.EXAMPLE.COM/v1/projects/b/My%20Project/files/x.md", DIAL_URL),
+            (f"{DIAL_URL}/core/v1/projects/b/My%20Project/files/x.md", f"{DIAL_URL}/core/"),
+        ],
+    )
+    def test_host_matched_project_url_becomes_relative(self, url: str, base_url: str):
+        assert to_relative_project_url(url, base_url) == "projects/b/My%20Project/files/x.md"
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "projects/b/My%20Project/files/x.md",
+            "files/b/x.md",
+            f"{DIAL_URL}/v1/files/b/x.md",
+            f"{DIAL_URL}/v1/projects/b/My%20Project/files/../../Other/files/x.md",
+            f"{DIAL_URL}/v1/projects/b/My%20Project/files/x.md?download=1",
+            f"{DIAL_URL}/v2/projects/b/My%20Project/files/x.md",
+            "https://other.example.com/v1/projects/b/My%20Project/files/x.md",
+            "ftp://dial.example.com/v1/projects/b/My%20Project/files/x.md",
+        ],
+    )
+    def test_anything_else_is_unchanged(self, url: str):
+        assert to_relative_project_url(url, DIAL_URL) == url
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        ("files/b/x.md", True),
+        ("projects/b/P/files/x.md", True),
+        ("reports/x.md", False),
+        (f"{DIAL_URL}/v1/files/b/x.md", False),
+    ],
+)
+def test_is_dial_storage_path(url: str, expected: bool):
+    assert is_dial_storage_path(url) is expected

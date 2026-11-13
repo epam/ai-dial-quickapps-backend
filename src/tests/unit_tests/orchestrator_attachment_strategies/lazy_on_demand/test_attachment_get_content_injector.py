@@ -352,6 +352,26 @@ class TestExternalUrlPromotion:
         assert result[2].custom_content.attachments[0].url == "files/bucket/a.pdf"
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "projects/b/P/files/context/a.pdf",
+            "https://dial.local/v1/projects/b/P/files/context/a.pdf",
+        ],
+    )
+    async def test_project_attachment_injected_in_relative_form(self, url: str):
+        materializer = _materializer()
+        injector = _injector(["application/pdf"], materializer=materializer)
+        messages = [_user_msg("latest", [_attachment("a.pdf", url, "application/pdf")])]
+
+        result = await injector.transform(messages)
+
+        assert len(result) == 3
+        assert result[2].custom_content is not None
+        assert result[2].custom_content.attachments is not None
+        assert result[2].custom_content.attachments[0].url == "projects/b/P/files/context/a.pdf"
+
+    @pytest.mark.asyncio
     async def test_unsupported_scheme_attachment_skipped(self):
         promoter = MagicMock(spec=DialFilePromoter)
         promoter.promote = AsyncMock()

@@ -8,9 +8,15 @@ from pydantic import SecretStr
 from quickapp.common import DIAL_API_KEY
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.tool_timeout_utils import build_async_dial_timeout
-from quickapp.common.url_classification import UrlScheme, classify_url, unsupported_scheme_error
+from quickapp.common.url_classification import (
+    UrlScheme,
+    classify_url,
+    to_relative_project_url,
+    unsupported_scheme_error,
+)
 from quickapp.common.utils import posix_path_last_segment
 from quickapp.dial_core_services.dial_file_promoter import DialFilePromoter
+from quickapp.internal_tooling.py_interpreter_tooling._exceptions import _PyInterpreterError
 from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_settings import (
     _PyInterpreterSettings,
 )
@@ -48,7 +54,11 @@ class InputFileHandler:
         ``settings.api_key``, the (possibly promoted) DIAL URL is downloaded
         from the host DIAL and re-uploaded to the dev DIAL — preserving the
         existing local-run behaviour.
+
+        A project file fails fast: the interpreter reads v1 ``files/`` URLs only.
         """
+        if to_relative_project_url(attachment_url, self.__dial_url).startswith("projects/"):
+            raise _PyInterpreterError("project files can't be passed to the interpreter yet")
         scheme = classify_url(attachment_url, self.__dial_url)
         if scheme == UrlScheme.EXTERNAL:
             metadata = await self.__promoter.promote(

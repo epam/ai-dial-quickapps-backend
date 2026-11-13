@@ -11,6 +11,7 @@ from quickapp.common.abstract.base_tool_argument_transformer import ToolArgument
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.chat_completion_stream.argument_stream_presentation import ArgumentStreamMode
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
+from quickapp.common.project_context import PROJECT_HEADER
 from quickapp.common.tool_timeout_utils import translate_timeout
 from quickapp.common.utils import generate_attachment_filename, matches_type
 from quickapp.config.application import StageDisplayLevel
@@ -83,10 +84,18 @@ class _RestApiTool(StagedBaseTool):
             request_details = await request_details.with_auth(self.__auth_info)
             request_details = request_details.build()
 
-            # Merge forwarded X-* headers from the original request into the outgoing request
+            # Merge forwarded X-* headers from the original request into the outgoing request,
+            # minus x-project-id: it names the user's bucket and project, and REST hosts are
+            # external. Nested DIAL apps and MCP keep it.
             headers = dict(request_details.headers)
             if self.__forwarded_headers:
-                headers.update(self.__forwarded_headers)
+                headers.update(
+                    {
+                        key: value
+                        for key, value in self.__forwarded_headers.items()
+                        if key.lower() != PROJECT_HEADER
+                    }
+                )
 
             async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.request(
