@@ -33,7 +33,7 @@ dependencies = [
     # Authentication & networking
     "authlib>=1.9.1,<2.0.0",                       # OAuth / JWT authentication
     "urllib3>=2.8.0,<3.0.0",                      # HTTP client library
-    "dnspython>=2.9.0,<3.0.0",                    # DNS toolkit (CVE pin, transitive)
+    "dnspython>=2.9.2,<3.0.0",                    # DNS toolkit (CVE pin, transitive)
     "joserfc>=1.7.7,<2.0.0",                      # JOSE / JWT (CVE pin, transitive)
 
     # Utilities

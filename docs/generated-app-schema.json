@@ -2104,6 +2104,41 @@
       "title": "HardStopStrategyModel",
       "type": "object"
     },
+    "HierarchySearchStrategyConfig": {
+      "properties": {
+        "top_k": {
+          "default": 10,
+          "description": "Maximum number of tools returned by one internal_tool_search call.",
+          "minimum": 1,
+          "title": "Top K",
+          "type": "integer"
+        },
+        "score_threshold": {
+          "default": 0.5,
+          "description": "Minimum relevance score (0..1, reported by the routing model) for a pick to be kept. Picks scored lower are dropped.",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Score Threshold",
+          "type": "number"
+        },
+        "type": {
+          "const": "hierarchy",
+          "default": "hierarchy",
+          "description": "Two routing calls: the first picks toolsets from their descriptions, the second picks tools among the tools of the chosen toolsets. Cheapest on large catalogs, recall is limited by the toolset choice. score_threshold applies to both calls.",
+          "title": "Type",
+          "type": "string"
+        },
+        "toolset_top_k": {
+          "default": 3,
+          "description": "Maximum number of toolsets chosen by the first call.",
+          "minimum": 1,
+          "title": "Toolset Top K",
+          "type": "integer"
+        }
+      },
+      "title": "HierarchySearchStrategyConfig",
+      "type": "object"
+    },
     "HookEvent": {
       "enum": [
         "on_request_start",
@@ -2971,6 +3006,34 @@
         }
       },
       "title": "ParameterDisplayConfig",
+      "type": "object"
+    },
+    "PlainSearchStrategyConfig": {
+      "properties": {
+        "top_k": {
+          "default": 10,
+          "description": "Maximum number of tools returned by one internal_tool_search call.",
+          "minimum": 1,
+          "title": "Top K",
+          "type": "integer"
+        },
+        "score_threshold": {
+          "default": 0.5,
+          "description": "Minimum relevance score (0..1, reported by the routing model) for a pick to be kept. Picks scored lower are dropped.",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Score Threshold",
+          "type": "number"
+        },
+        "type": {
+          "const": "plain",
+          "default": "plain",
+          "description": "One routing call over the whole deferred tool catalog. Cheapest to set up, cost grows with the catalog size.",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "title": "PlainSearchStrategyConfig",
       "type": "object"
     },
     "PredefinedSystemPromptConfig": {
@@ -3966,7 +4029,7 @@
             }
           ],
           "default": null,
-          "description": "DIAL deployment used for the anonymous routing call inside internal_tool_search. When omitted, falls back to the orchestrator's own deployment.",
+          "description": "DIAL deployment used for the anonymous routing call inside internal_tool_search. Required when `enabled` is true. It must support structured output (`response_format` with a JSON schema).",
           "title": "Service Model"
         },
         "min_tools_for_deferral": {
@@ -3975,6 +4038,29 @@
           "minimum": 1,
           "title": "Min Tools For Deferral",
           "type": "integer"
+        },
+        "strategy": {
+          "description": "How internal_tool_search finds tools in the deferred catalog: plain, window or hierarchy.",
+          "discriminator": {
+            "mapping": {
+              "hierarchy": "#/$defs/HierarchySearchStrategyConfig",
+              "plain": "#/$defs/PlainSearchStrategyConfig",
+              "window": "#/$defs/WindowSearchStrategyConfig"
+            },
+            "propertyName": "type"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/PlainSearchStrategyConfig"
+            },
+            {
+              "$ref": "#/$defs/WindowSearchStrategyConfig"
+            },
+            {
+              "$ref": "#/$defs/HierarchySearchStrategyConfig"
+            }
+          ],
+          "title": "Strategy"
         }
       },
       "title": "ToolDiscoveryConfig",
@@ -4175,6 +4261,48 @@
         }
       },
       "title": "WebFetchConfig",
+      "type": "object"
+    },
+    "WindowSearchStrategyConfig": {
+      "properties": {
+        "top_k": {
+          "default": 10,
+          "description": "Maximum number of tools returned by one internal_tool_search call.",
+          "minimum": 1,
+          "title": "Top K",
+          "type": "integer"
+        },
+        "score_threshold": {
+          "default": 0.5,
+          "description": "Minimum relevance score (0..1, reported by the routing model) for a pick to be kept. Picks scored lower are dropped.",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Score Threshold",
+          "type": "number"
+        },
+        "type": {
+          "const": "window",
+          "default": "window",
+          "description": "The catalog is split into windows that are searched in parallel, then a final routing call filters the union of the candidates. Best recall on large catalogs, reads the whole catalog on every search.",
+          "title": "Type",
+          "type": "string"
+        },
+        "window_size_chars": {
+          "default": 40000,
+          "description": "Maximum size of one window, in characters of the rendered catalog text.",
+          "minimum": 1000,
+          "title": "Window Size Chars",
+          "type": "integer"
+        },
+        "per_window_top_k": {
+          "default": 3,
+          "description": "Maximum number of candidates taken from one window before the final filter.",
+          "minimum": 1,
+          "title": "Per Window Top K",
+          "type": "integer"
+        }
+      },
+      "title": "WindowSearchStrategyConfig",
       "type": "object"
     }
   },
