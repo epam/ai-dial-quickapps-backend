@@ -33,7 +33,7 @@ jobs:
         with:
           ref: ${{ inputs.branch }}
           lfs: true
-      - uses: epam/ai-dial-ci/actions/python_prepare@4.13.1
+      - uses: epam/ai-dial-ci/actions/python_prepare@4.13.2
         with:
           python-version: ${{ inputs.python-version }}
           poetry-version: ${{ inputs.poetry-version }}
