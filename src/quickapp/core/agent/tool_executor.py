@@ -1,8 +1,10 @@
 import asyncio
 import json
 import logging
+from collections.abc import Awaitable
 
 from injector import inject
+from pydantic import BaseModel, ConfigDict
 
 from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher
@@ -22,6 +24,35 @@ from quickapp.config.tools.tool_fallback import ContinueStrategyModel
 from quickapp.core.agent.lazy_loaded_tools_holder import LazyLoadedToolsHolder
 
 logger = logging.getLogger(__name__)
+
+
+class _Rejection(BaseModel):
+    """Why a tool call is refused; both texts take the tool name as `{name}`."""
+
+    model_config = ConfigDict(frozen=True)
+
+    instructions: str
+    error: str
+
+
+_UNKNOWN = _Rejection(
+    instructions="This tool does not exist. Check the tool name and try again.",
+    error="Unknown tool '{name}'.",
+)
+_HIDDEN = _Rejection(
+    instructions=(
+        "The tool '{name}' is not available to you. The platform calls it automatically; "
+        "do not call it. Continue without it."
+    ),
+    error="Tool '{name}' is not available to the model.",
+)
+_UNDISCOVERED = _Rejection(
+    instructions=(
+        "The tool '{name}' is not loaded, so its arguments could not be validated. "
+        f"Call '{INTERNAL_TOOL_SEARCH_TOOL_NAME}' to load it, then retry the call."
+    ),
+    error="Tool '{name}' is deferred and not loaded.",
+)
 
 
 class ToolExecutor:
@@ -53,92 +84,62 @@ class ToolExecutor:
         adopted_tool_stages: dict[str, AdoptedToolStage] | None = None,
     ) -> list[ToolCallResult]:
         adopted = adopted_tool_stages if adopted_tool_stages is not None else {}
-        hidden_names: set[str] = set()
-        unknown_names: set[str] = set()
-        undiscovered_names: set[str] = set()
+        rejected: dict[_Rejection, set[str]] = {}
         tasks = []
         for tc in tool_call_list:
-            tool = self.__tools.get(tc.name)
-            if tool is None:
-                if tc.name in self.__model_hidden_names:
-                    hidden_names.add(tc.name)
-                    tasks.append(self.__model_hidden_tool_result(tc))
-                else:
-                    unknown_names.add(tc.name)
-                    tasks.append(self.__unknown_tool_result(tc))
+            rejection = self.__find_rejection(tc)
+            if rejection is None:
+                tasks.append(self.__start_call(tc, adopted))
                 continue
-            if tc.name in self.__deferred_names and not self.__lazy_loaded_tools_holder.contains(
-                tc.name
-            ):
-                # Its schema is not in this request's `tools`, so the arguments were guessed.
-                undiscovered_names.add(tc.name)
-                tasks.append(self.__undiscovered_tool_result(tc))
-                continue
-            args = json.loads(tc.arguments)
-            logger.debug("Making tool call: %s", tc.name)
-            log_payload(logger, "Making tool call: %s with args: %s", tc.name, args)
-            adopted_stage = adopted.pop(tc.id, None)
-            tasks.append(tool.arun(tool_call_id=tc.id, adopted_stage=adopted_stage, **args))
-
-        if hidden_names:
-            logger.warning("Model requested model-hidden tool(s) %s", sorted(hidden_names))
-        if undiscovered_names:
-            logger.warning(
-                "Model called deferred tool(s) %s without a loaded schema",
-                sorted(undiscovered_names),
-            )
-        if unknown_names:
-            logger.error(
-                "Model requested unknown tool(s) %s; registered=%s",
-                sorted(unknown_names),
-                sorted(self.__tools),
-            )
+            rejected.setdefault(rejection, set()).add(tc.name)
+            tasks.append(self.__rejected_result(tc, rejection))
+        self.__log_rejections(rejected)
 
         results: list[ToolCallResult] = list(await asyncio.gather(*tasks))
         self.__enrich_all(results)
         return [await self.__process_result(r, tc) for r, tc in zip(results, tool_call_list)]
 
-    @staticmethod
-    async def __unknown_tool_result(tc: AccumulatedToolCall) -> ToolCallResult:
-        return FallbackProcessor.process_fallback(
-            [
-                ContinueStrategyModel(
-                    instructions="This tool does not exist. Check the tool name and try again."
-                )
-            ],
-            tc.id,
-            RuntimeError(f"Unknown tool '{tc.name}'."),
+    def __find_rejection(self, tc: AccumulatedToolCall) -> _Rejection | None:
+        """Why the call must not run, or None when it can."""
+        if tc.name not in self.__tools:
+            return _HIDDEN if tc.name in self.__model_hidden_names else _UNKNOWN
+        if tc.name in self.__deferred_names and not self.__lazy_loaded_tools_holder.contains(
+            tc.name
+        ):
+            # Its schema is not in `tools`, so the arguments were guessed.
+            return _UNDISCOVERED
+        return None
+
+    def __start_call(
+        self, tc: AccumulatedToolCall, adopted: dict[str, AdoptedToolStage]
+    ) -> Awaitable[ToolCallResult]:
+        args = json.loads(tc.arguments)
+        logger.debug("Making tool call: %s", tc.name)
+        log_payload(logger, "Making tool call: %s with args: %s", tc.name, args)
+        return self.__tools[tc.name].arun(
+            tool_call_id=tc.id, adopted_stage=adopted.pop(tc.id, None), **args
         )
 
-    @staticmethod
-    async def __undiscovered_tool_result(tc: AccumulatedToolCall) -> ToolCallResult:
-        return FallbackProcessor.process_fallback(
-            [
-                ContinueStrategyModel(
-                    instructions=(
-                        f"The tool '{tc.name}' is not loaded, so its arguments could not be "
-                        f"validated. Call '{INTERNAL_TOOL_SEARCH_TOOL_NAME}' to load it, "
-                        "then retry the call."
-                    )
-                )
-            ],
-            tc.id,
-            RuntimeError(f"Tool '{tc.name}' has not been discovered in this request."),
-        )
+    def __log_rejections(self, rejected: dict[_Rejection, set[str]]) -> None:
+        if names := rejected.get(_HIDDEN):
+            logger.warning("Model requested model-hidden tool(s) %s", sorted(names))
+        if names := rejected.get(_UNDISCOVERED):
+            logger.warning(
+                "Model called deferred tool(s) %s without a loaded schema", sorted(names)
+            )
+        if names := rejected.get(_UNKNOWN):
+            logger.error(
+                "Model requested unknown tool(s) %s; registered=%s",
+                sorted(names),
+                sorted(self.__tools),
+            )
 
     @staticmethod
-    async def __model_hidden_tool_result(tc: AccumulatedToolCall) -> ToolCallResult:
+    async def __rejected_result(tc: AccumulatedToolCall, rejection: _Rejection) -> ToolCallResult:
         return FallbackProcessor.process_fallback(
-            [
-                ContinueStrategyModel(
-                    instructions=(
-                        f"The tool '{tc.name}' is not available to you. The platform calls it "
-                        "automatically; do not call it. Continue without it."
-                    )
-                )
-            ],
+            [ContinueStrategyModel(instructions=rejection.instructions.format(name=tc.name))],
             tc.id,
-            RuntimeError(f"Tool '{tc.name}' is not available to the model."),
+            RuntimeError(rejection.error.format(name=tc.name)),
         )
 
     def __enrich_all(self, results: list[ToolCallResult]) -> None:

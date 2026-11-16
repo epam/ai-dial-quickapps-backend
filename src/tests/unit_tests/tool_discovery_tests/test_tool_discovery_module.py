@@ -1,16 +1,28 @@
 from unittest.mock import MagicMock
 
 import pytest
+from aidial_sdk.chat_completion import CustomContent, Message, Role
+from fastapi_injector import Injected, request_scope
 from injector import Binder, Injector
+from starlette.testclient import TestClient
 
-from quickapp.common.deferred_tool_types import DeferredToolCatalogEntry, DeferredToolsetSummary
+from quickapp.common import REQUEST_MESSAGES
+from quickapp.common.deferred_tool_types import (
+    DeferredToolCatalogEntry,
+    DeferredToolDefinition,
+    DeferredToolsetSummary,
+)
+from quickapp.common.state_holder import StateHolder
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.tool_discovery import (
     HierarchySearchStrategyConfig,
     PlainSearchStrategyConfig,
     WindowSearchStrategyConfig,
 )
+from quickapp.core.agent.lazy_loaded_tools_holder import LazyLoadedToolsHolder
 from quickapp.tool_discovery._anonymous_agent import _AnonymousAgent
+from quickapp.tool_discovery._discovered_tools_state import DISCOVERED_TOOLS_STATE_KEY
+from quickapp.tool_discovery._persisted_tools_holder import _PersistedToolsHolder
 from quickapp.tool_discovery._tool_search_hint_prompt_provider import _ToolSearchHintPromptProvider
 from quickapp.tool_discovery.strategies import (
     HierarchyStrategy,
@@ -19,6 +31,7 @@ from quickapp.tool_discovery.strategies import (
     WindowStrategy,
 )
 from quickapp.tool_discovery.tool_discovery_module import ToolDiscoveryModule
+from tests.unit_tests.common.common import create_test_app
 
 
 def _make_config(enabled: bool | None) -> MagicMock:
@@ -107,3 +120,104 @@ class TestProvideSearchStrategy:
         strategy = Injector([ToolDiscoveryModule(), configure]).get(ToolSearchStrategy)
 
         assert type(strategy) is HierarchyStrategy
+
+
+def _definition(name: str) -> DeferredToolDefinition:
+    return DeferredToolDefinition(
+        name=name, definition={"type": "function", "function": {"name": name}}
+    )
+
+
+def _assistant_with_discovered(names: list[str]) -> Message:
+    return Message(
+        role=Role.ASSISTANT,
+        content="ok",
+        custom_content=CustomContent(state={DISCOVERED_TOOLS_STATE_KEY: names}),
+    )
+
+
+def _provide_holder(
+    definitions: list[DeferredToolDefinition],
+    messages: list[Message],
+    state_holder: StateHolder,
+) -> LazyLoadedToolsHolder:
+    provider_of = MagicMock()
+    provider_of.get.side_effect = lambda: definitions
+    return _PersistedToolsHolder(state_holder, messages, provider_of)
+
+
+class TestPersistedToolsHolder:
+    def test_restores_tools_in_discovery_order_and_drops_stale_names(self):
+        state_holder = StateHolder()
+
+        holder = _provide_holder(
+            [_definition("a"), _definition("b"), _definition("c")],
+            [_assistant_with_discovered(["c", "gone", "a"])],
+            state_holder,
+        )
+
+        assert holder.names == ["c", "a"]
+        assert state_holder.get_state() == {DISCOVERED_TOOLS_STATE_KEY: ["c", "a"]}
+
+    def test_writes_nothing_on_a_conversation_without_discovery(self):
+        state_holder = StateHolder()
+
+        holder = _provide_holder(
+            [_definition("a")], [Message(role=Role.USER, content="hi")], state_holder
+        )
+
+        assert holder.names == []
+        assert state_holder.get_state() == {}
+
+    def test_persists_empty_list_when_every_restored_name_is_stale(self):
+        state_holder = StateHolder()
+
+        holder = _provide_holder([], [_assistant_with_discovered(["gone"])], state_holder)
+
+        assert holder.names == []
+        assert state_holder.get_state() == {DISCOVERED_TOOLS_STATE_KEY: []}
+
+    def test_newly_discovered_tools_extend_the_persisted_names(self):
+        state_holder = StateHolder()
+        holder = _provide_holder(
+            [_definition("a"), _definition("b")], [_assistant_with_discovered(["a"])], state_holder
+        )
+
+        holder.add([_definition("b").definition])
+
+        assert state_holder.get_state() == {DISCOVERED_TOOLS_STATE_KEY: ["a", "b"]}
+
+    def test_reads_definitions_on_first_use_not_on_creation(self):
+        # REST and internal tools register their deferred definitions while the tool list is
+        # built, which may happen after the holder is created.
+        definitions: list[DeferredToolDefinition] = []
+        holder = _provide_holder(definitions, [_assistant_with_discovered(["a"])], StateHolder())
+
+        definitions.append(_definition("a"))
+
+        assert holder.names == ["a"]
+
+
+class TestHolderSharing:
+    def test_every_consumer_gets_the_same_holder_within_a_request(self):
+        def configure(binder: Binder) -> None:
+            binder.bind(StateHolder, to=StateHolder(), scope=request_scope)
+            binder.multibind(list[DeferredToolDefinition], to=[])
+            binder.multibind(REQUEST_MESSAGES, to=[])
+
+        app = create_test_app([ToolDiscoveryModule(), configure])
+        seen: list[LazyLoadedToolsHolder] = []
+
+        @app.get("/holders")
+        async def holders(
+            first: LazyLoadedToolsHolder = Injected(LazyLoadedToolsHolder),
+            second: LazyLoadedToolsHolder = Injected(LazyLoadedToolsHolder),
+        ) -> None:
+            seen.extend([first, second])
+
+        TestClient(app).get("/holders")
+        TestClient(app).get("/holders")
+
+        assert seen[0] is seen[1]
+        assert seen[2] is seen[3]
+        assert seen[0] is not seen[2]

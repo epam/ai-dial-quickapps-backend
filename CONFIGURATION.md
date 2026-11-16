@@ -381,7 +381,8 @@ DIAL system prompt:
 When enabled, toolsets withheld from the initial LLM payload
 (see the per-toolset `deferred` field in [Tool sets configuration](#tool-sets-configuration)) are surfaced on demand
 via the `internal_tool_search` meta-tool (referred to as "tool search" below), which routes the query to the matching
-tool schemas through an isolated LLM call.
+tool schemas through an isolated LLM call. A discovered tool stays loaded for the rest of the conversation, and a
+call to a deferred tool that is not loaded is rejected with a hint to call `internal_tool_search` first.
 
 | Field                  | Required | Type    | Description                                                                                                                                                | Available Values | Default Value |
 |------------------------|----------|---------|-------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------|---------------|

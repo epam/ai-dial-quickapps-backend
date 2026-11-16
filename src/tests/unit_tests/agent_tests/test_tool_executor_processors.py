@@ -7,6 +7,7 @@ from quickapp.common.abstract.tool_call_result_processor import (
     ToolCallResultProcessor,
 )
 from quickapp.common.tool_call_result import ToolCallResult
+from quickapp.common.tool_names import INTERNAL_TOOL_SEARCH_TOOL_NAME
 from quickapp.core.agent.lazy_loaded_tools_holder import LazyLoadedToolsHolder
 from quickapp.core.agent.tool_executor import ToolExecutor
 
@@ -274,7 +275,7 @@ class TestToolExecutorDeferredToolGuard:
         results = await executor.execute([_make_tool_call("deferred_tool")])
 
         tool.arun.assert_not_called()
-        assert "internal_tool_search" in results[0].content
+        assert INTERNAL_TOOL_SEARCH_TOOL_NAME in results[0].content
 
     @pytest.mark.asyncio
     async def test_discovered_deferred_tool_runs(self):

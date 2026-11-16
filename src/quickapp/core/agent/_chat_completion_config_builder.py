@@ -16,11 +16,7 @@ from quickapp.config.application import ApplicationConfig
 from quickapp.core.agent._prompt_cache_breakpoints import _PromptCacheBreakpoints
 from quickapp.core.agent._tool_choice_holder import _ToolChoiceHolder
 from quickapp.core.agent.lazy_loaded_tools_holder import LazyLoadedToolsHolder
-from quickapp.core.agent.models import (
-    DISCOVERED_TOOLS,
-    STATE_KEY_ORCHESTRATOR,
-    OpenAiToolConfigDict,
-)
+from quickapp.core.agent.models import STATE_KEY_ORCHESTRATOR, OpenAiToolConfigDict
 from quickapp.core.agent.orchestrator_capabilities import OrchestratorCapabilities
 
 logger = logging.getLogger(__name__)
@@ -219,15 +215,7 @@ class _ChatCompletionConfigBuilder:
         if not isinstance(custom, dict):
             return
         state = custom.get("state")
-        if not isinstance(state, dict):
-            return
-        # QuickApps' own bookkeeping, meaningless to the orchestrator model.
-        if state.pop(DISCOVERED_TOOLS, None) is not None and not state:
-            del custom["state"]
-            if not custom:
-                del msg_dict["custom_content"]
-            return
-        if STATE_KEY_ORCHESTRATOR not in state:
+        if not isinstance(state, dict) or STATE_KEY_ORCHESTRATOR not in state:
             return
         orch = state.pop(STATE_KEY_ORCHESTRATOR, None)
         if isinstance(orch, dict):

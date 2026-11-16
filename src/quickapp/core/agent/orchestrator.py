@@ -39,12 +39,7 @@ from quickapp.common.url_sanitization import sanitize_url
 from quickapp.config.application import ApplicationConfig
 from quickapp.core.agent._suppressed_attachment_registry import SuppressedAttachmentRegistry
 from quickapp.core.agent.assistant_invoker import AssistantInvoker
-from quickapp.core.agent.lazy_loaded_tools_holder import LazyLoadedToolsHolder
-from quickapp.core.agent.models import (
-    DISCOVERED_TOOLS,
-    STATE_KEY_ORCHESTRATOR,
-    TOOL_EXECUTION_HISTORY,
-)
+from quickapp.core.agent.models import STATE_KEY_ORCHESTRATOR, TOOL_EXECUTION_HISTORY
 from quickapp.core.agent.tool_executor import ToolExecutor
 from quickapp.usage_statistics.usage_statistics_service import UsageStatisticsService
 
@@ -86,9 +81,7 @@ class Orchestrator:
         request_async_close_registry: RequestAsyncCloseRegistry,
         suppressed_attachment_registry: SuppressedAttachmentRegistry,
         completion_hook_runners: list[CompletionHookRunner],
-        lazy_loaded_tools_holder: LazyLoadedToolsHolder,
     ) -> None:
-        self.__lazy_loaded_tools_holder: LazyLoadedToolsHolder = lazy_loaded_tools_holder
         self.__messages_context: MessagesMixin = messages_context
         self.__choice: Choice = choice
         self.__state_holder: StateHolder = state_holder
@@ -156,10 +149,6 @@ class Orchestrator:
                     for policy in self.__tool_execution_history_policies:
                         tool_execution_history = policy.apply(tool_execution_history)
                 self.__state_holder.add_state(TOOL_EXECUTION_HISTORY, tool_execution_history)
-
-            # Carry discovered deferred tools (restored + newly found) to the next turn.
-            if discovered_tools := self.__lazy_loaded_tools_holder.names:
-                self.__state_holder.add_state(DISCOVERED_TOOLS, discovered_tools)
 
             self.__choice.set_state(self.__state_holder.get_state())
             if self.__usage_statistics_list and self.__SHOW_USAGE_STATISTICS:
