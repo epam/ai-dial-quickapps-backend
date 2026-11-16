@@ -83,11 +83,13 @@ class ProjectContext(BaseModel):
 
     def can_read(self, url: str) -> bool:
         """Whether the agent may read ``url``: a file or folder under ``context/`` or
-        ``artifacts/`` of this project. ``PROJECT.md`` (already in the system prompt),
-        ``conversations/`` and the project folder itself are not readable."""
-        if not self.contains(url):
-            return False
-        return canonical_url(url).startswith((self.context_root, self.artifacts_root))
+        ``artifacts/`` of this project, the folder itself spelled with or without the trailing
+        ``/``. ``PROJECT.md`` (already in the system prompt), ``conversations/`` and the project
+        folder itself are not readable."""
+        # The appended `/` lets `.../context` match too, but never `.../contextual`.
+        return self.contains(url) and f"{canonical_url(url)}/".startswith(
+            (self.context_root, self.artifacts_root)
+        )
 
     @property
     def instructions_url(self) -> str:

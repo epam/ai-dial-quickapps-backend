@@ -146,7 +146,7 @@ class TestProjectPromptProvider:
         assert "## Project files" in part
         assert "`projects/b/My Project/files/artifacts/`" in part
         assert "`projects/b/My Project/files/context/`" in part
-        service.list_folder.assert_not_called()
+        service.list_level.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_a_closing_tag_in_the_instructions_cannot_end_the_frame(self):

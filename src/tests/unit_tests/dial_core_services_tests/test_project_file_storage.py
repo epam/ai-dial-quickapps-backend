@@ -1,11 +1,10 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from aidial_client import DialException
 
 from quickapp.common.project_context import ProjectContext
 from quickapp.dial_core_services._project_files import ProjectFilesClient, ProjectItem
-from quickapp.dial_core_services.exceptions import FileTooLargeError
+from quickapp.dial_core_services.exceptions import FileTooLargeError, ProjectReadScopeError
 from quickapp.dial_core_services.storage._project_file_storage import (
     ProjectFileStorage,
     read_within_size_limit,
@@ -70,10 +69,11 @@ class TestAgentView:
         project_files = MagicMock(spec=ProjectFilesClient)
         project_files.stream = project_stream(b"secret")
 
-        with pytest.raises(DialException) as excinfo:
+        with pytest.raises(ProjectReadScopeError) as excinfo:
             await _make_storage(project_files).download(url)
 
         assert excinfo.value.status_code == 403
+        assert "context/ and artifacts/" in excinfo.value.message
         project_files.stream.assert_not_called()
 
     @pytest.mark.parametrize("url", [f"{ROOT}conversations/", f"{ROOT}other/"])
@@ -82,27 +82,23 @@ class TestAgentView:
         project_files = MagicMock(spec=ProjectFilesClient)
         project_files.list = AsyncMock(return_value=[])
 
-        with pytest.raises(DialException) as excinfo:
+        with pytest.raises(ProjectReadScopeError):
             await _make_storage(project_files).list_level(url)
 
-        assert excinfo.value.status_code == 403
         project_files.list.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_the_project_folder_lists_only_context_and_artifacts(self):
+    async def test_the_project_folder_lists_only_context_and_artifacts_without_a_request(self):
         project_files = MagicMock(spec=ProjectFilesClient)
-        project_files.list = AsyncMock(
-            return_value=[
-                ProjectItem(url=f"{ROOT}PROJECT.md", is_folder=False),
-                ProjectItem(url=f"{ROOT}context/", is_folder=True),
-                ProjectItem(url=f"{ROOT}conversations/", is_folder=True),
-                ProjectItem(url=f"{ROOT}artifacts/", is_folder=True),
-            ]
-        )
+        project_files.list = AsyncMock(return_value=[])
 
         entries = await _make_storage(project_files).list_level(ROOT)
 
-        assert [entry.url for entry in entries] == [f"{ROOT}context/", f"{ROOT}artifacts/"]
+        assert [(entry.url, entry.is_folder) for entry in entries] == [
+            (f"{ROOT}context/", True),
+            (f"{ROOT}artifacts/", True),
+        ]
+        project_files.list.assert_not_awaited()
 
     @pytest.mark.parametrize("folder", [f"{ROOT}context/", f"{ROOT}artifacts/sub/"])
     @pytest.mark.asyncio
@@ -123,12 +119,11 @@ class TestAgentView:
         project_files.stream = project_stream(b"secret")
         project_files.put = AsyncMock()
 
-        with pytest.raises(DialException) as excinfo:
+        with pytest.raises(ProjectReadScopeError):
             await _make_storage(project_files).copy(
                 f"{ROOT}conversations/chat.json", f"{ROOT}artifacts/chat.json", overwrite=True
             )
 
-        assert excinfo.value.status_code == 403
         project_files.put.assert_not_awaited()
 
     @pytest.mark.asyncio
@@ -136,7 +131,7 @@ class TestAgentView:
         project_files = MagicMock(spec=ProjectFilesClient)
         project_files.stream = project_stream(b"data")
 
-        with pytest.raises(DialException):
+        with pytest.raises(ProjectReadScopeError):
             await _make_storage(project_files, project=None).download(PROJECT_FILE)
 
 

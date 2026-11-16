@@ -97,24 +97,15 @@ async def test_a_conversation_is_not_read_and_core_is_not_called(httpx_mock):
     )
 
     assert "access denied" in result.content
+    # The real reason, not "the app has no permission": another path may work.
+    assert "only the current project's context/ and artifacts/ folders are readable" in (
+        result.content
+    )
     assert httpx_mock.get_requests() == []
 
 
 @pytest.mark.asyncio
 async def test_listing_the_project_folder_shows_only_context_and_artifacts(httpx_mock):
-    root = "projects/b/My%20Project/files/"
-    httpx_mock.add_response(
-        method="GET",
-        url=f"{BASE_URL}/v2/metadata/{root.rstrip('/')}",
-        json={
-            "items": [
-                {"url": f"{root}PROJECT.md", "nodeType": "ITEM"},
-                {"url": f"{root}context", "nodeType": "FOLDER"},
-                {"url": f"{root}conversations", "nodeType": "FOLDER"},
-                {"url": f"{root}artifacts", "nodeType": "FOLDER"},
-            ]
-        },
-    )
     list_files = make_tool(
         _ListFilesTool, LIST_FILES_TOOL_CONFIG, service=_service(), project=PROJECT
     )
@@ -123,7 +114,10 @@ async def test_listing_the_project_folder_shows_only_context_and_artifacts(httpx
         "call-1", stage_level=StageDisplayLevel.NONE, path="projects/b/My Project/files/"
     )
 
-    assert "context/" in result.content
-    assert "artifacts/" in result.content
+    # Both by their full URL: the home (artifacts/) too, though other paths are home-relative.
+    assert "projects/b/My Project/files/context/" in result.content
+    assert "projects/b/My Project/files/artifacts/" in result.content
     assert "conversations" not in result.content
     assert "PROJECT.md" not in result.content
+    # The layout is fixed, so the listing needs no request.
+    assert httpx_mock.get_requests() == []

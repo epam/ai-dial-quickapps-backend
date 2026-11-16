@@ -155,6 +155,7 @@ async def test_mcp_tool(mock_get_tools_list, mock_call_mcp_tool):
         binder.bind(PerformanceTimer, to=PerformanceTimer)
         binder.bind(StageDisplayLevel, to=InstanceProvider(StageDisplayLevel.INFO))
         binder.bind(ForwardedHeaders, to=InstanceProvider(None))
+        binder.bind(PROJECT_CONTEXT, to=InstanceProvider(None))
         binder.bind(FileStorage, to=V1FileStorage)  # type: ignore[type-abstract]
         binder.bind(PROJECT_CONTEXT, to=InstanceProvider(None))
         binder.bind(ACCEPT_LANGUAGE, to=InstanceProvider(None))
@@ -331,6 +332,7 @@ async def test_mcp_tool_narrow_supported_types_skips_non_matching(
         binder.bind(PerformanceTimer, to=PerformanceTimer)
         binder.bind(StageDisplayLevel, to=InstanceProvider(StageDisplayLevel.INFO))
         binder.bind(ForwardedHeaders, to=InstanceProvider(None))
+        binder.bind(PROJECT_CONTEXT, to=InstanceProvider(None))
         binder.bind(FileStorage, to=V1FileStorage)  # type: ignore[type-abstract]
         binder.bind(PROJECT_CONTEXT, to=InstanceProvider(None))
         binder.bind(ACCEPT_LANGUAGE, to=InstanceProvider(None))
