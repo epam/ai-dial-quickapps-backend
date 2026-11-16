@@ -58,6 +58,7 @@ from quickapp.core.agent._orchestrator_deployment_initializer import (
 )
 from quickapp.core.agent._prompt_cache_breakpoints import _PromptCacheBreakpoints
 from quickapp.core.agent._prompt_providers import ConfigBasedPromptProvider
+from quickapp.core.agent._form_value_content_transformer import _FormValueContentTransformer
 from quickapp.core.agent._scrub_extra_fields_transformer import _ScrubExtraFieldsTransformer
 from quickapp.core.agent._suppressed_attachment_registry import SuppressedAttachmentRegistry
 from quickapp.core.agent._tool_choice_holder import _ToolChoiceHolder
@@ -125,6 +126,9 @@ class AgentModule(Module):
         )
         binder.bind(
             _ScrubExtraFieldsTransformer, to=_ScrubExtraFieldsTransformer, scope=request_scope
+        )
+        binder.bind(
+            _FormValueContentTransformer, to=_FormValueContentTransformer, scope=request_scope
         )
         binder.bind(AgentSettings, to=AgentSettings, scope=singleton)
         binder.bind(ToolResultLimitSettings, to=ToolResultLimitSettings, scope=singleton)
@@ -280,9 +284,11 @@ class AgentModule(Module):
     def provide_message_transformers(
         self,
         scrub_extra_fields: _ScrubExtraFieldsTransformer,
+        form_value_content: _FormValueContentTransformer,
         add_system_prompt: _AddSystemPromptTransformer,
     ) -> list[MessagesTransformer]:
         return [
+            form_value_content,
             scrub_extra_fields,
             add_system_prompt,
         ]

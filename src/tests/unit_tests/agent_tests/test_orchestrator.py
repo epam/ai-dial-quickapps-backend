@@ -331,6 +331,7 @@ async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messa
     attach = Mock()
     attach.model_dump = Mock(return_value={"id": "att1", "content": "data"})
     tool_result.annotations = []
+    tool_result.form_schema = None
     tool_result.propagate_to_choice = [attach]
 
     # tool_result.usage is a list compatible with DeploymentUsage instances
@@ -908,6 +909,7 @@ async def test_invoke_terminal_flow_strips_get_content_attachments_in_saved_hist
     tool_result.attachments = None
     tool_result.to_tool_message = Mock(return_value=tool_message)
     tool_result.annotations = []
+    tool_result.form_schema = None
     tool_result.propagate_to_choice = []
     tool_result.usage = []
 
@@ -1022,6 +1024,7 @@ async def test_invoke_interrupted_flow_keeps_get_content_attachments_in_saved_hi
     tool_result.attachments = None
     tool_result.to_tool_message = Mock(return_value=tool_message)
     tool_result.annotations = []
+    tool_result.form_schema = None
     tool_result.propagate_to_choice = []
     tool_result.usage = []
 
@@ -1125,6 +1128,7 @@ async def test_propagation_deduplicates_repeated_urls():
     )
     tool_result.usage = None
     tool_result.annotations = []
+    tool_result.form_schema = None
     tool_result.propagate_to_choice = [
         Attachment(url=same_url, type="text/csv"),
         Attachment(url=same_url, type="text/csv"),
@@ -1152,6 +1156,7 @@ async def test_propagation_duplicate_data_uri_not_logged_verbatim(caplog):
     )
     tool_result.usage = None
     tool_result.annotations = []
+    tool_result.form_schema = None
     tool_result.propagate_to_choice = [
         Attachment(url=same_url, type="image/png"),
         Attachment(url=same_url, type="image/png"),
@@ -1176,6 +1181,7 @@ async def test_propagation_keeps_urlless_attachments():
     )
     tool_result.usage = None
     tool_result.annotations = []
+    tool_result.form_schema = None
     tool_result.propagate_to_choice = [
         Attachment(data="abc", type="image/png"),
         Attachment(data="def", type="image/png"),
@@ -1207,6 +1213,7 @@ def _tool_result_with_annotations(annotations, content="out"):
     tool_result.usage = None
     tool_result.propagate_to_choice = []
     tool_result.annotations = annotations
+    tool_result.form_schema = None
     return tool_result
 
 
@@ -1263,6 +1270,7 @@ async def test_non_propagated_tool_attachment_is_registered_as_suppressed():
     tool_result.attachments = [Attachment(url=hidden_url, type="application/json")]
     tool_result.propagate_to_choice = []
     tool_result.annotations = []
+    tool_result.form_schema = None
 
     registry = SuppressedAttachmentRegistry()
     orchestrator = _build_orchestrator_for_propagation(
@@ -1286,6 +1294,7 @@ async def test_propagated_tool_attachment_is_not_registered_as_suppressed():
     tool_result.attachments = [attachment]
     tool_result.propagate_to_choice = [attachment]
     tool_result.annotations = []
+    tool_result.form_schema = None
 
     registry = SuppressedAttachmentRegistry()
     orchestrator = _build_orchestrator_for_propagation(
@@ -1325,3 +1334,272 @@ async def test_accumulate_stream_filters_suppressed_attachment_urls():
     assert attachment_filter is not None
     assert attachment_filter(Attachment(url=suppressed_url, type="application/json")) is False
     assert attachment_filter(Attachment(url="files/bucket/other.json", type="application/json"))
+
+
+@pytest.mark.asyncio
+async def test_invoke_propagates_tool_form_schema_to_choice_once():
+    """A tool result carrying form_schema is sent via choice.set_form_schema, only once."""
+    presentation_settings = SimpleNamespace(show_usage_statistics=False)
+
+    messages_list: list[Message] = [Message(role=Role.USER, content="hello")]
+    messages_context = Mock()
+    messages_context.append_message = Mock(side_effect=lambda msg: messages_list.append(msg))
+    messages_context.messages = messages_list
+
+    choice = SpyChoice()
+
+    assistant_result_with_tools = SimpleNamespace(
+        content="call tool",
+        attachments=[],
+        tool_calls=[_make_accumulated_tool_call(id="tc-1", name="tool_a"),
+                    _make_accumulated_tool_call(id="tc-2", name="tool_b")],
+        usage=None,
+        state=None,
+        adopted_tool_stages={},
+        close_remaining_adopted_tool_stages=Mock(),
+    )
+    assistant_result_no_tools = SimpleNamespace(
+        content="final",
+        attachments=[],
+        tool_calls=[],
+        usage=None,
+        state=None,
+        adopted_tool_stages={},
+        close_remaining_adopted_tool_stages=Mock(),
+    )
+
+    assistant_invoker = Mock()
+    assistant_invoker.invoke = AsyncMock(return_value="stream")
+    assistant_invoker_provider = Mock(get=Mock(return_value=assistant_invoker))
+
+    stream_handler = Mock()
+    stream_handler.process_stream = AsyncMock(
+        side_effect=[assistant_result_with_tools, assistant_result_no_tools]
+    )
+
+    state_holder = Mock()
+    state_holder.get_state = Mock(return_value={})
+    state_holder.add_state = Mock()
+
+    schema_a = {"type": "object", "properties": {"a": {"type": "string"}}}
+    schema_b = {"type": "object", "properties": {"b": {"type": "number"}}}
+
+    def make_result(call_id: str, schema):
+        tool_message = Message(role=Role.TOOL, content="out", tool_call_id=call_id)
+        result = Mock()
+        result.attachments = None
+        result.propagate_to_choice = []
+        result.annotations = []
+        result.usage = None
+        result.form_schema = schema
+        result.to_tool_message = Mock(return_value=tool_message)
+        return result
+
+    tool_executor = _mock_tool_executor()
+    tool_executor.execute = AsyncMock(
+        return_value=[make_result("tc-1", schema_a), make_result("tc-2", schema_b)]
+    )
+
+    app_config = SimpleNamespace(
+        orchestrator=SimpleNamespace(
+            max_iterations=10,
+            deployment=SimpleNamespace(deployment_id="test-model"),
+            propagate_stages=True,
+        )
+    )
+
+    orchestrator = Orchestrator(
+        presentation_settings=presentation_settings,
+        messages_context=messages_context,
+        choice=choice,
+        state_holder=state_holder,
+        usage_statistics_service=Mock(),
+        tool_executor=tool_executor,
+        assistant_invoker_provider=assistant_invoker_provider,
+        stream_handler=stream_handler,
+        app_config=app_config,
+        perf_timer=Mock(),
+        deferred_stage_close_registry=DeferredStageCloseRegistry(),
+        chat_completion_recovery=_recovery_service(messages_context),
+        tool_execution_history_policies=[],
+        tool_names=frozenset(),
+        request_async_close_registry=RequestAsyncCloseRegistry(),
+        suppressed_attachment_registry=SuppressedAttachmentRegistry(),
+        completion_hook_runners=[],
+    )
+
+    await orchestrator.invoke()
+
+    # SDK allows set_form_schema only once per choice: first tool's schema wins
+    assert choice.set_form_schema_calls == [schema_a]
+
+
+@pytest.mark.asyncio
+async def test_invoke_skips_form_schema_when_tool_has_none():
+    presentation_settings = SimpleNamespace(show_usage_statistics=False)
+
+    messages_list: list[Message] = [Message(role=Role.USER, content="hello")]
+    messages_context = Mock()
+    messages_context.append_message = Mock(side_effect=lambda msg: messages_list.append(msg))
+    messages_context.messages = messages_list
+
+    choice = SpyChoice()
+
+    assistant_result_with_tools = SimpleNamespace(
+        content="call tool",
+        attachments=[],
+        tool_calls=[_make_accumulated_tool_call(id="tc-1", name="tool_a")],
+        usage=None,
+        state=None,
+        adopted_tool_stages={},
+        close_remaining_adopted_tool_stages=Mock(),
+    )
+    assistant_result_no_tools = SimpleNamespace(
+        content="final",
+        attachments=[],
+        tool_calls=[],
+        usage=None,
+        state=None,
+        adopted_tool_stages={},
+        close_remaining_adopted_tool_stages=Mock(),
+    )
+
+    assistant_invoker = Mock()
+    assistant_invoker.invoke = AsyncMock(return_value="stream")
+    assistant_invoker_provider = Mock(get=Mock(return_value=assistant_invoker))
+
+    stream_handler = Mock()
+    stream_handler.process_stream = AsyncMock(
+        side_effect=[assistant_result_with_tools, assistant_result_no_tools]
+    )
+
+    state_holder = Mock()
+    state_holder.get_state = Mock(return_value={})
+    state_holder.add_state = Mock()
+
+    tool_message = Message(role=Role.TOOL, content="out", tool_call_id="tc-1")
+    tool_result = Mock()
+    tool_result.attachments = None
+    tool_result.propagate_to_choice = []
+    tool_result.annotations = []
+    tool_result.form_schema = None
+    tool_result.usage = None
+    tool_result.form_schema = None
+    tool_result.to_tool_message = Mock(return_value=tool_message)
+
+    tool_executor = _mock_tool_executor()
+    tool_executor.execute = AsyncMock(return_value=[tool_result])
+
+    app_config = SimpleNamespace(
+        orchestrator=SimpleNamespace(
+            max_iterations=10,
+            deployment=SimpleNamespace(deployment_id="test-model"),
+            propagate_stages=True,
+        )
+    )
+
+    orchestrator = Orchestrator(
+        presentation_settings=presentation_settings,
+        messages_context=messages_context,
+        choice=choice,
+        state_holder=state_holder,
+        usage_statistics_service=Mock(),
+        tool_executor=tool_executor,
+        assistant_invoker_provider=assistant_invoker_provider,
+        stream_handler=stream_handler,
+        app_config=app_config,
+        perf_timer=Mock(),
+        deferred_stage_close_registry=DeferredStageCloseRegistry(),
+        chat_completion_recovery=_recovery_service(messages_context),
+        tool_execution_history_policies=[],
+        tool_names=frozenset(),
+        request_async_close_registry=RequestAsyncCloseRegistry(),
+        suppressed_attachment_registry=SuppressedAttachmentRegistry(),
+        completion_hook_runners=[],
+    )
+
+    await orchestrator.invoke()
+
+    assert choice.set_form_schema_calls == []
+
+
+
+@pytest.mark.asyncio
+async def test_send_form_schema_records_source_tool_in_state():
+    """form_schema propagation records the producing tool name in state."""
+    from quickapp.core.agent.models import STATE_KEY_FORM_SCHEMA_SOURCE_TOOL
+
+    presentation_settings = SimpleNamespace(show_usage_statistics=False)
+    messages_list: list[Message] = [Message(role=Role.USER, content="hello")]
+    messages_context = Mock()
+    messages_context.append_message = Mock(side_effect=lambda msg: messages_list.append(msg))
+    messages_context.messages = messages_list
+    choice = SpyChoice()
+
+    schema = {"type": "object"}
+    assistant_result_with_tools = SimpleNamespace(
+        content="call tool", attachments=[],
+        tool_calls=[_make_accumulated_tool_call(id="tc-1", name="form_tool")],
+        usage=None, state=None, adopted_tool_stages={},
+        close_remaining_adopted_tool_stages=Mock(),
+    )
+    assistant_result_no_tools = SimpleNamespace(
+        content="final", attachments=[], tool_calls=[], usage=None, state=None,
+        adopted_tool_stages={}, close_remaining_adopted_tool_stages=Mock(),
+    )
+    assistant_invoker = Mock()
+    assistant_invoker.invoke = AsyncMock(return_value="stream")
+    assistant_invoker_provider = Mock(get=Mock(return_value=assistant_invoker))
+    stream_handler = Mock()
+    stream_handler.process_stream = AsyncMock(
+        side_effect=[assistant_result_with_tools, assistant_result_no_tools]
+    )
+
+    state_holder = Mock()
+    state_holder.get_state = Mock(return_value={})
+    state_holder.add_state = Mock()
+
+    tool_message = Message(role=Role.TOOL, content="out", tool_call_id="tc-1")
+    tool_result = Mock()
+    tool_result.tool_call_id = "tc-1"
+    tool_result.attachments = None
+    tool_result.propagate_to_choice = []
+    tool_result.annotations = []
+    tool_result.usage = None
+    tool_result.form_schema = schema
+    tool_result.to_tool_message = Mock(return_value=tool_message)
+
+    tool_executor = _mock_tool_executor()
+    tool_executor.execute = AsyncMock(return_value=[tool_result])
+    app_config = SimpleNamespace(
+        orchestrator=SimpleNamespace(
+            max_iterations=10,
+            deployment=SimpleNamespace(deployment_id="test-model"),
+            propagate_stages=True,
+        )
+    )
+
+    orchestrator = Orchestrator(
+        presentation_settings=presentation_settings,
+        messages_context=messages_context,
+        choice=choice,
+        state_holder=state_holder,
+        usage_statistics_service=Mock(),
+        tool_executor=tool_executor,
+        assistant_invoker_provider=assistant_invoker_provider,
+        stream_handler=stream_handler,
+        app_config=app_config,
+        perf_timer=Mock(),
+        deferred_stage_close_registry=DeferredStageCloseRegistry(),
+        chat_completion_recovery=_recovery_service(messages_context),
+        tool_execution_history_policies=[],
+        tool_names=frozenset(),
+        request_async_close_registry=RequestAsyncCloseRegistry(),
+        suppressed_attachment_registry=SuppressedAttachmentRegistry(),
+        completion_hook_runners=[],
+    )
+
+    await orchestrator.invoke()
+
+    assert choice.set_form_schema_calls == [schema]
+    state_holder.add_state.assert_any_call(STATE_KEY_FORM_SCHEMA_SOURCE_TOOL, "form_tool")

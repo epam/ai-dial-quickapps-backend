@@ -39,7 +39,11 @@ from quickapp.common.url_sanitization import sanitize_url
 from quickapp.config.application import ApplicationConfig
 from quickapp.core.agent._suppressed_attachment_registry import SuppressedAttachmentRegistry
 from quickapp.core.agent.assistant_invoker import AssistantInvoker
-from quickapp.core.agent.models import STATE_KEY_ORCHESTRATOR, TOOL_EXECUTION_HISTORY
+from quickapp.core.agent.models import (
+    STATE_KEY_FORM_SCHEMA_SOURCE_TOOL,
+    STATE_KEY_ORCHESTRATOR,
+    TOOL_EXECUTION_HISTORY,
+)
 from quickapp.core.agent.tool_executor import ToolExecutor
 from quickapp.usage_statistics.usage_statistics_service import UsageStatisticsService
 
@@ -115,6 +119,7 @@ class Orchestrator:
         )
         self.__propagated_attachment_urls: set[str] = set()
         self.__completion_hook_runners: list[CompletionHookRunner] = completion_hook_runners
+        self.__form_schema_sent = False
 
     @property
     def iteration_count(self) -> int:
@@ -310,6 +315,11 @@ class Orchestrator:
                         self.__suppressed_attachment_registry.suppress(attachment.url)
             if tool_call_result.annotations:
                 self._send_annotations(tool_call_result.annotations)
+            if tool_call_result.form_schema is not None:
+                tool_name = next(
+                    (tc.name for tc in tool_calls if tc.id == tool_call_result.tool_call_id), None
+                )
+                self._send_form_schema(tool_call_result.form_schema, tool_name)
             if tool_call_result.usage and self.__SHOW_USAGE_STATISTICS:
                 self.__usage_statistics_list.extend(tool_call_result.usage)
         self.__perf_timer.add_milestone(period, "tool_results_applied")
@@ -329,6 +339,19 @@ class Orchestrator:
                 }
             )
         )
+
+    def _send_form_schema(self, form_schema: dict[str, Any], tool_name: str | None) -> None:
+        """Send a tool's form schema to the choice. SDK allows set_form_schema only once."""
+        if self.__form_schema_sent:
+            logger.debug("Skipping form_schema: already sent for this choice")
+            return
+        self.__form_schema_sent = True
+        logger.debug("Propagating form_schema to choice")
+        self.__choice.set_form_schema(form_schema)
+        # Remember which tool produced the form, so the next request can check that
+        # tool's conversation_mode when deciding where form_value goes.
+        if tool_name:
+            self.__state_holder.add_state(STATE_KEY_FORM_SCHEMA_SOURCE_TOOL, tool_name)
 
     def _surface_external_tool_calls(
         self, tool_calls: list[AccumulatedToolCall], period: str

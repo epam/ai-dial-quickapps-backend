@@ -981,3 +981,31 @@ async def test_pre_process_params_llm_kwargs_do_not_replace_static_tools():
     assert result["tools"] == [
         {"type": "static_function", "static_function": {"name": "web_search"}}
     ]
+
+
+@pytest.mark.asyncio
+async def test_extract_preserves_response_form_value():
+    """TOOL message with custom_content.form_value → AssistantMessageParam carries form_value."""
+    messages: list[Message] = [
+        Message(role=Role.USER, content=StrictStr("Hello")),
+        _make_assistant_with_tool_calls(
+            [
+                _make_tool_call("tc1", "my_tool", "continue"),
+            ]
+        ),
+        _make_tool_result(
+            "tc1",
+            "partial result",
+            custom_content=CustomContent.model_validate(
+                {"state": {"k": 1}, "form_value": {"field": "val"}}
+            ),
+        ),
+    ]
+
+    tool = _build_tool(messages)
+    history = await tool._extract_tool_history("my_tool")
+
+    assert len(history) == 2
+    cc = history[1]["custom_content"]
+    assert cc["form_value"] == {"field": "val"}
+    assert cc["state"] == {"k": 1}
