@@ -18,7 +18,7 @@ export PYDANTIC_V2=True
 	lint mypy format install_pre_commit_hooks run_chat run_error_injection_app test test_cov \
 	dump_app_schema dump_internal_tools dump_config_support_openapi generate_dial_config generate_certs start_test_server stop_test_server \
 	integration_test integration_test_run integration_test_ci integration_test_all print-integration-test-models \
-	e2e_test run_python \
+	projects_core_path_test e2e_test run_python \
 	black black_check isort isort_check autoflake autoflake_check flake8
 
 init_venv:
@@ -195,6 +195,18 @@ integration_test_all: install_integration
 		echo "Integration tests failed for:$$failed"; \
 		exit 1; \
 	fi
+
+# Projects through DIAL Core with the per-request key (opt-in; never part of `test` or `integration_test*`).
+# Needs a Core with resource dependencies (#1930) and a running QuickApps: see the docstring of
+# src/tests/integration_tests/test_projects_core_path.py for the setup and the PROJECTS_CORE_* variables.
+projects_core_path_test: install_integration
+	$(MAKE) start_test_server
+	@status=0; \
+	PROJECTS_CORE_PATH=true $(POETRY) run pytest src/tests/integration_tests/test_projects_core_path.py \
+		--model=$(or $(MODEL),$(firstword $(INTEGRATION_TEST_MODELS))) -m "projects_core_path" \
+		--junitxml=reports/tests-projects-core-path.xml $(ARGS) || status=$$?; \
+	$(MAKE) stop_test_server; \
+	exit $$status
 
 e2e_test: install_integration
 	ENABLE_PREVIEW_FEATURES=true $(POETRY) run pytest -n $(or ${WORKERS},logical) --no-cache --junitxml=reports/tests-e2e.xml -m "e2e" $(ARGS)
