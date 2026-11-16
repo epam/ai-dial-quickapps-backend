@@ -270,3 +270,15 @@ async def test_external_disabled_error_translated_to_invalid_param():
     with pytest.raises(InvalidToolCallParameterException) as excinfo:
         await loader.load("https://example.com/x", parameter_name="content")
     assert excinfo.value.parameter_name == "content"
+
+
+@pytest.mark.asyncio
+async def test_project_url_dispatches_to_dial_downloader():
+    dial_dl = MagicMock(spec=DialDownloader)
+    dial_dl.fetch = AsyncMock(return_value=(b"csv", _metadata()))
+    loader = _make_loader(dial_downloader=dial_dl)
+
+    result = await loader.load("projects/b/p/files/context/tickets.csv")
+
+    assert result == b"csv"
+    dial_dl.fetch.assert_awaited_once_with("projects/b/p/files/context/tickets.csv")

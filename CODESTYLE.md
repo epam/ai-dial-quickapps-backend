@@ -135,6 +135,7 @@ def __init__(self, ..., agent_settings: AgentSettings) -> None:
 - **Small focused functions**: A function or method should do one job and be readable without scrolling. If it is long or runs several distinct phases in a row (e.g. validate → build → route/register, a side-effect block like logging next to the main flow, a large loop or branch body), extract each phase into a named `_private` function/method so the caller reads as a short sequence of steps. When extending an existing function, judge the result as a whole and extract the new or the old part rather than appending inline. Don't split into one-liners for the sake of it.
 - **Explicit imports**: Avoid `from module import *`. Import only what you use.
 - **Import order**: Standard library → third-party → local/project modules, with a blank line between each group.
+- **Absolute imports only**: Never use relative imports (`from . import x`, `from .module import X`, `from ..pkg import Y`). Always import by the full `quickapp.…` path (tests: `quickapp.…` for code under test). This includes package `__init__.py` re-exports.
 
 ---
 

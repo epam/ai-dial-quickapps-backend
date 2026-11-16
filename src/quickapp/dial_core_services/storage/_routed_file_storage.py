@@ -4,7 +4,7 @@ from aidial_client.types.metadata import FileMetadata
 
 from quickapp.common.project_context import ProjectContext
 from quickapp.dial_core_services.storage._transfer import copy_via_download, move_via_download
-from quickapp.dial_core_services.storage.file_storage import FileStorage, FolderEntry
+from quickapp.dial_core_services.storage.file_storage import FileStorage, FolderEntry, UploadedFile
 
 
 class RoutedFileStorage(FileStorage):
@@ -39,7 +39,7 @@ class RoutedFileStorage(FileStorage):
         *,
         if_none_match: Literal["*"] | None = None,
         if_match: str | None = None,
-    ) -> str:
+    ) -> UploadedFile:
         return await self._storage_for(url).upload(
             url, content, content_type, if_none_match=if_none_match, if_match=if_match
         )

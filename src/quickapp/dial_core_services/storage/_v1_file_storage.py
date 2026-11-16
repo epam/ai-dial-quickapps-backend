@@ -7,6 +7,7 @@ from injector import inject
 from quickapp.dial_core_services.storage.file_storage import (
     FileStorage,
     FolderEntry,
+    UploadedFile,
     ensure_within_size_limit,
 )
 from quickapp.shared.config_resolvers.file_loading_size_limit_resolver import (
@@ -54,7 +55,7 @@ class V1FileStorage(FileStorage):
         *,
         if_none_match: Literal["*"] | None = None,
         if_match: str | None = None,
-    ) -> str:
+    ) -> UploadedFile:
         filename = url.split("/")[-1]
         metadata = await self.__dial_client.files.upload(
             url=url,
@@ -62,7 +63,7 @@ class V1FileStorage(FileStorage):
             etag_if_none_match=if_none_match,
             etag_if_match=if_match,
         )
-        return metadata.url
+        return metadata
 
     async def delete(self, url: str) -> None:
         await self.__dial_client.files.delete(url)

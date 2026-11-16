@@ -129,7 +129,7 @@ class _RestApiTool(StagedBaseTool):
                         self._tool_config.open_ai_tool.function.name,
                     )
                     attachment = Attachment(title=title, type=mime_type, data=response.text)
-                    attachment = await self.__dial_attachment_service.upload_attachment_to_core(
+                    attachment = await self.__dial_attachment_service.upload_output_attachment(
                         attachment
                     )
                     attachments.append(attachment)

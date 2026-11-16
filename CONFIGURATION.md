@@ -386,8 +386,21 @@ tool schemas through an isolated LLM call.
 | Field                  | Required | Type    | Description                                                                                                                                                | Available Values | Default Value |
 |------------------------|----------|---------|-------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------|---------------|
 | enabled                | No       | Boolean | Enable dynamic tool discovery. When `true`, toolsets with `deferred: true` are withheld from the initial LLM payload and surfaced via the `internal_tool_search` meta-tool. | -                 | `false`       |
-| service_model          | No       | String  | DIAL deployment used for the anonymous routing call inside `internal_tool_search`. Falls back to the orchestrator's own deployment when omitted.                      | -                 | -             |
+| service_model          | When `enabled` is `true` | String  | DIAL deployment used for the anonymous routing call inside `internal_tool_search`. It must support structured output (`response_format` with a JSON schema); when it rejects the request (HTTP 400), tool search finds nothing and the error is shown as a warning in the tool search stage. | -                 | -             |
 | min_tools_for_deferral | No       | Integer | Minimum number of tools in a toolset for deferral to apply. Toolsets smaller than this threshold are promoted to eager loading even when `deferred: true`. Deployment-wide default set by `MIN_TOOLS_FOR_DEFERRAL`. | -    | `10`          |
+| strategy               | No       | Object  | How `internal_tool_search` finds tools. Discriminated by `type`; see the table below. | `plain`, `window`, `hierarchy` | `{"type": "plain"}` |
+
+Search strategies (`tool_discovery.strategy`). All routing calls use `service_model`; the model scores each pick from 0 to 1.
+
+| `type`      | Behaviour | Own fields (default) |
+|-------------|-----------|----------------------|
+| `plain`     | One routing call over the whole deferred catalog. | - |
+| `window`    | The catalog is split into windows searched in parallel, then one final call filters the union. Best recall on large catalogs; reads the whole catalog on every search. | `window_size_chars` (`40000`, window size in characters of rendered catalog text), `per_window_top_k` (`3`) |
+| `hierarchy` | First call picks toolsets from their descriptions, second picks tools among the chosen toolsets. Cheapest on large catalogs; recall is bounded by the toolset choice. | `toolset_top_k` (`3`) |
+
+Every strategy also accepts `top_k` (default `10`, maximum tools returned) and `score_threshold` (default `0.5`, picks scored lower are dropped; `hierarchy` also applies it to toolsets in its first call).
+
+> **Behaviour change for existing apps with `tool_discovery.enabled`:** even with the default `plain` strategy, `internal_tool_search` now returns at most `top_k` (10) tools, drops picks scored below `0.5`, uses a scoring routing prompt, and returns tool names only (`["name", ...]`) to the model instead of `{name, description}` objects. `service_model` now takes effect for the routing call (it was previously ignored). `service_model` is also now **required** whenever a `tool_discovery` block is present (even with `enabled: false`) and must name a deployment that supports structured output: the routing call always sends `response_format`, with no plain-text fallback, and an answer that does not match the schema yields no matches. Existing configs with a `tool_discovery` block must add `service_model` before upgrading.
 
 <details>
 <summary><b>Tool discovery configuration JSON sample</b></summary>
@@ -399,7 +412,8 @@ tool schemas through an isolated LLM call.
     "tool_discovery": {
       "enabled": true,
       "service_model": "gpt-4o-mini",
-      "min_tools_for_deferral": 5
+      "min_tools_for_deferral": 5,
+      "strategy": { "type": "window", "window_size_chars": 40000, "top_k": 10 }
     }
   }
 }
@@ -1791,6 +1805,34 @@ calls made during that chat completion. No configuration is required.
 Use this for tracing (e.g. `X-Request-Id`, `X-Correlation-Id`), multi-tenancy (`X-Tenant-Id`), or any custom header
 your gateways or downstream services expect.
 
+## Projects
+
+`[Preview]` Requires `ENABLE_PREVIEW_FEATURES=true`. No manifest field: a chat inside a DIAL Chat project sends the
+`x-project-id` header, and QuickApps then reads the project instructions and context files and keeps its files in the
+project's `artifacts/` folder (see [docs/projects.md](./docs/projects.md)).
+
+The app needs access to the project. An admin declares it as resource dependencies of the app in DIAL Core and
+approves them (DIAL Core [#1930](https://github.com/epam/ai-dial-core/issues/1930); Admin UI → Resource Dependencies):
+
+```json
+"resourceDependencies": [
+  { "kind": "...", "linkId": "project-read",  "target": { "path": "projects/{current-user}/" }, "access": ["READ"],  "required": false },
+  { "kind": "...", "linkId": "project-write", "target": { "path": "projects/{current-user}/" }, "access": ["WRITE"], "required": false }
+]
+```
+
+Core checks the dependencies on every call to the app. Without the user's consent, `"required": true` makes Core reject
+every call to the app with 403 "Required resource dependencies are not accessible", even outside projects; with
+`"required": false` the app keeps working and only project chats end with `project_access_denied`. With consent both
+behave the same. Use `true` only for apps that make no sense outside a project.
+
+- `projects/{current-user}/` covers all of the requesting user's own projects. QuickApps itself touches only the
+  project in the header.
+- The exact `kind` values are to be confirmed when the Core feature is released.
+- Without an approved dependency a project chat fails at the start of the turn with 403 `project_access_denied`.
+- Keep `ENABLE_PREVIEW_FEATURES=false` where DIAL Core has no resource dependencies for projects: project chats then
+  run as ordinary chats.
+
 ## Environment Variables
 
 | Variable                                   | Default                                                         | Required | Description                                                                                                  |
@@ -1846,6 +1888,7 @@ your gateways or downstream services expect.
 | `DIAL_SKILLS_MAX_FILES`                    | `200`                                                           | No       | Maximum bundled files advertised to the agent per DIAL skill resource; beyond it the listing is truncated     |
 | `DIAL_SKILLS_LISTING_MAX_PAGES`            | `10`                                                            | No       | Maximum file-listing pages followed per DIAL skill resource, bounding a server-supplied cursor                |
 | `SKILL_INVOCATION_MAX_SKILLS`              | `10`                                                            | No       | Maximum distinct skills a user may have invoked from the messages of one conversation (`custom_content.skills`), counted newest first. Each one adds a `<skill>` block to the system prompt and one DIAL Core fetch per turn; beyond the cap the oldest picks stop being registered. See [docs/skills.md](docs/skills.md). |
+| `PROJECT_INSTRUCTIONS_MAX_CHARS`           | `32000`                                                         | No       | Maximum length, in characters, of the project's `PROJECT.md` body added to the system prompt in a project chat; a longer body is cut with a note. See [docs/projects.md](docs/projects.md). |
 | **Feature Gating**                         |                                                                 |          |                                                                                                              |
 | `ENABLE_PREVIEW_FEATURES`                  | `false`                                                         | No       | Enable preview features across the deployment (schema visibility + runtime activation)                       |
 | **Templates**                              |                                                                 |          |                                                                                                              |
