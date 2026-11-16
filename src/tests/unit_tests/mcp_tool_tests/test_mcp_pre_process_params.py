@@ -261,11 +261,32 @@ class TestPreProcessParams:
             project=ProjectContext(url="projects/b/My Project"),
         )
 
-        await tool._pre_process_params(doc_url="projects/b/My Project/files/context/a.csv")
+        result = await tool._pre_process_params(doc_url="projects/b/My Project/files/context/a.csv")
 
-        file_service.grant_permissions_to_files.assert_awaited_once_with(
-            ["projects/b/My%20Project/files/context/a.csv"], "my-toolset"
+        canonical = "projects/b/My%20Project/files/context/a.csv"
+        file_service.grant_permissions_to_files.assert_awaited_once_with([canonical], "my-toolset")
+        # The toolset reads the URL the grant names.
+        assert result["doc_url"] == canonical
+
+    @pytest.mark.asyncio
+    async def test_dial_url_list_of_project_files_is_passed_on_in_canonical_form(self):
+        tool, file_service, _ = _make_tool(
+            input_schema={
+                "properties": {
+                    "doc_urls": {"type": "array", "items": {"type": "string"}, "dial_url": True}
+                }
+            },
+            dial_toolset_id="my-toolset",
+            project=ProjectContext(url="projects/b/My Project"),
         )
+
+        result = await tool._pre_process_params(
+            doc_urls=["/projects/b/My Project/files/artifacts/a.md", "files/bucket/b.pdf"]
+        )
+
+        expected = ["projects/b/My%20Project/files/artifacts/a.md", "files/bucket/b.pdf"]
+        assert result["doc_urls"] == expected
+        file_service.grant_permissions_to_files.assert_awaited_once_with(expected, "my-toolset")
 
     @pytest.mark.asyncio
     async def test_dial_url_absolute_files_url_is_granted_unchanged_in_a_project(self):

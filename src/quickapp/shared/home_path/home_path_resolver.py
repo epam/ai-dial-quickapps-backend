@@ -70,20 +70,22 @@ class HomePathResolver:
         return await self.resolve_appdata_url(path)
 
     def resolve_handoff_url(self, parameter_name: str, url: str) -> str:
-        """Check a DIAL URL that QuickApps passes on to another service (an MCP grant, an
-        attachment). The receiver reads it with its own grant, not through
+        """Check a DIAL URL that QuickApps passes on to another service (an MCP grant, a
+        response attachment). The receiver reads it with its own grant, not through
         ``ProjectFileStorage``, so a ``projects/...`` URL is accepted only where the agent may
         read (``ProjectContext.can_read``) and comes back canonical. Any other URL comes back
-        unchanged. Takes the relative form, like ``ProjectContext.contains``."""
-        if not url.startswith("projects/"):
+        unchanged. Takes the relative form, spelled as ``classify_url`` matches it (a leading
+        ``/``, any case); an absolute Core URL isn't checked here."""
+        relative = url.lstrip("/")
+        if not relative.lower().startswith("projects/"):
             return url
-        if self._project is None or not self._project.can_read(url):
+        if self._project is None or not self._project.can_read(relative):
             raise InvalidToolCallParameterException(
                 parameter_name,
                 f"{parameter_name} accepts a projects/... URL only under the current project's "
                 "context/ or artifacts/ folder",
             )
-        return canonical_url(url)
+        return canonical_url(relative)
 
     def _require_relative(self, parameter_name: str, path: str) -> None:
         if self.is_absolute(path):
@@ -153,8 +155,10 @@ class HomePathResolver:
         if self._project is not None and self._project.contains(url):
             # The home is canonical; the model may spell the URL decoded (``My Project``).
             # Shown decoded: the resolver canonicalizes it again when the model passes it back.
+            # The home itself keeps its URL, so the project folder's listing names it.
             url = canonical_url(url)
-            return readable_url(url[len(home) :] if url.startswith(home) else url)
+            in_home = url.startswith(home) and url != home
+            return readable_url(url[len(home) :] if in_home else url)
         if url.startswith(home):
             return url[len(home) :]
         return url

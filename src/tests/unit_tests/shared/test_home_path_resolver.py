@@ -173,6 +173,14 @@ class TestProjectHome:
         assert await resolver.to_display_path(f"{_ARTIFACTS}my%20notes/a.md") == "my notes/a.md"
 
     @pytest.mark.asyncio
+    async def test_display_path_of_the_home_itself_is_its_url(self):
+        # A listing of the project folder names artifacts/ next to context/, not by "".
+        resolver = _resolver(project=_PROJECT)
+        expected = "projects/user-bucket/My Project/files/artifacts/"
+        assert await resolver.to_display_path(_ARTIFACTS) == expected
+        assert await resolver.resolve_appdata_url(expected) == _ARTIFACTS
+
+    @pytest.mark.asyncio
     async def test_display_path_keeps_names_that_dont_round_trip_encoded(self):
         # A literal `%41` in a name would decode to `A` when passed back.
         url = f"{_ARTIFACTS}100%2541.md"
@@ -206,6 +214,11 @@ class TestResolveHandoffUrl:
         [
             ("projects/user-bucket/My Project/files/context/tickets.csv", _CONTEXT_FILE),
             (f"{_ARTIFACTS}report.pdf", f"{_ARTIFACTS}report.pdf"),
+            ("/projects/user-bucket/My Project/files/context/tickets.csv", _CONTEXT_FILE),
+            (
+                "projects/user-bucket/My Project/files/context",
+                "projects/user-bucket/My%20Project/files/context",
+            ),
             ("files/other-bucket/shared/a.pdf", "files/other-bucket/shared/a.pdf"),
             (
                 "https://dial.example.com/v1/files/other-bucket/a.pdf",
@@ -215,7 +228,7 @@ class TestResolveHandoffUrl:
     )
     def test_readable_and_non_project_urls_pass(self, path, expected):
         resolver = _resolver(project=_PROJECT)
-        assert resolver.resolve_handoff_url("attachment_urls", path) == expected
+        assert resolver.resolve_handoff_url("doc_url", path) == expected
 
     @pytest.mark.parametrize(
         "path",
@@ -224,12 +237,17 @@ class TestResolveHandoffUrl:
             "projects/user-bucket/My Project/files/PROJECT.md",
             "projects/user-bucket/My Project/files/",
             "projects/user-bucket/Other/files/context/a.csv",
+            # Other spellings `classify_url` takes for a DIAL URL.
+            "/projects/user-bucket/My Project/files/conversations/chat.json",
+            "//projects/user-bucket/My Project/files/PROJECT.md",
+            "Projects/user-bucket/My Project/files/conversations/chat.json",
+            "PROJECTS/user-bucket/My Project/files/context/tickets.csv",
         ],
     )
     def test_project_urls_outside_context_and_artifacts_are_refused(self, path):
         with pytest.raises(InvalidToolCallParameterException) as excinfo:
-            _resolver(project=_PROJECT).resolve_handoff_url("attachment_urls", path)
-        assert excinfo.value.parameter_name == "attachment_urls"
+            _resolver(project=_PROJECT).resolve_handoff_url("doc_url", path)
+        assert excinfo.value.parameter_name == "doc_url"
         assert "context/ or artifacts/" in excinfo.value.message
 
     def test_project_url_is_refused_without_project(self):

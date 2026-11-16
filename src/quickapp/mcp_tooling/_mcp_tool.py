@@ -121,45 +121,48 @@ class _MCPTool(StagedBaseTool):
         ``InvalidToolCallParameterException`` — ``dial_url`` parameters require a
         DIAL file because permission-grant has no meaning for external resources. A
         ``projects/...`` URL must be under the current project's ``context/`` or
-        ``artifacts/`` (``HomePathResolver.resolve_handoff_url``).
+        ``artifacts/`` (``HomePathResolver.resolve_handoff_url``). Each value in ``kwargs``
+        is replaced by the URL the grant names, so the toolset reads that same URL.
         """
         properties = self.__tool.inputSchema.get("properties", {})
         files_to_share: list[str] = []
         for key, value in kwargs.items():
             if not properties.get(key, {}).get("dial_url"):
                 continue
-            candidates: list[str] = []
             if isinstance(value, str):
-                candidates.append(value)
+                kwargs[key] = self.__resolve_dial_url(key, value)
+                files_to_share.append(kwargs[key])
             elif isinstance(value, list):
-                candidates.extend(elem for elem in value if isinstance(elem, str))
-            for candidate in candidates:
-                scheme = classify_url(candidate, self.__dial_url)
-                if scheme == UrlScheme.EXTERNAL:
-                    raise InvalidToolCallParameterException(
-                        parameter_name=key,
-                        message=(
-                            f"Parameter `{key}` requires a DIAL file but received an "
-                            "external URL. Use `file:data::` or `file:base64::` / "
-                            "`file:text::` to "
-                            "inline the content, or upload the file to DIAL first."
-                        ),
-                    )
-                # TODO(#445): resolve appdir-relative paths via HomePathResolver
-                #  instead of rejecting them.
-                if scheme in (UrlScheme.UNSUPPORTED, UrlScheme.DIAL_APPDIR_RELATIVE):
-                    raise InvalidToolCallParameterException(
-                        parameter_name=key,
-                        message=(
-                            f"Parameter `{key}` requires a DIAL file but received an "
-                            f"unsupported URL: {sanitize_url(candidate)}."
-                        ),
-                    )
-            # The toolset reads the files with the grant, outside the project view.
-            files_to_share.extend(
-                self.__home_resolver.resolve_handoff_url(key, candidate) for candidate in candidates
-            )
+                kwargs[key] = [
+                    self.__resolve_dial_url(key, elem) if isinstance(elem, str) else elem
+                    for elem in value
+                ]
+                files_to_share.extend(elem for elem in kwargs[key] if isinstance(elem, str))
         return files_to_share
+
+    def __resolve_dial_url(self, key: str, candidate: str) -> str:
+        scheme = classify_url(candidate, self.__dial_url)
+        if scheme == UrlScheme.EXTERNAL:
+            raise InvalidToolCallParameterException(
+                parameter_name=key,
+                message=(
+                    f"Parameter `{key}` requires a DIAL file but received an "
+                    "external URL. Use `file:data::` or `file:base64::` / "
+                    "`file:text::` to "
+                    "inline the content, or upload the file to DIAL first."
+                ),
+            )
+        # TODO(#445): resolve appdir-relative paths via HomePathResolver
+        #  instead of rejecting them.
+        if scheme in (UrlScheme.UNSUPPORTED, UrlScheme.DIAL_APPDIR_RELATIVE):
+            raise InvalidToolCallParameterException(
+                parameter_name=key,
+                message=(
+                    f"Parameter `{key}` requires a DIAL file but received an "
+                    f"unsupported URL: {sanitize_url(candidate)}."
+                ),
+            )
+        return self.__home_resolver.resolve_handoff_url(key, candidate)
 
     def _resource_title(self, resource: Any) -> str:
         """Use the filename the MCP server put in ``resource.uri``, when it has one."""

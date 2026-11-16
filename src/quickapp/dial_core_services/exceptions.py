@@ -61,6 +61,18 @@ class ProjectFileOperationException(DialException):
         super().__init__(message=message, status_code=400)
 
 
+class ProjectReadScopeError(DialException):
+    """A read of a project path outside ``context/`` and ``artifacts/``, refused before any Core
+    call. A 403, so generic handlers treat it as access denied; the message is meant for the
+    agent and names what it may read instead."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            message="only the current project's context/ and artifacts/ folders are readable",
+            status_code=403,
+        )
+
+
 class SameSourceAndDestinationException(ProjectFileOperationException):
     def __init__(self, url: str):
         super().__init__(f"Source and destination are the same: {url}")

@@ -8,6 +8,7 @@ from injector import inject
 
 from quickapp.common.state_holder import StateHolder
 from quickapp.common.url_sanitization import sanitize_url
+from quickapp.dial_core_services.exceptions import ProjectReadScopeError
 from quickapp.dial_core_services.storage.file_storage import FileStorage, FolderEntry, UploadedFile
 
 logger = logging.getLogger(__name__)
@@ -41,6 +42,10 @@ class DialFileService:
             logger.debug("Downloading file: %s", safe_url)
             file_data, metadata = await self.__storage.download(file_url)
             self.__state_holder.store_file_data(file_url, file_data, metadata)
+        except ProjectReadScopeError:
+            # Expected: the agent asked for a project path it may not read; not a failure.
+            logger.info("Download refused outside the project's readable folders: %s", safe_url)
+            raise
         except Exception as e:
             logger.error("Failed to download: %s", safe_url, exc_info=True)
             raise e
