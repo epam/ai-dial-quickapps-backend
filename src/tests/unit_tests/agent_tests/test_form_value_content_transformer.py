@@ -36,7 +36,9 @@ def _deployment_ts(conversation_mode=None, tool_name="my_tool") -> DeploymentToo
     }
     if conversation_mode is not None:
         tool["conversation_mode"] = conversation_mode
-    return DeploymentToolSet.model_validate({"name": "ts", "type": "dial-deployment", "tools": [tool]})
+    return DeploymentToolSet.model_validate(
+        {"name": "ts", "type": "dial-deployment", "tools": [tool]}
+    )
 
 
 class TestFormValueContentTransformer:

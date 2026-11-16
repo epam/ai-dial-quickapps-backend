@@ -1351,8 +1351,10 @@ async def test_invoke_propagates_tool_form_schema_to_choice_once():
     assistant_result_with_tools = SimpleNamespace(
         content="call tool",
         attachments=[],
-        tool_calls=[_make_accumulated_tool_call(id="tc-1", name="tool_a"),
-                    _make_accumulated_tool_call(id="tc-2", name="tool_b")],
+        tool_calls=[
+            _make_accumulated_tool_call(id="tc-1", name="tool_a"),
+            _make_accumulated_tool_call(id="tc-2", name="tool_b"),
+        ],
         usage=None,
         state=None,
         adopted_tool_stages={},
@@ -1523,7 +1525,6 @@ async def test_invoke_skips_form_schema_when_tool_has_none():
     assert choice.set_form_schema_calls == []
 
 
-
 @pytest.mark.asyncio
 async def test_send_form_schema_records_source_tool_in_state():
     """form_schema propagation records the producing tool name in state."""
@@ -1538,14 +1539,22 @@ async def test_send_form_schema_records_source_tool_in_state():
 
     schema = {"type": "object"}
     assistant_result_with_tools = SimpleNamespace(
-        content="call tool", attachments=[],
+        content="call tool",
+        attachments=[],
         tool_calls=[_make_accumulated_tool_call(id="tc-1", name="form_tool")],
-        usage=None, state=None, adopted_tool_stages={},
+        usage=None,
+        state=None,
+        adopted_tool_stages={},
         close_remaining_adopted_tool_stages=Mock(),
     )
     assistant_result_no_tools = SimpleNamespace(
-        content="final", attachments=[], tool_calls=[], usage=None, state=None,
-        adopted_tool_stages={}, close_remaining_adopted_tool_stages=Mock(),
+        content="final",
+        attachments=[],
+        tool_calls=[],
+        usage=None,
+        state=None,
+        adopted_tool_stages={},
+        close_remaining_adopted_tool_stages=Mock(),
     )
     assistant_invoker = Mock()
     assistant_invoker.invoke = AsyncMock(return_value="stream")
