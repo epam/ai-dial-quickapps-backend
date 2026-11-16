@@ -135,15 +135,16 @@ class TestListLevel:
 
 class TestUpload:
     @pytest.mark.asyncio
-    async def test_preconditions_reach_the_client_and_the_metadata_url_is_returned(self):
+    async def test_preconditions_reach_the_client_and_core_metadata_is_returned(self):
         client = _make_client()
-        client.files.upload = AsyncMock(return_value=SimpleNamespace(url="files/b/notes/a.md"))
+        metadata = SimpleNamespace(url="files/b/notes/a.md")
+        client.files.upload = AsyncMock(return_value=metadata)
 
-        url = await _make_storage(client).upload(
+        uploaded = await _make_storage(client).upload(
             FILE, b"data", "text/markdown", if_none_match="*", if_match="etag-1"
         )
 
-        assert url == "files/b/notes/a.md"
+        assert uploaded is metadata
         client.files.upload.assert_awaited_once_with(
             url=FILE,
             file=("a.md", b"data", "text/markdown"),

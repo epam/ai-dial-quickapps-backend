@@ -42,6 +42,10 @@ A project lives under Core's `projects/{bucket}/{path}/files/`:
 5. **Read-only files.** Write-side tools (`write_file`, `edit_file`, `delete_file`, the `move_file` source,
    `copy_file` / `move_file` destinations, `web_fetch` `save_path`) accept relative paths only, so they never write
    outside `artifacts/`. Given any `files/...` or `projects/...` URL, they ask for a relative path.
+6. **Tool outputs.** Files that tools produce for the user (MCP tool files, REST response files, code interpreter
+   charts) are saved to `artifacts/`, so Chat lists them as the project's **Outputs**. Internal files (large-result
+   offloads, external URLs downloaded for a deployment or the interpreter) stay in the app's appdata. Outside a
+   project both go to appdata, as before.
 
 In every chat (not only projects), a 403 from Core on a file tool is reported as a permission error ("access
 denied; the app has no permission for it"). It goes through the tool's fallback strategies.
@@ -54,6 +58,7 @@ denied; the app has no permission for it"). It goes through the tool's fallback 
 | The approved dependency opens **all** of the user's projects to the app, not only the current one | Phase-1 static grant | QuickApps itself touches only the project in the header |
 | Project files can't be passed to DIAL deployments (RAG, adapters) or to the code interpreter | These don't read `projects/` URLs yet | Copy the content into the conversation, or use a nested QuickApp |
 | MCP `dial_url` parameters with project files are unverified | Per-file grants on `projects/` URLs depend on Core | Avoid project URLs in `dial_url` parameters |
+| A tool output replaces a file with the same name in `artifacts/`, including one from another chat or added by the user | Outputs keep the tool's file name and are written without a check ([I#725](https://github.com/epam/ai-dial-quickapps-backend/issues/725)) | None yet |
 | After a project rename, files attached in earlier turns return 404 | Attachments keep the old URL | Attach the file again |
 | The system-prompt cache has one entry per project and is rewritten when `PROJECT.md` changes | The project instructions are part of the system prompt | None needed; the first turn after a change costs a cache write |
 
