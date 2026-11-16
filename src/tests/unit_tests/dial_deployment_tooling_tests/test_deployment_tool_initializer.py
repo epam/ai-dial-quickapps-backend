@@ -222,7 +222,9 @@ class TestDeferredDeploymentTools:
     async def test_registers_deferred_toolset_with_deferred_context(self):
         tools = [_make_deployment_tool("tool_one"), _make_deployment_tool("tool_two")]
         toolset = DeploymentToolSet(name="deployment", deferred=True, tools=tools)
-        discovery_cfg = ToolDiscoveryConfig(enabled=True, min_tools_for_deferral=2)
+        discovery_cfg = ToolDiscoveryConfig(
+            enabled=True, service_model="m", min_tools_for_deferral=2
+        )
         builder = _make_recording_builder()
         context = _DeploymentToolingContext()
         deferred_context = MagicMock(spec=_DeploymentDeferredToolsContext)
@@ -242,7 +244,9 @@ class TestDeferredDeploymentTools:
     async def test_does_not_defer_below_threshold(self):
         tools = [_make_deployment_tool("tool_one"), _make_deployment_tool("tool_two")]
         toolset = DeploymentToolSet(name="deployment", deferred=True, tools=tools)
-        discovery_cfg = ToolDiscoveryConfig(enabled=True, min_tools_for_deferral=5)
+        discovery_cfg = ToolDiscoveryConfig(
+            enabled=True, service_model="m", min_tools_for_deferral=5
+        )
         builder = _make_recording_builder()
         context = _DeploymentToolingContext()
         deferred_context = MagicMock(spec=_DeploymentDeferredToolsContext)
