@@ -323,7 +323,7 @@ exactly one deployment tool, so the deferral threshold never applies to them any
 
 `DeferredToolsContext` holds two structures across all deferred toolsets in the request (not
 one instance per toolset — a single request-scoped context aggregates all of them):
-- **catalog**: `list[{name, description}]` — compact, never forwarded to the main LLM
+- **catalog**: `list[{name, description, toolset}]` — compact, never forwarded to the main LLM
 - **definitions**: `dict[str, OpenAiToolConfigDict]` — full schemas (transformed the same way
   as eager tools — const params stripped, `enrich_openai_tool_schema` applied), looked up by
   `_ToolSearchTool` when the anonymous agent returns matches
@@ -359,19 +359,69 @@ When the orchestrator calls `tool_search(query)`, its handler delegates to a new
 history and no system prompt from the main request:
 
 ```
-model:   service_model (config: defaults to orchestrator deployment)
-system:  "You are a tool routing assistant. Given a user query, return the names of
-          the tools from the following catalog that are most relevant.
-          Catalog: [{name, description}, ...]"   ← injected from DeferredToolsContext
-messages:[{"role": "user", "content": <query>}]
-tools:   none
+model:           service_model (config: required when enabled)
+system:          "You are a routing assistant. Given a user request, pick the tools from the
+                  catalog below that can help to fulfil it: at most {limit}, best match first. ...
+                  Respond with a JSON object {"matches": [{"name", "score"}]} only ...
+                  Catalog:
+                  - {name}: {description}
+                  ..."                         ← injected from DeferredToolsContext
+messages:        [{"role": "user", "content": "Request: <query> ..."}]
+tools:           none
+response_format: json_schema (strict) for {"matches": [{"name": str, "score": number}]}
 ```
 
-The anonymous agent returns a list of tool names. Because this call carries no conversation
-history and no application system prompt, its token cost is bounded by the catalog size alone.
+The call always requests **structured output**: `response_format` carries the JSON schema of
+`RoutingSelection` (`{"matches": [{"name", "score"}]}`, `additionalProperties: false`, item
+definition inlined because not every provider resolves `$ref`). `service_model` must therefore
+support structured output. Names are plain strings rather than an `enum` of the catalog, since
+providers cap schema size and a large catalog would be rejected.
 
-**Result returned to the main LLM:** `[{name, description}]` of matched tools, confirming what
-is now available to load.
+The answer is validated against that schema (`parse_selection`). The agent keeps the known names
+scoring at least `score_threshold` (scores are clamped to 0..1), best first, at most `limit`;
+duplicates keep their best score. There is no lenient parsing: an answer that does not match the
+schema (e.g. the provider ignored `response_format`) rejects the whole answer and yields an empty
+result. There is no plain-text fallback or retry. The call is otherwise fail-open: any
+`openai.OpenAIError` or unparsable answer yields an empty result.
+
+An HTTP 400 from the routing model (typically a deployment without structured output support,
+though context-length and content-filter rejections also surface as 400) is additionally recorded
+as a warning on the returned `RoutingResult.warnings` (not as state on the shared agent, so concurrent
+searches never see each other's warnings). Strategies merge and de-duplicate the warnings of all their
+calls, and `_ToolSearchTool` hands them to `_ToolSearchStageWrapper.add_warnings`, which renders them on
+the stage, pointing at `tool_discovery.service_model`.
+
+The call goes through `DEPLOYMENT_AZURE_CLIENT`, not the orchestrator client: the latter is pinned
+to the orchestrator deployment and would ignore `service_model`. Because this call carries no
+conversation history and no application system prompt, its token cost is bounded by the catalog
+size alone.
+
+How many such calls a search makes, and over which part of the catalog, is decided by the
+configured [search strategy](#search-strategies).
+
+**Result returned to the main LLM:** a JSON array of the matched tool names (`["name", ...]`).
+Descriptions are not repeated: the full definitions are injected natively on the next iteration.
+
+#### Search strategies
+
+`tool_discovery.strategy` selects how `internal_tool_search` searches the catalog. It is a
+discriminated union on `type`; all variants share `top_k` (default `10`, max tools returned) and
+`score_threshold` (default `0.5`). `ToolDiscoveryModule` maps the config to a `ToolSearchStrategy`
+implementation (`tool_discovery/strategies/`); all of them reuse `_AnonymousAgent.route`, and each
+returns the matched names plus the summed routing usage.
+
+| `type` | Class | Behaviour |
+|---|---|---|
+| `plain` (default) | `PlainStrategy` | One routing call over the whole deferred catalog. Same shape as the original MVP, now with scores, `top_k` and the threshold |
+| `window` | `WindowStrategy` | The catalog is split into windows of up to `window_size_chars` rendered characters. Windows are searched in parallel (at most 8 concurrent calls), each keeping `per_window_top_k` picks; one final call filters the union down to `top_k`, skipped when the windows return at most one candidate. A catalog that fits one window makes a single call. Best recall on large catalogs; reads the whole catalog on every search |
+| `hierarchy` | `HierarchyStrategy` | First call picks up to `toolset_top_k` toolsets from their summaries, second call picks tools among the chosen toolsets. Skipped when there is one toolset; falls back to the whole catalog when no toolset is chosen. `score_threshold` applies to both calls. Cheapest on large catalogs; recall is bounded by the toolset choice |
+
+Catalog entries carry their toolset's localized display name (`toolset`), which is the join key
+of the hierarchy strategy. Limitation: two toolsets sharing a display name are treated as one, so
+choosing either pulls in the tools of both.
+
+Default behaviour change: with tool discovery on, apps now get at most `top_k=10` tools per search
+and picks scored below `0.5` are dropped; before there was no cap and no score filter.
 
 #### Step 4 — `_ToolSearchTool` builds OpenAI definitions
 
@@ -419,10 +469,11 @@ Orchestrator — iteration 1
               model   = service_model
               system  = routing prompt + catalog from DeferredToolsContext
               message = "I need to query Salesforce contacts"
+              format  = structured output {"matches": [{"name", "score"}]}
               → ["sf_query_contacts", "sf_list_contacts"]
            _ToolSearchTool: names → full OpenAiToolConfigDicts, written into
            LazyLoadedToolsHolder (request-scoped; orchestrator is not involved)
-           Result returned to main LLM: [{name, description}, ...]
+           Result returned to main LLM: ["sf_query_contacts", "sf_list_contacts"]
 
 Orchestrator — iteration 2
   _ChatCompletionConfigBuilder reads LazyLoadedToolsHolder.get_all() and merges:
@@ -480,10 +531,13 @@ eagerly, no discovery overhead.
 ```
 
 - `deferred: true` (or unset/`null`) opts the toolset into `DeferredToolsContext`. Default: `true` (omitting the field defers by default).
-- `service_model` names the DIAL deployment used for the `AnonymousAgent` chat completion.
-  When omitted, falls back to the orchestrator's own deployment.
+- `service_model` (**required when `enabled: true`**) names the DIAL deployment used for the
+  `AnonymousAgent` chat completion. It must support structured output (`response_format` with a
+  JSON schema); there is no fallback to the orchestrator's deployment, so an enabled config
+  without `service_model` fails validation. A disabled `tool_discovery` block may omit it, which
+  keeps existing stored apps valid.
 - `min_tools_for_deferral` is the tool-count guard below which a deferred toolset is silently
-  promoted to eager. Default: `5`.
+  promoted to eager. Default: `10`.
 - Non-deferred and below-threshold toolsets populate `RequestContext` immediately, as today.
 
 #### Changes required (as built)
@@ -491,13 +545,14 @@ eagerly, no discovery overhead.
 | Area | Change |
 |---|---|
 | `BaseToolSet` (`config/toolsets/base.py`) | Add `deferred: bool \| None` field (tri-state, default `None`/unset — unset behaves as deferred, see [Deferral threshold](#deferral-threshold)) |
-| `config/tool_discovery.py` | New `ToolDiscoveryConfig` (`enabled`, `service_model`, `min_tools_for_deferral`), referenced by `OrchestratorConfig.tool_discovery` |
+| `config/tool_discovery.py` | New `ToolDiscoveryConfig` (`enabled`, `service_model`, `min_tools_for_deferral`, `strategy`), referenced by `OrchestratorConfig.tool_discovery`. `strategy` is the discriminated union `PlainSearchStrategyConfig` / `WindowSearchStrategyConfig` / `HierarchySearchStrategyConfig` (shared `top_k`, `score_threshold`) |
 | `shared/deferred_tools/` (`DeferredToolsContext`, `is_toolset_deferred`) | Request-scoped shared object aggregating `catalog`/`definitions` across all deferred toolsets in the request; `is_toolset_deferred` is the pure threshold predicate. Bound via its own `DeferredToolsModule`, spliced into `shared_module` |
 | REST, MCP, internal, `dial-deployment` toolset modules | After building each toolset's tools, evaluate `is_toolset_deferred`; register with `DeferredToolsContext` or leave in the eager `list[StagedBaseTool]` accordingly. `dial-deployment`'s initializer groups its per-tool config entries by owning `DeploymentToolSet` first, since it builds one tool per config entry rather than one call per toolset. `dial-app`-synthesized tools have no toolset owner and stay eager (always exactly one tool per `DialAppToolSet`, so deferral never applies) |
-| `tool_discovery/_anonymous_agent.py` (`_AnonymousAgent`) | Fires a single isolated `chat.completions.create` call (no history, no app system prompt); takes the catalog and a user query; returns matched tool names plus the call's token usage, which `_ToolSearchTool` attaches to its result for usage statistics |
-| `tool_discovery/_tool_search_tool.py` (`_ToolSearchTool`) | Internal `tool_search` (registered name: `internal_tool_search`) tool injected via `ToolDiscoveryModule`'s own `@multiprovider` (preview-gated); calls `_AnonymousAgent`, looks up matched names in `DeferredToolsContext`, writes results into `LazyLoadedToolsHolder`, returns `[{name, description}]` to the main LLM. Its own `enrich_openai_tool_schema` override appends a dynamic list of deferred toolset names/descriptions (`DeferredToolsContext.toolset_summaries`) to the static tool description |
+| `tool_discovery/_anonymous_agent.py` (`_AnonymousAgent`), `_routing_prompt.py` | Fires a single isolated `chat.completions.create` call (no history, no app system prompt) through `DEPLOYMENT_AZURE_CLIENT` (provided by the shared `DeploymentClientModule`, so tool discovery does not depend on `DialDeploymentToolingModule`); an empty `choices` response fails open like any other error; takes a catalog, a user query, and `kind` / `limit` / `threshold`; returns a `RoutingResult` (names, best first, plus the call's token usage, which `_ToolSearchTool` attaches to its result for usage statistics). `_routing_prompt.py` holds the prompt builders, the `RoutingSelection` model, the strict `response_format` builder and the schema-validating parser. The call always sends `response_format`; a 400 answer is returned as `RoutingResult.warnings`, which `_ToolSearchTool` renders on its stage through `_ToolSearchStageWrapper.add_warnings` |
+| `tool_discovery/strategies/` (`ToolSearchStrategy`, `PlainStrategy`, `WindowStrategy`, `HierarchyStrategy`) | The search strategies, see [Search strategies](#search-strategies). Chosen per request by `ToolDiscoveryModule._provide_search_strategy` |
+| `tool_discovery/_tool_search_tool.py` (`_ToolSearchTool`) | Internal `tool_search` (registered name: `internal_tool_search`) tool injected via `ToolDiscoveryModule`'s own `@multiprovider` (enabled by `tool_discovery.enabled`); calls the configured `ToolSearchStrategy`, looks up matched names in `DeferredToolsContext`, writes results into `LazyLoadedToolsHolder`, returns the matched names (`["name", ...]`) to the main LLM. Its own `enrich_openai_tool_schema` override appends a dynamic list of deferred toolset names/descriptions (`DeferredToolsContext.toolset_summaries`) to the static tool description |
 | `core/agent/lazy_loaded_tools_holder.py` (`LazyLoadedToolsHolder`) | Request-scoped holder of discovered `OpenAiToolConfigDict`s — replaces the originally-proposed lazy-initializer + orchestrator-side `_lazy_loaded_tools` state |
-| `tool_discovery/_tool_search_hint_prompt_provider.py` (`_ToolSearchHintPromptProvider`) | System-prompt-level reminder to call `internal_tool_search` before declaring a limitation, plus the same deferred-toolset summary list (name, tool count, description — via the shared `_toolset_summary_format.format_toolset_summaries`) that `_ToolSearchTool.enrich_openai_tool_schema` appends to the tool's own description. Contributed by `ToolDiscoveryModule`'s own `_provide_prompt_parts` (preview-gated, same condition as the tool itself). `ToolDiscoveryModule` is registered in `app_factory.py` **before** `SkillsModule` specifically so this hint lands immediately ahead of the `<available_skills>` block in the aggregated system prompt |
+| `tool_discovery/_tool_search_hint_prompt_provider.py` (`_ToolSearchHintPromptProvider`) | System-prompt-level reminder to call `internal_tool_search` before declaring a limitation, plus the same deferred-toolset summary list (name, tool count, description — via the shared `_toolset_summary_format.format_toolset_summaries`) that `_ToolSearchTool.enrich_openai_tool_schema` appends to the tool's own description. Contributed by `ToolDiscoveryModule`'s own `_provide_prompt_parts` (same `tool_discovery.enabled` condition as the tool itself). `ToolDiscoveryModule` is registered in `app_factory.py` **before** `SkillsModule` specifically so this hint lands immediately ahead of the `<available_skills>` block in the aggregated system prompt |
 | `_chat_completion_config_builder.py` | Reads `LazyLoadedToolsHolder.get_all()` on every build and merges into `payload["tools"]`, de-duplicated against eager tool names — **`orchestrator.py` itself was not changed** |
 | Cross-turn state persistence | **Not implemented** — see [Out of Scope](#out-of-scope-mvp) |
 
@@ -521,8 +576,8 @@ with ~20-token descriptions each, this is ~4 K tokens regardless of how long the
 - Opt-out: `deferred: true` by default; threshold guard prevents regression for small toolsets.
   Set `deferred: false` on a toolset to keep it always-eager.
 - `AnonymousAgent` is a reusable module independent of tool discovery.
-- Search strategy is swappable (keyword, embedding, different model) without touching the
-  orchestrator or injection logic.
+- Search strategy is swappable (`plain`, `window`, `hierarchy`; an embedding-based one can be
+  added) without touching the orchestrator or injection logic.
 
 **Cons:**
 - +1 orchestrator iteration before first native use of a deferred tool.
@@ -575,11 +630,13 @@ top of Option 6 incrementally.
    only for mixed toolsets where some tools are always-on. **Still open** — per-toolset is what
    shipped; per-tool granularity remains a possible future extension.
 
-2. ~~**`service_model` default**~~ — **Resolved, as built:** falls back to the orchestrator's
-   own deployment when omitted (`_AnonymousAgent.route`).
+2. ~~**`service_model` default**~~ — **Resolved, as built:** no default. `service_model` is
+   required when discovery is enabled (optional otherwise, for backward compatibility), because the routing call needs a deployment that supports structured output and the
+   orchestrator's deployment may not.
 
 3. ~~**Search implementation in MVP**~~ — **Resolved, as built:** pure LLM routing via
-   `_AnonymousAgent`, no keyword-only fallback. Not currently planned.
+   `_AnonymousAgent`, no keyword-only fallback. Later extended with the configurable
+   [search strategies](#search-strategies) (all still LLM routing).
 
 4. ~~**Multi-turn persistence**~~ — **Resolved, as built: not implemented.** Discovered tools
    are always rediscovered each turn; see [Out of Scope](#out-of-scope-mvp).
@@ -595,7 +652,7 @@ top of Option 6 incrementally.
 
 | Item | Reason |
 |---|---|
-| Embedding-based search in `_AnonymousAgent` | Swap-in strategy; `_AnonymousAgent` interface is the extension point |
+| Embedding-based search | Would be a new `ToolSearchStrategy`; the strategy protocol is the extension point |
 | Dynamic MCP server connection/disconnection | Significant lifecycle change; Option 5 follow-on |
 | Per-tool granularity within a toolset | Per-toolset is sufficient for the initial use case |
 | Automatic threshold based on token count | Tool-count threshold is simpler and good enough for MVP |
