@@ -12,11 +12,14 @@ from quickapp.common.abstract.tool_call_result_processor import (
 )
 from quickapp.common.chat_completion_stream.adopted_tool_stage import AdoptedToolStage
 from quickapp.common.chat_completion_stream.tool_call import AccumulatedToolCall
+from quickapp.common.deferred_tool_types import DeferredToolName
 from quickapp.common.model_hidden_tool import ModelHiddenTool
 from quickapp.common.payload_logging import log_payload
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.tool_fallback.processor import FallbackProcessor
+from quickapp.common.tool_names import INTERNAL_TOOL_SEARCH_TOOL_NAME
 from quickapp.config.tools.tool_fallback import ContinueStrategyModel
+from quickapp.core.agent.lazy_loaded_tools_holder import LazyLoadedToolsHolder
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +34,11 @@ class ToolExecutor:
         enrichers: list[ToolCallResultEnricher],
         perf_timer: PerformanceTimer,
         processors: list[ToolCallResultProcessor],
+        deferred_tool_names: list[DeferredToolName],
+        lazy_loaded_tools_holder: LazyLoadedToolsHolder,
     ):
+        self.__deferred_names: frozenset[str] = frozenset(deferred_tool_names)
+        self.__lazy_loaded_tools_holder = lazy_loaded_tools_holder
         self.__tools: dict[str, StagedBaseTool] = self.__build_tool_dict(tools)
         self.__model_hidden_names: frozenset[str] = frozenset(
             self.__build_tool_dict(model_hidden_tools)
@@ -48,6 +55,7 @@ class ToolExecutor:
         adopted = adopted_tool_stages if adopted_tool_stages is not None else {}
         hidden_names: set[str] = set()
         unknown_names: set[str] = set()
+        undiscovered_names: set[str] = set()
         tasks = []
         for tc in tool_call_list:
             tool = self.__tools.get(tc.name)
@@ -59,6 +67,13 @@ class ToolExecutor:
                     unknown_names.add(tc.name)
                     tasks.append(self.__unknown_tool_result(tc))
                 continue
+            if tc.name in self.__deferred_names and not self.__lazy_loaded_tools_holder.contains(
+                tc.name
+            ):
+                # Its schema is not in this request's `tools`, so the arguments were guessed.
+                undiscovered_names.add(tc.name)
+                tasks.append(self.__undiscovered_tool_result(tc))
+                continue
             args = json.loads(tc.arguments)
             logger.debug("Making tool call: %s", tc.name)
             log_payload(logger, "Making tool call: %s with args: %s", tc.name, args)
@@ -67,6 +82,11 @@ class ToolExecutor:
 
         if hidden_names:
             logger.warning("Model requested model-hidden tool(s) %s", sorted(hidden_names))
+        if undiscovered_names:
+            logger.warning(
+                "Model called deferred tool(s) %s without a loaded schema",
+                sorted(undiscovered_names),
+            )
         if unknown_names:
             logger.error(
                 "Model requested unknown tool(s) %s; registered=%s",
@@ -88,6 +108,22 @@ class ToolExecutor:
             ],
             tc.id,
             RuntimeError(f"Unknown tool '{tc.name}'."),
+        )
+
+    @staticmethod
+    async def __undiscovered_tool_result(tc: AccumulatedToolCall) -> ToolCallResult:
+        return FallbackProcessor.process_fallback(
+            [
+                ContinueStrategyModel(
+                    instructions=(
+                        f"The tool '{tc.name}' is not loaded, so its arguments could not be "
+                        f"validated. Call '{INTERNAL_TOOL_SEARCH_TOOL_NAME}' to load it, "
+                        "then retry the call."
+                    )
+                )
+            ],
+            tc.id,
+            RuntimeError(f"Tool '{tc.name}' has not been discovered in this request."),
         )
 
     @staticmethod

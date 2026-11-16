@@ -9,6 +9,7 @@ from quickapp.common import (
     DIAL_BEARER,
     EXTERNAL_TOOL_NAMES,
     ORCHESTRATOR_AZURE_CLIENT,
+    REQUEST_MESSAGES,
     ForwardedHeaders,
     StagedBaseTool,
 )
@@ -24,7 +25,7 @@ from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.chat_completion_recovery import ChatCompletionRecoveryService
 from quickapp.common.chat_completion_stream.chat_stream_sink_factory import ChatStreamSinkFactory
 from quickapp.common.chat_completion_stream.handler import ChatCompletionStreamHandler
-from quickapp.common.deferred_tool_types import DeferredToolName
+from quickapp.common.deferred_tool_types import DeferredToolDefinition, DeferredToolName
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import InitializationException
 from quickapp.common.model_hidden_tool import ModelHiddenTool
@@ -51,6 +52,7 @@ from quickapp.config.tools.display.paramenter import (
 from quickapp.core.agent._attachment_filter import _AttachmentFilter
 from quickapp.core.agent._chat_completion_config_builder import _ChatCompletionConfigBuilder
 from quickapp.core.agent._dial_system_prompt_initializer import _DialSystemPromptInitializer
+from quickapp.core.agent._discovered_tools_state import read_discovered_tool_names
 from quickapp.core.agent._messages_transformers import _AddSystemPromptTransformer
 from quickapp.core.agent._orchestrator_deployment_initializer import (
     _OrchestratorDeploymentInitializer,
@@ -113,7 +115,6 @@ class AgentModule(Module):
         binder.bind(AssistantInvoker, to=AssistantInvoker, scope=NoScope)
         binder.bind(_ChatCompletionConfigBuilder, to=_ChatCompletionConfigBuilder, scope=NoScope)
         binder.bind(_PromptCacheBreakpoints, to=_PromptCacheBreakpoints, scope=singleton)
-        binder.bind(LazyLoadedToolsHolder, to=LazyLoadedToolsHolder, scope=request_scope)
         binder.bind(ChatStreamSinkFactory, to=ChatStreamSinkFactory, scope=NoScope)
         binder.bind(ChatCompletionStreamHandler, to=ChatCompletionStreamHandler, scope=NoScope)
         binder.bind(_AttachmentFilter, to=_AttachmentFilter, scope=request_scope)
@@ -223,6 +224,28 @@ class AgentModule(Module):
         for default_tool in static_tools:
             openai_functions.append(default_tool.model_dump(mode="json", exclude_none=True))
         return openai_functions
+
+    @provider
+    @request_scope
+    def provide_lazy_loaded_tools_holder(
+        self,
+        definitions: list[DeferredToolDefinition],
+        request_messages: REQUEST_MESSAGES,
+    ) -> LazyLoadedToolsHolder:
+        """Seed the holder with tools discovered in earlier turns of the conversation.
+
+        Names that are no longer deferred (config changed, toolset removed) are dropped.
+        """
+        holder = LazyLoadedToolsHolder()
+        by_name = {d.name: d.definition for d in definitions}
+        holder.add(
+            [
+                by_name[name]
+                for name in read_discovered_tool_names(request_messages)
+                if name in by_name
+            ]
+        )
+        return holder
 
     @multiprovider
     def provide_static_tools(
