@@ -41,7 +41,7 @@ _UNKNOWN = _Rejection(
     instructions="This tool does not exist. Check the tool name and try again.",
     error="Unknown tool '{name}'.",
     log_level=logging.ERROR,
-    log_message="Model requested unknown tool(s) %s",
+    log_message="Model requested unknown tool(s) %s; registered=%s",
 )
 _HIDDEN = _Rejection(
     instructions=(
@@ -128,10 +128,11 @@ class ToolExecutor:
             tool_call_id=tc.id, adopted_stage=adopted.pop(tc.id, None), **args
         )
 
-    @staticmethod
-    def __log_rejections(rejected: dict[_Rejection, set[str]]) -> None:
+    def __log_rejections(self, rejected: dict[_Rejection, set[str]]) -> None:
         for rejection, names in rejected.items():
-            logger.log(rejection.log_level, rejection.log_message, sorted(names))
+            # Registered names help debug a model that invents a tool name.
+            extra = (sorted(self.__tools),) if rejection is _UNKNOWN else ()
+            logger.log(rejection.log_level, rejection.log_message, sorted(names), *extra)
 
     @staticmethod
     async def __rejected_result(tc: AccumulatedToolCall, rejection: _Rejection) -> ToolCallResult:

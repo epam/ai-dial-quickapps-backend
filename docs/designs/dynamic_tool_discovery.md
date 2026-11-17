@@ -436,7 +436,7 @@ made at this step.
 or `_lazy_loaded_tools` state inside `orchestrator.py`. Instead:
 1. `LazyLoadedToolsHolder` is a request-scoped holder (`core/agent/lazy_loaded_tools_holder.py`)
    that `_ToolSearchTool` writes into directly during its own tool-call execution. It is bound by
-   `ToolDiscoveryModule` (see cross-turn persistence below).
+   `AgentModule` and restores and persists its own state (see cross-turn persistence below).
 2. On every subsequent `_ChatCompletionConfigBuilder.build()` call within the same request,
    the builder reads `lazy_loaded_tools_holder.get_all()` and merges those definitions into
    `payload["tools"]`, de-duplicated by function name against the eager tools.
@@ -450,10 +450,10 @@ and calls them with proper schema-based argument generation.
 schema is only sent while it is in `tools`, so a deferred tool discovered in turn 1 would be
 called with guessed arguments in turn 2 if it were dropped. Discovered names therefore stay
 loaded for the rest of the conversation:
-- `ToolDiscoveryModule` binds the holder to `_PersistedToolsHolder`, which mirrors its names
-  into `custom_content.state["discovered_tools"]` through the request's `StateHolder` after every
+- `AgentModule` binds `LazyLoadedToolsHolder`, which mirrors its names into
+  `custom_content.state["discovered_tools"]` through the request's `StateHolder` after every
   change. The orchestrator already sends that state with the final assistant message.
-- The holder reads the key from the latest assistant message (`read_discovered_tool_names`) and
+- The holder reads the key from the latest assistant message and
   restores the schemas in discovery order on first use rather than on construction, because REST
   and internal tools register their deferred definitions while the tool list is being built.
   Names that are no longer deferred (config changed, toolset removed) are dropped, so a forged
