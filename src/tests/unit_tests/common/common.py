@@ -8,11 +8,13 @@ from fastapi_injector import InjectorMiddleware, RequestScopeOptions, attach_inj
 from injector import Binder, Injector, Module, ProviderOf
 
 from quickapp.common import ToolCallResult
+from quickapp.common.state_holder import StateHolder
 from quickapp.config.application import ApplicationConfig, OrchestratorConfig
 from quickapp.config.dial_deployment import DialDeploymentConfig, DialDeploymentParameters
 from quickapp.config.prompt import CustomSystemPromptConfig
 from quickapp.config.tools.base import AttachmentConfig
 from quickapp.config.toolsets.toolset import ToolSet
+from quickapp.core.agent.lazy_loaded_tools_holder import LazyLoadedToolsHolder
 from quickapp.dial_core_services.deployment_names_service import DeploymentNamesCoreService
 from quickapp.dial_core_services.dial_prompt_loader import DialPromptLoader
 from quickapp.shared.user_access import ToolAccessFilter
@@ -158,4 +160,17 @@ def make_resolved_skill(
         content=content,
         files=files,
         reader=reader,
+    )
+
+
+def make_tools_holder(
+    state_holder: StateHolder | None = None,
+    messages: list | None = None,
+    definitions: list | None = None,
+) -> LazyLoadedToolsHolder:
+    """`LazyLoadedToolsHolder` with an empty history and no registered deferred definitions."""
+    return LazyLoadedToolsHolder(
+        state_holder or StateHolder(),
+        messages if messages is not None else [],
+        make_provider(definitions if definitions is not None else []),
     )

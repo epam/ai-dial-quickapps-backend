@@ -31,6 +31,7 @@ from quickapp.shared import shared_module
 from quickapp.skills.dial_prompt.dial_prompt_skills_module import DialPromptSkillsModule
 from quickapp.skills.registry.skills_module import SkillsModule
 from quickapp.starters.starters_module import StartersModule
+from quickapp.tool_discovery.tool_discovery_module import ToolDiscoveryModule
 from tests.integration_tests.test_runner.config import TestConfig
 
 
@@ -88,6 +89,7 @@ class TestApp(FastAPI):
                 DialCoreServicesModule(),
                 FileTransferModule(),
                 AttachmentProcessingModule(),
+                ToolDiscoveryModule(),
                 SkillsModule(),
                 AgentHooksModule(),
                 DialPromptSkillsModule(),
