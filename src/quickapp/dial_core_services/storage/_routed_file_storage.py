@@ -7,7 +7,7 @@ from quickapp.common.project_context import (
     ProjectContext,
     current_project_url,
 )
-from quickapp.dial_core_services.exceptions import ProjectFileOperationException
+from quickapp.dial_core_services.exceptions import FileAccessDeniedError
 from quickapp.dial_core_services.storage._transfer import copy_via_download, move_via_download
 from quickapp.dial_core_services.storage.file_storage import FileStorage, FolderEntry, UploadedFile
 
@@ -18,7 +18,8 @@ class RoutedFileStorage(FileStorage):
     without a project, is refused: QuickApps touches only the request's project (D8).
 
     The only place that decides v1 vs project. A copy or move within one storage uses that
-    storage's own; between the two it downloads and uploads.
+    storage's own; between the two it downloads and uploads. A grant is split between the two,
+    after every URL is routed.
     """
 
     def __init__(
@@ -37,8 +38,7 @@ class RoutedFileStorage(FileStorage):
             return self.__v1, url
         project_url = current_project_url(self.__project, url)
         if project_url is None:
-            # 403, so the file tools report it like Core's own refusal ("access denied").
-            raise ProjectFileOperationException(CURRENT_PROJECT_ONLY_MESSAGE, status_code=403)
+            raise FileAccessDeniedError(CURRENT_PROJECT_ONLY_MESSAGE)
         return self.__project_storage, project_url
 
     async def download(self, url: str) -> tuple[bytes, FileMetadata]:
@@ -94,3 +94,11 @@ class RoutedFileStorage(FileStorage):
             destination_url,
             overwrite=overwrite,
         )
+
+    async def grant_read(self, urls: list[str], receiver: str) -> None:
+        by_storage: dict[FileStorage, list[str]] = {}
+        for url in urls:
+            storage, url = self._route(url)
+            by_storage.setdefault(storage, []).append(url)
+        for storage, storage_urls in by_storage.items():
+            await storage.grant_read(storage_urls, receiver)

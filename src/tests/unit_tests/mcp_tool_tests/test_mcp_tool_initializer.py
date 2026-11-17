@@ -77,7 +77,6 @@ def build_side_effect(tool, tool_config):
         login_service=MagicMock(),
         timeout_resolver=noop_timeout_resolver(),
         dial_settings=MagicMock(url="https://dial.example.com"),
-        home_resolver=MagicMock(),
     )
 
 
@@ -148,7 +147,6 @@ def mcp_tool1(
         login_service=MagicMock(),
         timeout_resolver=noop_timeout_resolver(),
         dial_settings=MagicMock(url="https://dial.example.com"),
-        home_resolver=MagicMock(),
     )
     tool.stage_name_component = "test_toolset: tool1"
     return tool
@@ -178,7 +176,6 @@ def mcp_tool2(
         login_service=MagicMock(),
         timeout_resolver=noop_timeout_resolver(),
         dial_settings=MagicMock(url="https://dial.example.com"),
-        home_resolver=MagicMock(),
     )
     tool.stage_name_component = "test_toolset: tool2"
     return tool
@@ -216,7 +213,6 @@ def builder_mock():
             login_service=MagicMock(),
             timeout_resolver=noop_timeout_resolver(),
             dial_settings=MagicMock(url="https://dial.example.com"),
-            home_resolver=MagicMock(),
         )
 
     m = MagicMock()

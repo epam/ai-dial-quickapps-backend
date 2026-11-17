@@ -57,20 +57,17 @@ class FileTooLargeError(ValueError):
 class ProjectFileOperationException(DialException):
     """A project file operation the storage refuses; the message is meant for the agent."""
 
-    def __init__(self, message: str, status_code: int = 400):
-        super().__init__(message=message, status_code=status_code)
+    def __init__(self, message: str):
+        super().__init__(message=message, status_code=400)
 
 
-class ProjectReadScopeError(DialException):
-    """A read of a project path outside ``context/`` and ``artifacts/``, refused before any Core
-    call. A 403, so generic handlers treat it as access denied; the message is meant for the
-    agent and names what it may read instead."""
+class FileAccessDeniedError(DialException):
+    """A ``FileStorage`` refused a URL itself, before any Core call. A 403, so generic handlers
+    treat it as access denied; ``reason`` is meant for the agent and names what it may use
+    instead."""
 
-    def __init__(self) -> None:
-        super().__init__(
-            message="only the current project's context/ and artifacts/ folders are readable",
-            status_code=403,
-        )
+    def __init__(self, reason: str) -> None:
+        super().__init__(message=reason, status_code=403)
 
 
 class SameSourceAndDestinationException(ProjectFileOperationException):

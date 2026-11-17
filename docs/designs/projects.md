@@ -77,10 +77,9 @@ writes a copy under `artifacts/`.
 ### UC-6: Agent tries to read the project's chats
 
 **Trigger:** The agent lists the project folder, reads a `conversations/…` or `PROJECT.md` URL (a file tool, a
-`file:text::` argument, `copy_file`), or passes one to an MCP `dial_url` parameter or `add_attachment`.
+`file:text::` argument, `copy_file`), or passes one to an MCP `dial_url` parameter.
 **Behavior:** The project folder lists only `context/` and `artifacts/`, without calling Core; `ProjectFileStorage`
-refuses any other project path (`ProjectReadScopeError`, a 403) before calling Core; a URL passed on is refused by
-`resolve_handoff_url`.
+refuses a read, a listing or a grant of any other project path (`FileAccessDeniedError`, a 403) before calling Core.
 **Outcome:** A tool error naming the readable folders. The agent reads only `context/` and `artifacts/` (D10).
 
 ---
@@ -112,7 +111,7 @@ flowchart LR
 | D7 | Permissions come from Core (#1930 resource dependencies). QuickApps never grants itself anything. Phase 1 = static dependencies with admin consent. | The header carries no permission. Core forwards it but grants nothing from it. |
 | D8 | A `projects/…` path is an absolute URL, like `files/…`, in every chat; only URLs of the request's project resolve, any other is rejected. What the agent may read inside the project is D10. | One prefix rule everywhere, no project needed to classify a URL. A `projects/…` string the model meant as a project URL never lands silently in `artifacts/`. Like `files`, a home folder named `projects` is then not reachable by a relative path. Also narrows the phase-1 grant, which opens all of the user's projects, to the current one on QuickApps' side. |
 | D9 | No access → hard fail (UC-4). Projects stay on the shared `ENABLE_PREVIEW_FEATURES` flag; no project-only switch. Environments whose Core lacks C1 keep the flag off (owner: the deployment's config). | A degraded mode would answer without the project and hide the missing grant. Accepted cost: the flag off also disables the other preview features there (tool-result offload, MCP per-tool config). |
-| D10 | Inside the project the agent reads only `context/` and `artifacts/` (`ProjectContext.can_read`). `ProjectFileStorage` is the agent's view: listing the project folder returns only those two, without a request, and any other project path (`PROJECT.md`, `conversations/`) is refused with `ProjectReadScopeError` (a 403, reported to the model with that reason) before any request, whether it exists or not. `PROJECT.md` for the prompt is read through `ProjectFileStorage.read_instructions()`. URLs passed to another service don't reach our storage, so `HomePathResolver.resolve_handoff_url` applies the same rule: MCP `dial_url` grants and `add_attachment` now, deployment attachments and `get_content` in PR4. `files/…` URLs are unaffected. | A project adds two read sources and changes the home; chats and instructions aren't sources. Core grants READ on the whole project, so it won't hide `conversations/`. One rule in the storage that owns project semantics keeps the file tools, `DialFileService` and `FileLoaderService` generic and covers every read, `file:` arguments included. `read_instructions` keeps `PROJECT.md` out of the bytes cache that `file:` arguments read from. |
+| D10 | Inside the project the agent reads only `context/` and `artifacts/` (`ProjectContext.can_read`). `ProjectFileStorage` is the agent's view: listing the project folder returns only those two, without a request, and any other project path (`PROJECT.md`, `conversations/`) is refused with `FileAccessDeniedError` (a 403 of the `FileStorage` contract, reported to the model with the storage's reason) before any request, whether it exists or not. `PROJECT.md` for the prompt is read through `ProjectFileStorage.read_instructions()`. MCP `dial_url` grants go through `FileStorage.grant_read`, so the same storage applies the same rule; v1 grants only `files/…` and skill roots (`skills/…`), another project's URL is refused by the routing (D8 for grants). Deployment attachments and `get_content` still check only D8 (open: they should check through the storage, where they read). `files/…` URLs are unaffected. | A project adds two read sources and changes the home; chats and instructions aren't sources. Core grants READ on the whole project, so it won't hide `conversations/`. One rule in the storage that owns project semantics keeps the file tools, `DialFileService`, `FileLoaderService` and the MCP tool generic and covers every read and grant, `file:` arguments included. `read_instructions` keeps `PROJECT.md` out of the bytes cache that `file:` arguments read from. |
 
 ### Gating
 
@@ -121,7 +120,7 @@ flowchart LR
 | `PROJECT_CONTEXT` | `None` when `ENABLE_PREVIEW_FEATURES` is off |
 | `ProjectModule` (prompt section, preflight) | module filter (`@preview_module`) |
 | `projects/` routing in `RoutedFileStorage`, home = `artifacts/`, output root | `PROJECT_CONTEXT is not None` and the URL is under its root |
-| Read scope: `ProjectFileStorage` view, `resolve_handoff_url` (D10) | `PROJECT_CONTEXT is not None` (outside a project nothing reaches the project storage, and `resolve_handoff_url` rejects every `projects/` URL, as D8 does) |
+| Read scope: `ProjectFileStorage` view and grants (D10) | `PROJECT_CONTEXT is not None` (outside a project `RoutedFileStorage` refuses every `projects/` URL, D8) |
 | `projects/` prefix = absolute (`HomePathResolver.is_absolute`, `classify_url`) | ungated (D8) |
 | File-tool 403 → non-retryable permission error | ungated (a secondary fix, see [Secondary Fixes](#secondary-fixes)) |
 | `x-project-id` to nested apps, MCP and REST API tools | unchanged: the existing `X-*` catch-all, raw header value |
@@ -139,13 +138,13 @@ flowchart LR
 ### Project storage (PR1)
 
 - **What:** file I/O goes through a `FileStorage` interface (`dial_core_services/storage/`): download, upload, delete,
-  list a level, copy, move.
+  list a level, copy, move, grant read to a toolset.
 
   | Class | Role |
   |---|---|
-  | `V1FileStorage` | `files/…` through the v1 API (native conditional upload, copy, move) |
-  | `ProjectFileStorage` | current-project files through a small v2 client (`_project_files.py`), as the agent may read them (D10); `read_instructions` for the prompt; copy/move = download + upload |
-  | `RoutedFileStorage` | the file tools' current-project check: `files/…` → v1, current-project URLs → project storage (canonical), any other `projects/…` URL → refused with a 403, which the file tools report as "access denied"; copy/move between the two = download + upload |
+  | `V1FileStorage` | `files/…` through the v1 API (native conditional upload, copy, move); grants only `files/…` and skill roots (`skills/…`) |
+  | `ProjectFileStorage` | current-project files through a small v2 client (`_project_files.py`), as the agent may read and grant them (D10); `read_instructions` for the prompt; copy/move = download + upload |
+  | `RoutedFileStorage` | the file tools' current-project check: `files/…` → v1, current-project URLs → project storage (canonical), any other `projects/…` URL → refused with `FileAccessDeniedError` (403), which the file tools report as "access denied"; copy/move between the two = download + upload; a grant is split between the two |
 
   DI always returns `RoutedFileStorage`, so a `projects/…` URL is refused outside a project chat too. `DialFileService` (cache, write
   semantics) and `DialDownloader` sit on top and don't know about projects.
@@ -349,8 +348,8 @@ None for non-project chats. Project behaviour is preview-gated and triggered onl
 ### Non-breaking changes
 
 - File tools report Core 403 as a non-retryable permission error, in every chat ([Secondary Fixes](#secondary-fixes)).
-- A `projects/…` URL in an MCP `dial_url` parameter or `add_attachment` is refused outside a project (D8), and inside
-  one unless it is under `context/` or `artifacts/` (D10). Before, it was granted or attached as is.
+- An MCP `dial_url` parameter is granted only for `files/…` URLs and, inside a project, its `context/` and
+  `artifacts/` (D8, D10). Before, any URL was sent to Core's grant as is.
 
 ## Delivery
 
@@ -372,6 +371,6 @@ None for non-project chats. Project behaviour is preview-gated and triggered onl
 | `dial_core_services/` | `_project_files.py` (v2 client); `storage/` (`FileStorage`, v1 and project storages, `RoutedFileStorage` = current-project routing); `PartialMoveException` in `exceptions.py`; `AttachmentService` split into output-root and appdata-root uploads |
 | `shared/home_path/home_path_resolver.py`, `dial_files_tooling/` (`_base_file_tool.py`, write tools), `web_tooling/`, `common/url_classification.py` | `projects/` prefix as absolute; `require_relative`; `DialFilePermissionException` on 403 |
 | `dial_deployment_tooling/_attachment_resolver.py`, `orchestrator_attachment_strategies/lazy_on_demand/` | current-project URLs pass through |
-| `mcp_tooling/_mcp_tool.py`, `representation_tooling/_add_attachment_tool.py` | URLs passed on go through `resolve_handoff_url` (D10) |
+| `mcp_tooling/_mcp_tool.py`, `dial_core_services/dial_file_service.py` | `dial_url` grants through `FileStorage.grant_read`, one per parameter; a storage refusal fails that parameter (D10) |
 | `internal_tooling/py_interpreter_tooling/handlers/display_content_processor.py` | own upload replaced by `AttachmentService.upload_output_bytes` |
 | `docs/README.md`, `CONFIGURATION.md`, `docs/projects.md` | L0–L2 |

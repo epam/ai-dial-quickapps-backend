@@ -43,7 +43,6 @@ def _make_tool() -> _MCPTool:
         login_service=MagicMock(),
         timeout_resolver=noop_timeout_resolver(),
         dial_settings=dial_settings,
-        home_resolver=MagicMock(),
     )
 
 

@@ -8,7 +8,7 @@ from injector import inject
 
 from quickapp.common.state_holder import StateHolder
 from quickapp.common.url_sanitization import sanitize_url
-from quickapp.dial_core_services.exceptions import ProjectReadScopeError
+from quickapp.dial_core_services.exceptions import FileAccessDeniedError
 from quickapp.dial_core_services.storage.file_storage import FileStorage, FolderEntry, UploadedFile
 
 logger = logging.getLogger(__name__)
@@ -42,9 +42,8 @@ class DialFileService:
             logger.debug("Downloading file: %s", safe_url)
             file_data, metadata = await self.__storage.download(file_url)
             self.__state_holder.store_file_data(file_url, file_data, metadata)
-        except ProjectReadScopeError:
-            # Expected: the agent asked for a project path it may not read; not a failure.
-            logger.info("Download refused outside the project's readable folders: %s", safe_url)
+        except FileAccessDeniedError:
+            # Expected: the storage refused a URL the agent may not read; not a failure.
             raise
         except Exception as e:
             logger.error("Failed to download: %s", safe_url, exc_info=True)
@@ -159,10 +158,9 @@ class DialFileService:
                 "Granting permissions to files: %s",
                 [sanitize_url(f) for f in files_to_share],
             )
-            await self.__dial_client.resource_permissions.grant(
-                resources=files_to_share,
-                receiver=dial_toolset_id,
-            )
+            await self.__storage.grant_read(files_to_share, dial_toolset_id)
+        except FileAccessDeniedError:
+            raise
         except Exception as e:
             logger.error(
                 "Failed to grant permissions to the files %s", files_to_share, exc_info=True

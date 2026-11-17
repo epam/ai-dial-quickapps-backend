@@ -22,10 +22,9 @@ class FolderEntry(BaseModel):
 class FileStorage(ABC):
     """File I/O against one DIAL storage API, by relative URL.
 
-    No caching and no write policy: ``DialFileService`` owns those. The project storage also
-    narrows a project to what the agent may read (see ``ProjectFileStorage``). Errors are
-    aidial-client's typed exceptions (``ResourceNotFoundError``, ``EtagMismatchError``,
-    ``DialException``) and ``FileTooLargeError``.
+    No caching and no write policy: ``DialFileService`` owns those. Errors are aidial-client's
+    typed exceptions (``ResourceNotFoundError``, ``EtagMismatchError``, ``DialException``),
+    ``FileTooLargeError``, and ``FileAccessDeniedError`` when the storage refuses a URL itself.
     """
 
     @abstractmethod
@@ -58,6 +57,10 @@ class FileStorage(ABC):
 
     @abstractmethod
     async def move(self, source_url: str, destination_url: str, overwrite: bool) -> None: ...
+
+    @abstractmethod
+    async def grant_read(self, urls: list[str], receiver: str) -> None:
+        """Let ``receiver`` (a toolset) read ``urls`` for the current request."""
 
 
 def ensure_within_size_limit(size: int, limit: int) -> None:
