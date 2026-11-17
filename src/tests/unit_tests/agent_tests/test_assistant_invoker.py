@@ -12,8 +12,8 @@ from quickapp.core.agent import AssistantInvoker
 from quickapp.core.agent._chat_completion_config_builder import _ChatCompletionConfigBuilder
 from quickapp.core.agent._prompt_cache_breakpoints import _PromptCacheBreakpoints
 from quickapp.core.agent._tool_choice_holder import _ToolChoiceHolder
-from quickapp.core.agent.lazy_loaded_tools_holder import LazyLoadedToolsHolder
 from quickapp.core.agent.orchestrator_capabilities import OrchestratorCapabilities
+from tests.unit_tests.common.common import make_tools_holder
 
 
 def _presentation_settings(show_usage: bool):
@@ -73,7 +73,7 @@ def _make_config_builder(
         pre_invocation_transformers=[mock_filter],
         presentation_settings=_presentation_settings(show_usage),
         forwarded_headers=forwarded_headers,
-        lazy_loaded_tools_holder=LazyLoadedToolsHolder(),
+        lazy_loaded_tools_holder=make_tools_holder(),
         capabilities=OrchestratorCapabilities(
             deployment=SimpleNamespace(  # type: ignore[arg-type]
                 id="test-model", features=SimpleNamespace(reasoning_efforts=[], cache=None)

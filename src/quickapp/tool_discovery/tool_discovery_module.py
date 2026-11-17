@@ -5,10 +5,12 @@ from injector import AssistedBuilder, Binder, Module, multiprovider, provider
 
 from quickapp.common import StagedBaseTool
 from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
+from quickapp.common.abstract.base_transformer import PreInvocationTransformer
 from quickapp.common.deferred_tool_types import DeferredToolCatalogEntry, DeferredToolsetSummary
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.tool_discovery import HierarchySearchStrategyConfig, WindowSearchStrategyConfig
 from quickapp.tool_discovery._anonymous_agent import _AnonymousAgent
+from quickapp.tool_discovery._discovered_tools_state_stripper import _DiscoveredToolsStateStripper
 from quickapp.tool_discovery._tool_configs import TOOL_SEARCH_TOOL_CONFIG
 from quickapp.tool_discovery._tool_search_hint_prompt_provider import _ToolSearchHintPromptProvider
 from quickapp.tool_discovery._tool_search_stage_wrapper import _ToolSearchStageWrapper
@@ -29,6 +31,7 @@ class ToolDiscoveryModule(Module):
         binder.bind(_AnonymousAgent, to=_AnonymousAgent, scope=request_scope)
         binder.bind(_ToolSearchTool, to=_ToolSearchTool, scope=request_scope)
         binder.bind(_ToolSearchStageWrapper, to=_ToolSearchStageWrapper)
+        binder.bind(_DiscoveredToolsStateStripper, to=_DiscoveredToolsStateStripper)
         binder.bind(
             _ToolSearchHintPromptProvider, to=_ToolSearchHintPromptProvider, scope=request_scope
         )
@@ -38,6 +41,12 @@ class ToolDiscoveryModule(Module):
         return bool(
             config.orchestrator.tool_discovery and config.orchestrator.tool_discovery.enabled
         )
+
+    @multiprovider
+    def _provide_pre_invocation_transformers(
+        self, stripper: _DiscoveredToolsStateStripper
+    ) -> list[PreInvocationTransformer]:
+        return [stripper]
 
     @provider
     def _provide_search_strategy(
