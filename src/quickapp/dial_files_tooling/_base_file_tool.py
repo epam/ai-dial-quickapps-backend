@@ -15,7 +15,7 @@ from quickapp.config.application import StageDisplayLevel
 from quickapp.config.dial_files import DialFilesConfig
 from quickapp.config.tools.internal import InternalTool
 from quickapp.dial_core_services.dial_file_service import DialFileService
-from quickapp.dial_core_services.exceptions import ProjectReadScopeError
+from quickapp.dial_core_services.exceptions import FileAccessDeniedError
 from quickapp.dial_core_services.storage.file_storage import FolderEntry
 from quickapp.dial_files_tooling._dial_files_tool_error_exception import DialFilesToolErrorException
 from quickapp.dial_files_tooling._exceptions import DialFilePermissionException
@@ -151,7 +151,7 @@ class _DialFileTool(StagedBaseTool, ABC):
     def _check_permission_denied(exc: DialException, url: str) -> None:
         """Raise a non-retryable ``DialFilePermissionException`` for a 403, with the storage's
         reason when the storage refused the read itself."""
-        if isinstance(exc, ProjectReadScopeError):
+        if isinstance(exc, FileAccessDeniedError):
             raise DialFilePermissionException(url, exc.message) from exc
         if exc.status_code == 403:
             raise DialFilePermissionException(url) from exc

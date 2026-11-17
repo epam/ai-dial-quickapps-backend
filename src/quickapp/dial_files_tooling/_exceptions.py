@@ -1,6 +1,6 @@
 class DialFilePermissionException(Exception):
     """A file operation was refused with 403: by DIAL Core, because the app lacks the
-    permission, or by the storage itself, with a reason of its own (``ProjectReadScopeError``).
+    permission, or by the storage itself, with a reason of its own (``FileAccessDeniedError``).
 
     Not an invalid parameter: the same path won't work on a retry. Goes through the tool's
     fallback strategies, not the "try to call the tool again" retry path.

@@ -12,11 +12,11 @@ from quickapp.common.state_holder import StateHolder
 from quickapp.dial_core_services._project_files import ProjectFilesClient, ProjectItem
 from quickapp.dial_core_services.dial_file_service import DialFileService
 from quickapp.dial_core_services.exceptions import (
+    FileAccessDeniedError,
     FileTooLargeError,
     PartialMoveException,
     ProjectFileOperationException,
     ProjectFileTooLargeException,
-    ProjectReadScopeError,
     SameSourceAndDestinationException,
 )
 from quickapp.dial_core_services.storage._project_file_storage import ProjectFileStorage
@@ -77,7 +77,9 @@ def _make_service(
     storage: FileStorage = (
         v1
         if project is None
-        else RoutedFileStorage(v1, ProjectFileStorage(project_files, resolver, project), project)
+        else RoutedFileStorage(
+            v1, ProjectFileStorage(dial_client, project_files, resolver, project), project
+        )
     )
     return DialFileService(
         dial_client=dial_client,
@@ -153,11 +155,25 @@ class TestReadsAndListing:
         project_files = _make_project_files()
         svc = _make_service(project_files)
 
-        with caplog.at_level(logging.INFO), pytest.raises(ProjectReadScopeError):
+        with caplog.at_level(logging.INFO), pytest.raises(FileAccessDeniedError):
             await svc.download_file("projects/b/p/files/conversations/chat.json")
 
         assert not [record for record in caplog.records if record.levelno >= logging.WARNING]
         project_files.stream.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_grant_goes_through_the_storage_and_a_refusal_is_not_an_error(self, caplog):
+        dial_client = _make_dial_client()
+        dial_client.resource_permissions.grant = AsyncMock()
+        svc = _make_service(_make_project_files(), dial_client=dial_client)
+
+        with caplog.at_level(logging.INFO), pytest.raises(FileAccessDeniedError):
+            await svc.grant_permissions_to_files(
+                ["projects/b/p/files/conversations/chat.json"], "toolset"
+            )
+
+        assert not [record for record in caplog.records if record.levelno >= logging.WARNING]
+        dial_client.resource_permissions.grant.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_delete_goes_to_v2(self):

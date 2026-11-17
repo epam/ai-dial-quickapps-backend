@@ -30,12 +30,12 @@ from quickapp.dial_core_services._interactive_login_service import InteractiveLo
 from quickapp.dial_core_services._login_result import LoginResult
 from quickapp.dial_core_services.attachment_service import AttachmentService
 from quickapp.dial_core_services.dial_file_service import DialFileService
+from quickapp.dial_core_services.exceptions import FileAccessDeniedError
 from quickapp.mcp_tooling._mcp_stage_wrapper import _MCPStageWrapper
 from quickapp.mcp_tooling._mcp_tool_error_exception import MCPToolErrorException
 from quickapp.mcp_tooling._mcp_toolset_client import _MCPToolsetClient
 from quickapp.mcp_tooling._mcp_unauthorized_exception import MCPUnauthorizedException
 from quickapp.shared.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
-from quickapp.shared.home_path.home_path_resolver import HomePathResolver
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +62,6 @@ class _MCPTool(StagedBaseTool):
         login_service: InteractiveLoginService,
         timeout_resolver: ToolTimeoutResolver,
         dial_settings: DialSettings,
-        home_resolver: HomePathResolver,
         stage_display_level: StageDisplayLevel = StageDisplayLevel.INFO,
         argument_transformers: list[ToolArgumentTransformer] | None = None,
         fixed_arguments: dict[str, Any] | None = None,
@@ -87,7 +86,6 @@ class _MCPTool(StagedBaseTool):
         self.__login_service: InteractiveLoginService = login_service
         self.__timeout_resolver: ToolTimeoutResolver = timeout_resolver
         self.__dial_url: str = dial_settings.url
-        self.__home_resolver: HomePathResolver = home_resolver
         self.__fixed_arguments: dict[str, Any] = fixed_arguments or {}
 
     async def _pre_process_params(self, **kwargs: Any) -> dict[str, Any]:
@@ -95,8 +93,8 @@ class _MCPTool(StagedBaseTool):
         kwargs = await super()._pre_process_params(**{**kwargs, **self.__fixed_arguments})
 
         # Grant permissions for dial_url-flagged parameters (MCP-specific)
-        files_to_share = self._collect_dial_url_files(kwargs)
-        if files_to_share:
+        files_by_parameter = self._collect_dial_url_files(kwargs)
+        if files_by_parameter:
             if not self.__dial_toolset_id:
                 logger.error(
                     "Files with dial_url flag detected but dial_toolset_id is not set.",
@@ -105,64 +103,66 @@ class _MCPTool(StagedBaseTool):
                     parameter_name="file_url",
                     message="Files cannot be shared because dial_toolset_id is not configured.",
                 )
-            await self.__file_service.grant_permissions_to_files(
-                files_to_share, self.__dial_toolset_id
-            )
+            # One grant per parameter, so a refusal names the parameter it came from.
+            for key, files_to_share in files_by_parameter.items():
+                try:
+                    await self.__file_service.grant_permissions_to_files(
+                        files_to_share, self.__dial_toolset_id
+                    )
+                except FileAccessDeniedError as e:
+                    raise InvalidToolCallParameterException(
+                        parameter_name=key,
+                        message=f"Parameter `{key}` cannot be shared: {e.message}.",
+                    ) from e
 
         return kwargs
 
     def _stage_parameters(self, params: dict[str, Any]) -> dict[str, Any]:
         return {k: v for k, v in params.items() if k not in self.__fixed_arguments}
 
-    def _collect_dial_url_files(self, kwargs: dict[str, Any]) -> list[str]:
-        """Collect the values of ``dial_url``-flagged parameters as DIAL file paths.
+    def _collect_dial_url_files(self, kwargs: dict[str, Any]) -> dict[str, list[str]]:
+        """Collect the values of ``dial_url``-flagged parameters as DIAL file paths, by
+        parameter name.
 
         External or unsupported URLs are rejected with a parameter-aware
         ``InvalidToolCallParameterException`` — ``dial_url`` parameters require a
-        DIAL file because permission-grant has no meaning for external resources. A
-        ``projects/...`` URL must be under the current project's ``context/`` or
-        ``artifacts/`` (``HomePathResolver.resolve_handoff_url``). Each value in ``kwargs``
-        is replaced by the URL the grant names, so the toolset reads that same URL.
+        DIAL file because permission-grant has no meaning for external resources.
         """
         properties = self.__tool.inputSchema.get("properties", {})
-        files_to_share: list[str] = []
+        files_by_parameter: dict[str, list[str]] = {}
         for key, value in kwargs.items():
             if not properties.get(key, {}).get("dial_url"):
                 continue
+            candidates: list[str] = []
             if isinstance(value, str):
-                kwargs[key] = self.__resolve_dial_url(key, value)
-                files_to_share.append(kwargs[key])
+                candidates.append(value)
             elif isinstance(value, list):
-                kwargs[key] = [
-                    self.__resolve_dial_url(key, elem) if isinstance(elem, str) else elem
-                    for elem in value
-                ]
-                files_to_share.extend(elem for elem in kwargs[key] if isinstance(elem, str))
-        return files_to_share
-
-    def __resolve_dial_url(self, key: str, candidate: str) -> str:
-        scheme = classify_url(candidate, self.__dial_url)
-        if scheme == UrlScheme.EXTERNAL:
-            raise InvalidToolCallParameterException(
-                parameter_name=key,
-                message=(
-                    f"Parameter `{key}` requires a DIAL file but received an "
-                    "external URL. Use `file:data::` or `file:base64::` / "
-                    "`file:text::` to "
-                    "inline the content, or upload the file to DIAL first."
-                ),
-            )
-        # TODO(#445): resolve appdir-relative paths via HomePathResolver
-        #  instead of rejecting them.
-        if scheme in (UrlScheme.UNSUPPORTED, UrlScheme.DIAL_APPDIR_RELATIVE):
-            raise InvalidToolCallParameterException(
-                parameter_name=key,
-                message=(
-                    f"Parameter `{key}` requires a DIAL file but received an "
-                    f"unsupported URL: {sanitize_url(candidate)}."
-                ),
-            )
-        return self.__home_resolver.resolve_handoff_url(key, candidate)
+                candidates.extend(elem for elem in value if isinstance(elem, str))
+            for candidate in candidates:
+                scheme = classify_url(candidate, self.__dial_url)
+                if scheme == UrlScheme.EXTERNAL:
+                    raise InvalidToolCallParameterException(
+                        parameter_name=key,
+                        message=(
+                            f"Parameter `{key}` requires a DIAL file but received an "
+                            "external URL. Use `file:data::` or `file:base64::` / "
+                            "`file:text::` to "
+                            "inline the content, or upload the file to DIAL first."
+                        ),
+                    )
+                # TODO(#445): resolve appdir-relative paths via HomePathResolver
+                #  instead of rejecting them.
+                if scheme in (UrlScheme.UNSUPPORTED, UrlScheme.DIAL_APPDIR_RELATIVE):
+                    raise InvalidToolCallParameterException(
+                        parameter_name=key,
+                        message=(
+                            f"Parameter `{key}` requires a DIAL file but received an "
+                            f"unsupported URL: {sanitize_url(candidate)}."
+                        ),
+                    )
+            if candidates:
+                files_by_parameter[key] = candidates
+        return files_by_parameter
 
     def _resource_title(self, resource: Any) -> str:
         """Use the filename the MCP server put in ``resource.uri``, when it has one."""

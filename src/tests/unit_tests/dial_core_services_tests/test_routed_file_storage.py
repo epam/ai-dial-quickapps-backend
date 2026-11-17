@@ -28,6 +28,7 @@ def _make_storage(data: bytes = b"data", content_type: str = "text/plain") -> Ma
     storage.list_level = AsyncMock(return_value=[])
     storage.copy = AsyncMock()
     storage.move = AsyncMock()
+    storage.grant_read = AsyncMock()
     return storage
 
 
@@ -145,3 +146,27 @@ class TestCopyAndMove:
             )
         storage.download.assert_not_awaited()
         storage.upload.assert_not_awaited()
+
+
+class TestGrantRead:
+    @pytest.mark.asyncio
+    async def test_each_storage_grants_its_own_urls_in_one_call(self):
+        v1, project = _make_storage(), _make_storage()
+        context_file = "projects/b/p/files/context/a.csv"
+        other_project_file = "projects/b/other/files/x.md"
+
+        await _make_router(v1, project).grant_read(
+            [PROJECT_FILE, V1_FILE, context_file, other_project_file], "toolset"
+        )
+
+        project.grant_read.assert_awaited_once_with([PROJECT_FILE, context_file], "toolset")
+        v1.grant_read.assert_awaited_once_with([V1_FILE, other_project_file], "toolset")
+
+    @pytest.mark.asyncio
+    async def test_a_storage_without_urls_is_not_called(self):
+        v1, project = _make_storage(), _make_storage()
+
+        await _make_router(v1, project).grant_read([V1_FILE], "toolset")
+
+        v1.grant_read.assert_awaited_once_with([V1_FILE], "toolset")
+        project.grant_read.assert_not_awaited()

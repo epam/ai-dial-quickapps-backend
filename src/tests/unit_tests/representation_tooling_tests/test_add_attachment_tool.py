@@ -4,29 +4,20 @@ import pytest
 
 from quickapp.common.chat_completion_stream.adopted_tool_stage import AdoptedToolStage
 from quickapp.common.exceptions import InvalidToolCallParameterException
-from quickapp.common.project_context import ProjectContext
 from quickapp.config.application import StageDisplayLevel
-from quickapp.config.dial_files import DialFilesConfig
 from quickapp.representation_tooling._add_attachment_stage_wrapper import _AddAttachmentStageWrapper
 from quickapp.representation_tooling._add_attachment_tool import _AddAttachmentTool
 from quickapp.representation_tooling._add_attachment_tool_config import ADD_ATTACHMENT_TOOL_CONFIG
-from quickapp.shared.home_path.home_path_resolver import HomePathResolver
-
-_PROJECT = ProjectContext(url="projects/b/My Project")
 
 
 def _build_tool(
     stage_wrapper_builder: MagicMock | None = None,
     stage_display_level: StageDisplayLevel = StageDisplayLevel.INFO,
-    project: ProjectContext | None = None,
 ) -> _AddAttachmentTool:
     return _AddAttachmentTool(
         stage_wrapper_builder=stage_wrapper_builder or MagicMock(),
         tool_config=ADD_ATTACHMENT_TOOL_CONFIG,
         perf_timer=MagicMock(),
-        home_resolver=HomePathResolver(
-            dial_file_service=MagicMock(), dial_files_config=DialFilesConfig(), project=project
-        ),
         stage_display_level=stage_display_level,
     )
 
@@ -44,36 +35,6 @@ class TestAddAttachmentTool:
         assert attachment.url == "files/bucket/path/report.csv"
         assert attachment.title == "Report.csv"
         assert attachment.type == "text/csv"
-
-    @pytest.mark.parametrize(
-        "url",
-        [
-            "projects/b/My Project/files/conversations/chat.json",
-            "projects/b/My Project/files/PROJECT.md",
-            "projects/b/Other/files/artifacts/a.md",
-        ],
-    )
-    @pytest.mark.asyncio
-    async def test_project_file_outside_context_and_artifacts_is_not_attached(self, url):
-        tool = _build_tool(project=_PROJECT)
-
-        with pytest.raises(InvalidToolCallParameterException) as excinfo:
-            await tool._run_in_stage_async(stage_wrapper=None, url=url, type="text/plain")
-
-        assert excinfo.value.parameter_name == "url"
-        assert "context/ or artifacts/" in excinfo.value.message
-
-    @pytest.mark.asyncio
-    async def test_project_artifact_is_attached_in_canonical_form(self):
-        tool = _build_tool(project=_PROJECT)
-
-        result = await tool._run_in_stage_async(
-            stage_wrapper=None, url="projects/b/My Project/files/artifacts/report.csv"
-        )
-
-        assert result.propagate_to_choice[0].url == (
-            "projects/b/My%20Project/files/artifacts/report.csv"
-        )
 
     @pytest.mark.asyncio
     async def test_propagates_attachment_to_choice_only(self):

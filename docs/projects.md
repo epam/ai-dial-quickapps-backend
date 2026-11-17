@@ -44,7 +44,7 @@ A project lives under Core's `projects/{bucket}/{path}/files/`:
    shows just those two; reading or listing any other project path (`PROJECT.md`, `conversations/`), directly, by a
    `file:text::` / `file:base64::` / `file:data::` argument or as a `copy_file` source, is refused ("access denied";
    only the project's `context/` and `artifacts/` folders are readable) without calling Core. A project URL in an MCP
-   `dial_url` parameter or in `add_attachment` is accepted only under those two folders.
+   `dial_url` parameter is granted only under those two folders.
 6. **Read-only files.** Write-side tools (`write_file`, `edit_file`, `delete_file`, the `move_file` source,
    `copy_file` / `move_file` destinations, `web_fetch` `save_path`) accept relative paths only, so they never write
    outside `artifacts/`. Given any `files/...` or `projects/...` URL, they ask for a relative path.

@@ -11,7 +11,6 @@ from quickapp.config.application import StageDisplayLevel
 from quickapp.config.tools.internal import InternalTool
 from quickapp.representation_tooling._add_attachment_stage_wrapper import _AddAttachmentStageWrapper
 from quickapp.representation_tooling._attachment_resolution import build_attachment
-from quickapp.shared.home_path.home_path_resolver import HomePathResolver
 
 # Neutral status returned to the LLM after a successful call. Deliberately does not echo the
 # file name/path (nothing to parrot back); guidance on not restating the attachment lives in
@@ -27,7 +26,6 @@ class _AddAttachmentTool(StagedBaseTool):
         stage_wrapper_builder: AssistedBuilder[_AddAttachmentStageWrapper],
         tool_config: InternalTool,
         perf_timer: PerformanceTimer,
-        home_resolver: HomePathResolver,
         stage_display_level: StageDisplayLevel = StageDisplayLevel.INFO,
         argument_transformers: list[ToolArgumentTransformer] | None = None,
         **kwargs: Any,
@@ -40,7 +38,6 @@ class _AddAttachmentTool(StagedBaseTool):
             argument_transformers=argument_transformers,
             **kwargs,
         )
-        self.__home_resolver = home_resolver
 
     async def _run_in_stage_async(
         self,
@@ -51,10 +48,7 @@ class _AddAttachmentTool(StagedBaseTool):
     ) -> ToolCallResult:
         if "url" not in kwargs:
             raise InvalidToolCallParameterException("url", "url is required")
-        # The attachment stays in the conversation, where later turns read it outside the
-        # project view.
-        url = self.__home_resolver.resolve_handoff_url("url", kwargs["url"])
-        attachment = build_attachment(url, kwargs.get("title"), kwargs.get("type"))
+        attachment = build_attachment(kwargs["url"], kwargs.get("title"), kwargs.get("type"))
 
         result = ToolCallResult(
             content=_TOOL_RESULT_CONTENT,

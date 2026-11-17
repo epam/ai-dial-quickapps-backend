@@ -1,7 +1,7 @@
 from typing import Literal
 
 import httpx
-from aidial_client import EtagMismatchError
+from aidial_client import AsyncDial, EtagMismatchError
 from aidial_client.types.file import FileDownloadResponse
 from aidial_client.types.metadata import FileMetadata
 from injector import inject
@@ -9,7 +9,7 @@ from injector import inject
 from quickapp.common.project_context import PROJECT_CONTEXT
 from quickapp.common.utils import canonical_url
 from quickapp.dial_core_services._project_files import ProjectFilesClient, project_file_metadata
-from quickapp.dial_core_services.exceptions import ProjectReadScopeError
+from quickapp.dial_core_services.exceptions import FileAccessDeniedError
 from quickapp.dial_core_services.storage._transfer import copy_via_download, move_via_download
 from quickapp.dial_core_services.storage.file_storage import (
     FileStorage,
@@ -28,9 +28,9 @@ class ProjectFileStorage(FileStorage):
     project API, as the agent sees them.
 
     The agent reads only ``context/`` and ``artifacts/`` (``ProjectContext.can_read``):
-    listing the project folder returns just those, without a request, and reading or listing
-    any other path of the project (``PROJECT.md``, ``conversations/``) raises
-    ``ProjectReadScopeError`` (a 403) before any request, whether the path exists or not.
+    listing the project folder returns just those, without a request, and reading, listing
+    or granting any other path of the project (``PROJECT.md``, ``conversations/``) raises
+    ``FileAccessDeniedError`` before any request, whether the path exists or not.
     ``read_instructions`` is the one read outside that view, for the system prompt. Writes
     aren't checked here: the agent writes only under its home
     (``HomePathResolver.resolve_write_url``).
@@ -38,10 +38,12 @@ class ProjectFileStorage(FileStorage):
 
     def __init__(
         self,
+        dial_client: AsyncDial,
         project_files: ProjectFilesClient,
         size_limit_resolver: FileLoadingSizeLimitResolver,
         project: PROJECT_CONTEXT,
     ) -> None:
+        self.__dial_client: AsyncDial = dial_client
         self.__project_files: ProjectFilesClient = project_files
         self.__size_limit: int = size_limit_resolver.resolve()
         self.__project: PROJECT_CONTEXT = project
@@ -62,7 +64,9 @@ class ProjectFileStorage(FileStorage):
 
     def __ensure_readable(self, url: str) -> None:
         if self.__project is None or not self.__project.can_read(url):
-            raise ProjectReadScopeError()
+            raise FileAccessDeniedError(
+                "only the current project's context/ and artifacts/ folders are readable"
+            )
 
     async def upload(
         self,
@@ -116,6 +120,15 @@ class ProjectFileStorage(FileStorage):
 
     async def move(self, source_url: str, destination_url: str, overwrite: bool) -> None:
         await move_via_download(self, source_url, self, destination_url, overwrite=overwrite)
+
+    async def grant_read(self, urls: list[str], receiver: str) -> None:
+        """The receiver reads with its own grant, not through this view, so only readable URLs
+        are granted, in canonical form. Core's per-request grant takes any resource URL."""
+        for url in urls:
+            self.__ensure_readable(url)
+        await self.__dial_client.resource_permissions.grant(
+            resources=[canonical_url(url) for url in urls], receiver=receiver
+        )
 
 
 async def read_within_size_limit(
