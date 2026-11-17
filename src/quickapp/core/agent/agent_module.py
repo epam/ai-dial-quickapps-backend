@@ -31,6 +31,7 @@ from quickapp.common.model_hidden_tool import ModelHiddenTool
 from quickapp.common.request_async_close_registry import RequestAsyncCloseRegistry
 from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
 from quickapp.common.state_holder import StateHolder
+from quickapp.common.tool_allowlist import ToolAllowlist
 from quickapp.config.agent_settings import AgentSettings
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.tool_result_limit import ToolResultLimitSettings
@@ -207,10 +208,11 @@ class AgentModule(Module):
         tools: list[StagedBaseTool],
         static_tools: list[StaticTool],
         deferred_tool_names: list[DeferredToolName],
+        allowlist: ToolAllowlist,
     ) -> list[OpenAiToolConfigDict]:
         deferred_names = frozenset(deferred_tool_names)
         openai_functions = []
-        for tool in tools:
+        for tool in allowlist.filter_tools(tools):
             if isinstance(tool.tool_config, BaseOpenAITool):
                 open_ai_tool: OpenAiToolConfig = tool.tool_config.open_ai_tool
                 if open_ai_tool.function.name in deferred_names:
@@ -220,7 +222,7 @@ class AgentModule(Module):
                     open_ai_tool = self._append_default_props(open_ai_tool)
                 open_ai_tool = tool.enrich_openai_tool_schema(open_ai_tool)
                 openai_functions.append(open_ai_tool.model_dump(mode="json", exclude_none=True))
-        for default_tool in static_tools:
+        for default_tool in allowlist.filter_static(static_tools):
             openai_functions.append(default_tool.model_dump(mode="json", exclude_none=True))
         return openai_functions
 

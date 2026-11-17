@@ -14,6 +14,7 @@ from quickapp.common.chat_completion_stream.stage_wrapper_ui_stream_sink import 
 from quickapp.common.chat_completion_stream.stream_result import ChatStreamAccumulator
 from quickapp.common.chat_completion_stream.stream_sink import ChatStreamSink
 from quickapp.common.staged_base_tool import StagedBaseTool
+from quickapp.common.tool_allowlist import ToolAllowlist
 
 if TYPE_CHECKING:
     from quickapp.common.chat_completion_stream.handler import ChatStreamConfig
@@ -65,8 +66,12 @@ class ChatStreamSinkFactory:
     """
 
     @inject
-    def __init__(self, tools: ProviderOf[list[StagedBaseTool]]) -> None:
-        self._tools: Callable[[], list[StagedBaseTool]] = tools.get
+    def __init__(
+        self, tools: ProviderOf[list[StagedBaseTool]], allowlist: ProviderOf[ToolAllowlist]
+    ) -> None:
+        self._tools: Callable[[], list[StagedBaseTool]] = lambda: allowlist.get().filter_tools(
+            tools.get()
+        )
 
     @classmethod
     def with_defaults(cls, tools: list[StagedBaseTool] | None = None) -> "ChatStreamSinkFactory":

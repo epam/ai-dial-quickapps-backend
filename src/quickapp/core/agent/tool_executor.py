@@ -15,6 +15,7 @@ from quickapp.common.chat_completion_stream.tool_call import AccumulatedToolCall
 from quickapp.common.model_hidden_tool import ModelHiddenTool
 from quickapp.common.payload_logging import log_payload
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
+from quickapp.common.tool_allowlist import ToolAllowlist
 from quickapp.common.tool_fallback.processor import FallbackProcessor
 from quickapp.config.tools.tool_fallback import ContinueStrategyModel
 
@@ -31,8 +32,12 @@ class ToolExecutor:
         enrichers: list[ToolCallResultEnricher],
         perf_timer: PerformanceTimer,
         processors: list[ToolCallResultProcessor],
+        allowlist: ToolAllowlist,
     ):
-        self.__tools: dict[str, StagedBaseTool] = self.__build_tool_dict(tools)
+        # A tool outside a delegated task's allowlist falls through to the unknown-tool result.
+        self.__tools: dict[str, StagedBaseTool] = self.__build_tool_dict(
+            allowlist.filter_tools(tools)
+        )
         self.__model_hidden_names: frozenset[str] = frozenset(
             self.__build_tool_dict(model_hidden_tools)
         )

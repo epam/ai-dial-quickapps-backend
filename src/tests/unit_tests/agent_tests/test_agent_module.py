@@ -5,6 +5,7 @@ from aidial_sdk.chat_completion.request import Function, StaticFunction, StaticT
 from aidial_sdk.exceptions import InvalidRequestError
 from pydantic import SecretStr
 
+from quickapp.common.tool_allowlist import ToolAllowlist
 from quickapp.config.tools.internal import InternalTool
 from quickapp.core.agent.agent_module import AgentModule
 
@@ -149,3 +150,45 @@ def test_provide_extra_openai_tools_raises_on_name_collision_with_model_hidden_t
 
 def test_provide_model_hidden_tools_defaults_to_empty():
     assert AgentModule().provide_model_hidden_tools() == []
+
+
+def _openai_tool(name: str) -> MagicMock:
+    tool = MagicMock()
+    tool.tool_config = InternalTool(
+        open_ai_tool={
+            "function": {
+                "name": name,
+                "description": "d",
+                "parameters": {"type": "object", "properties": {}},
+            }
+        }
+    )
+    tool.openai_function_name.return_value = name
+    tool.enrich_openai_tool_schema.side_effect = lambda t: t
+    return tool
+
+
+@pytest.mark.parametrize(
+    "allowlist, expected",
+    [
+        (ToolAllowlist(), ["a", "b", "s1", "s2"]),
+        (ToolAllowlist(names=frozenset({"a", "s2"})), ["a", "s2"]),
+    ],
+)
+def test_provide_openai_tools_respects_the_allowlist(allowlist, expected):
+    statics = [
+        StaticTool(type="static_function", static_function=StaticFunction(name=name))
+        for name in ("s1", "s2")
+    ]
+
+    result = AgentModule().provide_openai_tools(
+        tools=[_openai_tool("a"), _openai_tool("b")],
+        static_tools=statics,
+        deferred_tool_names=[],
+        allowlist=allowlist,
+    )
+
+    names = [
+        t["function"]["name"] if "function" in t else t["static_function"]["name"] for t in result
+    ]
+    assert names == expected

@@ -59,6 +59,11 @@ silently ignored. A system message without text overrides nothing and is accepte
 
 ### 3. Context Setup
 
+`_QuickAppCompletion` turns the SDK request into a `CompletionInputs` value (`CompletionInputs.from_request`
+is the only reader of the SDK request) and hands it to `CompletionRunner`, which owns steps 3–7 for every
+run in the current request scope. The task runner (`task_tooling/`) feeds the same runner, so a delegated
+task gets the same config resolution and initialization checks.
+
 A request-scoped context is created to hold:
 
 - API key and bearer token for authentication
@@ -134,8 +139,8 @@ request did during an incident without raising verbosity or exposing conversatio
 
 | Event | Owner |
 |---|---|
-| `Request received` (deployment, message/attachment counts) | `_QuickAppCompletion` |
-| `Request initialized` (tool counts per type, skills, contexts) | `_QuickAppCompletion` |
+| `Request received` (deployment, message/attachment counts) | `CompletionRunner` |
+| `Request initialized` (tool counts per type, skills, contexts) | `CompletionRunner` |
 | `Interactive login requested` / `resolved` (toolsets, per-toolset outcome, duration) | `InteractiveLoginService` |
 | `Model call completed` (iteration, deployment, duration, finish, requested tools, token usage) | `Orchestrator` |
 | `Tool call completed` (tool, tool_call_id, duration, outcome) | `StagedBaseTool` |
@@ -317,6 +322,7 @@ Quick Apps supports several tool types:
 - **Internal Tools**: Built-in tools such as the Python interpreter and other configured internal tools. Admin-context
   tools (`internal_attachments_available_context`, and when gated `internal_attachments_get_content`) are registered
   conditionally (see [Attachment Notification](#attachment-notification)).
+- **Run task tool** (`internal_run_task`, preview): runs a delegated task in-process (see [Run Task](#run-task)).
 
 ### Tool Access Filter
 
@@ -416,6 +422,62 @@ open-init-call-teardown per call, which lost all session state and re-negotiated
   (`common/`); the orchestrator awaits `aclose_all()` in its `_persisting_state()` `finally`, so every live
   session is torn down on both the success and the error path. Within-request reuse is unconditional — there
   is no configuration flag.
+
+---
+
+## Run Task
+
+Preview-gated (`ENABLE_PREVIEW_FEATURES=true`), owned by `task_tooling/`, turned on by
+`features.run_task.enabled`. The LLM gets `internal_run_task(name, prompt, tools)`: it hands a
+self-contained task to an isolated child run and gets back only the final answer. The child's
+intermediate tool calls never enter the delegating conversation.
+
+- `name` — a short label, shown as the stage title (`Task: <name>`).
+- `prompt` — the whole task, and the child's only message.
+- `tools` — `["inherit"]` (a bare `"inherit"` is accepted too) gives the child every tool the
+  delegating agent sees except `internal_run_task`. Otherwise it is a list of exact tool names;
+  `_RunTaskTool` rejects unknown names with `InvalidToolCallParameterException` and lists the valid
+  ones. An explicit list always also gets the readers for inherited skills, contexts and MCP resources
+  (`internal_skills_read_skill`, `internal_attachments_available_context`,
+  `internal_attachments_get_content`, `read_mcp_resource`) and the file readers an offloaded tool result
+  points at (`internal_file_read_lines`, `internal_file_search`), so `[]` means "no capability tools".
+
+**How a task runs.** `compile_task_manifest` deep-copies the app manifest, sets the system prompt to the
+built-in task prompt followed by the app's prompt (under "Rules from the application"), applies
+`features.run_task.max_iterations`, clears `features.run_task` (a task cannot run tasks), and keeps only
+`on_request_start` hooks (so `on_completion` fires once per user turn). Fields it doesn't touch are
+inherited. `TaskRunner` enters a fresh DI request scope inside an `asyncio.Task` and passes
+`CompletionInputs` to `CompletionRunner`, copying the caller's credentials, forwarded headers, language
+and time zone.
+
+**Tool filtering.** The tool list is carried as a `ToolAllowlist` on `CompletionInputs` (never set from
+an HTTP request) and applied where tools reach the model (`AgentModule.provide_openai_tools`), where they
+are executed (`ToolExecutor`) and where their streaming stages open (`ChatStreamSinkFactory`). For an
+explicit list the compiler also turns `orchestrator.tool_discovery` off, so a named deferred tool becomes a
+regular one and nothing outside the list can be loaded through `internal_tool_search`.
+
+**Output.** The child's `Choice` writes into `TaskOutputSink`, which renders its prose and closed stages
+into the `Task` stage and collects attachments for the tool result.
+
+**Bounds.** `RUN_TASK_TIMEOUT_SECONDS` caps one task (`features.run_task.timeout_seconds` may shorten it)
+and `RUN_TASK_MAX_CONCURRENT` caps concurrent tasks per process; excess tasks wait for a slot for up to the
+same budget, then fail with "Too many tasks are running right now". The run's timeout starts once a task
+gets a slot. A task that times out, exhausts `max_iterations` or ends without a non-empty answer
+raises `TaskToolErrorException`, which is forwarded to the model. A `FallbackAgentStopException` from a
+`hard_stop` tool in the task passes through `StagedBaseTool` and stops the delegating turn.
+
+**Usage.** `TaskRunner` reads the child's usage from the finished run (`CompletedRun.usage_statistics`) and
+`_RunTaskTool` returns it on `ToolCallResult.usage`: the task's model calls get a row under the tool's name.
+
+See [`docs/designs/run_task_tool.md`](designs/run_task_tool.md).
+
+### Known issues
+
+**Claude Opus 4.6 / 4.7 may ignore hook results in a task.** These models disregard a hook result when its tool
+isn't in `tools` ([hooks known issue](hooks.md#known-issues)), and an explicit tool list makes that more likely.
+The documented workaround is a paragraph in the app's system prompt. A task keeps that prompt, but
+under the task framing, so `TASK_SYSTEM_PROMPT` carries the same paragraph as well. If a hooked tool's
+result still goes unused, name that tool in `tools` or use another model.
 
 ---
 
