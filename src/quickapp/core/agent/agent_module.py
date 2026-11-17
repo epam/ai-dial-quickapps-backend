@@ -63,6 +63,7 @@ from quickapp.core.agent._suppressed_attachment_registry import SuppressedAttach
 from quickapp.core.agent._tool_choice_holder import _ToolChoiceHolder
 from quickapp.core.agent._tool_result_size_limit_processor import ToolCallResultSizeLimitProcessor
 from quickapp.core.agent.assistant_invoker import AssistantInvoker
+from quickapp.core.agent.lazy_loaded_tools_holder import LazyLoadedToolsHolder
 from quickapp.core.agent.models import OpenAiToolConfigDict
 from quickapp.core.agent.orchestrator import Orchestrator
 from quickapp.core.agent.orchestrator_capabilities import OrchestratorCapabilities
@@ -94,6 +95,7 @@ class AgentModule(Module):
         binder.bind(Orchestrator, to=Orchestrator)  # type: ignore[type-abstract]
         binder.bind(_ToolChoiceHolder, to=_ToolChoiceHolder, scope=request_scope)
         binder.bind(StateHolder, to=StateHolder, scope=request_scope)
+        binder.bind(LazyLoadedToolsHolder, to=LazyLoadedToolsHolder, scope=request_scope)
         binder.bind(
             DeferredStageCloseRegistry,
             to=DeferredStageCloseRegistry,

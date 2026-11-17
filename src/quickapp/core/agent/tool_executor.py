@@ -33,11 +33,15 @@ class _Rejection(BaseModel):
 
     instructions: str
     error: str
+    log_level: int
+    log_message: str
 
 
 _UNKNOWN = _Rejection(
     instructions="This tool does not exist. Check the tool name and try again.",
     error="Unknown tool '{name}'.",
+    log_level=logging.ERROR,
+    log_message="Model requested unknown tool(s) %s",
 )
 _HIDDEN = _Rejection(
     instructions=(
@@ -45,6 +49,8 @@ _HIDDEN = _Rejection(
         "do not call it. Continue without it."
     ),
     error="Tool '{name}' is not available to the model.",
+    log_level=logging.WARNING,
+    log_message="Model requested model-hidden tool(s) %s",
 )
 _UNDISCOVERED = _Rejection(
     instructions=(
@@ -52,6 +58,8 @@ _UNDISCOVERED = _Rejection(
         f"Call '{INTERNAL_TOOL_SEARCH_TOOL_NAME}' to load it, then retry the call."
     ),
     error="Tool '{name}' is deferred and not loaded.",
+    log_level=logging.WARNING,
+    log_message="Model called deferred tool(s) %s without a loaded schema",
 )
 
 
@@ -120,19 +128,10 @@ class ToolExecutor:
             tool_call_id=tc.id, adopted_stage=adopted.pop(tc.id, None), **args
         )
 
-    def __log_rejections(self, rejected: dict[_Rejection, set[str]]) -> None:
-        if names := rejected.get(_HIDDEN):
-            logger.warning("Model requested model-hidden tool(s) %s", sorted(names))
-        if names := rejected.get(_UNDISCOVERED):
-            logger.warning(
-                "Model called deferred tool(s) %s without a loaded schema", sorted(names)
-            )
-        if names := rejected.get(_UNKNOWN):
-            logger.error(
-                "Model requested unknown tool(s) %s; registered=%s",
-                sorted(names),
-                sorted(self.__tools),
-            )
+    @staticmethod
+    def __log_rejections(rejected: dict[_Rejection, set[str]]) -> None:
+        for rejection, names in rejected.items():
+            logger.log(rejection.log_level, rejection.log_message, sorted(names))
 
     @staticmethod
     async def __rejected_result(tc: AccumulatedToolCall, rejection: _Rejection) -> ToolCallResult:

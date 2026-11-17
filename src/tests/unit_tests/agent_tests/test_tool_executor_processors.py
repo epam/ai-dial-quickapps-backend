@@ -10,6 +10,7 @@ from quickapp.common.tool_call_result import ToolCallResult
 from quickapp.common.tool_names import INTERNAL_TOOL_SEARCH_TOOL_NAME
 from quickapp.core.agent.lazy_loaded_tools_holder import LazyLoadedToolsHolder
 from quickapp.core.agent.tool_executor import ToolExecutor
+from tests.unit_tests.common.common import make_tools_holder
 
 
 def _make_tool_call(name: str, tc_id: str = "id1", arguments: str = "{}") -> MagicMock:
@@ -77,7 +78,7 @@ class TestToolExecutorProcessors:
             perf_timer=MagicMock(),
             processors=[_AppendProcessor("!")],
             deferred_tool_names=[],
-            lazy_loaded_tools_holder=LazyLoadedToolsHolder(),
+            lazy_loaded_tools_holder=make_tools_holder(),
         )
 
         results = await executor.execute([_make_tool_call("my_tool")])
@@ -98,7 +99,7 @@ class TestToolExecutorProcessors:
             perf_timer=MagicMock(),
             processors=[_AppendProcessor("!"), _DoubleProcessor()],
             deferred_tool_names=[],
-            lazy_loaded_tools_holder=LazyLoadedToolsHolder(),
+            lazy_loaded_tools_holder=make_tools_holder(),
         )
 
         results = await executor.execute([_make_tool_call("my_tool")])
@@ -116,7 +117,7 @@ class TestToolExecutorProcessors:
             perf_timer=MagicMock(),
             processors=[],
             deferred_tool_names=[],
-            lazy_loaded_tools_holder=LazyLoadedToolsHolder(),
+            lazy_loaded_tools_holder=make_tools_holder(),
         )
 
         results = await executor.execute([_make_tool_call("my_tool")])
@@ -143,7 +144,7 @@ class TestToolExecutorProcessors:
             perf_timer=MagicMock(),
             processors=[_CaptureProcessor()],
             deferred_tool_names=[],
-            lazy_loaded_tools_holder=LazyLoadedToolsHolder(),
+            lazy_loaded_tools_holder=make_tools_holder(),
         )
 
         await executor.execute([_make_tool_call("specific_tool", tc_id="call_abc")])
@@ -160,7 +161,7 @@ class TestToolExecutorProcessors:
             perf_timer=MagicMock(),
             processors=[],
             deferred_tool_names=[],
-            lazy_loaded_tools_holder=LazyLoadedToolsHolder(),
+            lazy_loaded_tools_holder=make_tools_holder(),
         )
 
         results = await executor.execute(
@@ -183,7 +184,7 @@ class TestToolExecutorProcessors:
             perf_timer=MagicMock(),
             processors=[],
             deferred_tool_names=[],
-            lazy_loaded_tools_holder=LazyLoadedToolsHolder(),
+            lazy_loaded_tools_holder=make_tools_holder(),
         )
 
         results = await executor.execute(
@@ -211,7 +212,7 @@ class TestToolExecutorModelHiddenTools:
             perf_timer=MagicMock(),
             processors=[],
             deferred_tool_names=[],
-            lazy_loaded_tools_holder=LazyLoadedToolsHolder(),
+            lazy_loaded_tools_holder=make_tools_holder(),
         )
 
     @pytest.mark.asyncio
@@ -270,7 +271,7 @@ class TestToolExecutorDeferredToolGuard:
     @pytest.mark.asyncio
     async def test_undiscovered_deferred_tool_is_not_run(self):
         tool = _make_tool("deferred_tool", ToolCallResult(content="ran", content_type="text/plain"))
-        executor = self._executor(tool, LazyLoadedToolsHolder())
+        executor = self._executor(tool, make_tools_holder())
 
         results = await executor.execute([_make_tool_call("deferred_tool")])
 
@@ -280,7 +281,7 @@ class TestToolExecutorDeferredToolGuard:
     @pytest.mark.asyncio
     async def test_discovered_deferred_tool_runs(self):
         tool = _make_tool("deferred_tool", ToolCallResult(content="ran", content_type="text/plain"))
-        holder = LazyLoadedToolsHolder()
+        holder = make_tools_holder()
         holder.add([{"type": "function", "function": {"name": "deferred_tool"}}])
         executor = self._executor(tool, holder)
 

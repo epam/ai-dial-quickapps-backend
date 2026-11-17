@@ -9,10 +9,8 @@ from quickapp.common.abstract.base_transformer import PreInvocationTransformer
 from quickapp.common.deferred_tool_types import DeferredToolCatalogEntry, DeferredToolsetSummary
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.tool_discovery import HierarchySearchStrategyConfig, WindowSearchStrategyConfig
-from quickapp.core.agent.lazy_loaded_tools_holder import LazyLoadedToolsHolder
 from quickapp.tool_discovery._anonymous_agent import _AnonymousAgent
 from quickapp.tool_discovery._discovered_tools_state_stripper import _DiscoveredToolsStateStripper
-from quickapp.tool_discovery._persisted_tools_holder import _PersistedToolsHolder
 from quickapp.tool_discovery._tool_configs import TOOL_SEARCH_TOOL_CONFIG
 from quickapp.tool_discovery._tool_search_hint_prompt_provider import _ToolSearchHintPromptProvider
 from quickapp.tool_discovery._tool_search_stage_wrapper import _ToolSearchStageWrapper
@@ -34,7 +32,6 @@ class ToolDiscoveryModule(Module):
         binder.bind(_ToolSearchTool, to=_ToolSearchTool, scope=request_scope)
         binder.bind(_ToolSearchStageWrapper, to=_ToolSearchStageWrapper)
         binder.bind(_DiscoveredToolsStateStripper, to=_DiscoveredToolsStateStripper)
-        binder.bind(LazyLoadedToolsHolder, to=_PersistedToolsHolder, scope=request_scope)
         binder.bind(
             _ToolSearchHintPromptProvider, to=_ToolSearchHintPromptProvider, scope=request_scope
         )

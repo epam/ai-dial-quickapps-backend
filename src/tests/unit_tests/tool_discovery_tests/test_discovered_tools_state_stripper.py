@@ -1,6 +1,6 @@
 from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
 
-from quickapp.tool_discovery._discovered_tools_state import DISCOVERED_TOOLS_STATE_KEY
+from quickapp.core.agent.lazy_loaded_tools_holder import DISCOVERED_TOOLS_STATE_KEY
 from quickapp.tool_discovery._discovered_tools_state_stripper import _DiscoveredToolsStateStripper
 
 

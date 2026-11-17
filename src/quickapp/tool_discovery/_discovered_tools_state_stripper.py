@@ -1,7 +1,7 @@
 from aidial_sdk.chat_completion import Message
 
 from quickapp.common.abstract.base_transformer import PreInvocationTransformer
-from quickapp.tool_discovery._discovered_tools_state import DISCOVERED_TOOLS_STATE_KEY
+from quickapp.core.agent.lazy_loaded_tools_holder import DISCOVERED_TOOLS_STATE_KEY
 
 
 class _DiscoveredToolsStateStripper(PreInvocationTransformer):
