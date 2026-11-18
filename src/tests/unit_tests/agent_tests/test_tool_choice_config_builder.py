@@ -9,8 +9,8 @@ from quickapp.config.agent_settings import AgentSettings
 from quickapp.core.agent._chat_completion_config_builder import _ChatCompletionConfigBuilder
 from quickapp.core.agent._prompt_cache_breakpoints import _PromptCacheBreakpoints
 from quickapp.core.agent._tool_choice_holder import _ToolChoiceHolder
-from quickapp.core.agent.lazy_loaded_tools_holder import LazyLoadedToolsHolder
 from quickapp.core.agent.orchestrator_capabilities import OrchestratorCapabilities
+from tests.unit_tests.common.common import make_tools_holder
 
 
 def _capabilities() -> OrchestratorCapabilities:
@@ -37,7 +37,7 @@ def _make_builder(
         pre_invocation_transformers=[],
         presentation_settings=MagicMock(show_usage_statistics=False),
         forwarded_headers=None,
-        lazy_loaded_tools_holder=LazyLoadedToolsHolder(),
+        lazy_loaded_tools_holder=make_tools_holder(),
         capabilities=_capabilities(),
         agent_settings=AgentSettings(),
         prompt_cache_breakpoints=_PromptCacheBreakpoints(),
@@ -87,7 +87,7 @@ class TestToolChoiceInPayload:
             pre_invocation_transformers=[],
             presentation_settings=MagicMock(show_usage_statistics=False),
             forwarded_headers=None,
-            lazy_loaded_tools_holder=LazyLoadedToolsHolder(),
+            lazy_loaded_tools_holder=make_tools_holder(),
             capabilities=_capabilities(),
             agent_settings=AgentSettings(),
             prompt_cache_breakpoints=_PromptCacheBreakpoints(),

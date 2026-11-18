@@ -94,6 +94,7 @@ class AgentModule(Module):
         binder.bind(Orchestrator, to=Orchestrator)  # type: ignore[type-abstract]
         binder.bind(_ToolChoiceHolder, to=_ToolChoiceHolder, scope=request_scope)
         binder.bind(StateHolder, to=StateHolder, scope=request_scope)
+        binder.bind(LazyLoadedToolsHolder, to=LazyLoadedToolsHolder, scope=request_scope)
         binder.bind(
             DeferredStageCloseRegistry,
             to=DeferredStageCloseRegistry,
@@ -112,7 +113,6 @@ class AgentModule(Module):
         binder.bind(AssistantInvoker, to=AssistantInvoker, scope=NoScope)
         binder.bind(_ChatCompletionConfigBuilder, to=_ChatCompletionConfigBuilder, scope=NoScope)
         binder.bind(_PromptCacheBreakpoints, to=_PromptCacheBreakpoints, scope=singleton)
-        binder.bind(LazyLoadedToolsHolder, to=LazyLoadedToolsHolder, scope=request_scope)
         binder.bind(ChatStreamSinkFactory, to=ChatStreamSinkFactory, scope=NoScope)
         binder.bind(ChatCompletionStreamHandler, to=ChatCompletionStreamHandler, scope=NoScope)
         binder.bind(_AttachmentFilter, to=_AttachmentFilter, scope=request_scope)
