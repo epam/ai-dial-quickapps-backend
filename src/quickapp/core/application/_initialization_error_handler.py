@@ -16,6 +16,7 @@ from quickapp.common.exceptions import (
     UnsupportedReasoningEffortException,
 )
 from quickapp.common.utils import fenced_code_block
+from quickapp.config.application import InitializationIssueLevel
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,26 @@ _CATASTROPHIC_HEADER = (
 )
 _PER_URL_ERRORS_HEADER = "> Errors:"
 _PER_URL_WARNINGS_HEADER = "> Warnings:"
+_LEVEL_ORDER = {
+    InitializationIssueLevel.WARNING: 0,
+    InitializationIssueLevel.ERROR: 1,
+    InitializationIssueLevel.CRITICAL: 2,
+}
+
+
+def _subject_of(exc: InitializationException) -> str:
+    """What the issue is about (URL or tool), without its free-text reason."""
+    if isinstance(exc, SkillInitializationException):
+        return exc.url or ""
+    if isinstance(exc, (ToolInitializationException, HookInitializationException)):
+        return f"{exc.tool_name}{exc.toolset_name}"
+    return ""
+
+
+def _level_of(exc: InitializationException) -> InitializationIssueLevel:
+    if isinstance(exc, SkillInitializationException) and exc.severity == "warning":
+        return InitializationIssueLevel.WARNING
+    return InitializationIssueLevel.CRITICAL if exc.is_hard else InitializationIssueLevel.ERROR
 
 
 @inject
@@ -40,9 +61,11 @@ class _InitializationErrorHandler:
         self,
         stage_provider: ProviderOf[Stage],
         initialization_exceptions_provider: ProviderOf[list[InitializationException]],
+        level_provider: ProviderOf[InitializationIssueLevel],
     ):
         self.__initialization_exceptions_provider = initialization_exceptions_provider
         self.__stage_provider = stage_provider
+        self.__level_provider = level_provider
 
     def handle_initialization_issues(self) -> None:
         try:
@@ -54,6 +77,7 @@ class _InitializationErrorHandler:
             )
             exceptions = []
 
+        exceptions = self.__filter_by_level(exceptions)
         if not exceptions:
             return
 
@@ -137,3 +161,24 @@ class _InitializationErrorHandler:
             stage.append_content("\n\n".join("\n".join(section) for section in sections))
         finally:
             stage.close(status)
+
+    def __filter_by_level(
+        self, exceptions: list[InitializationException]
+    ) -> list[InitializationException]:
+        if not exceptions:
+            return exceptions
+        level = self.__level_provider.get()
+        shown: list[InitializationException] = []
+        for exc in exceptions:
+            exc_level = _level_of(exc)
+            if _LEVEL_ORDER[exc_level] >= _LEVEL_ORDER[level]:
+                shown.append(exc)
+            else:
+                logger.info(
+                    "Initialization issue hidden below level '%s': %s (%s) %s",
+                    level.value,
+                    type(exc).__name__,
+                    exc_level.value,
+                    _subject_of(exc),
+                )
+        return shown

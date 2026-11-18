@@ -110,7 +110,7 @@ class DialSkillResolver(DialSkillResourceResolver):
 
     async def _fetch_one(self, config: DialSkillConfig) -> ResolvedSkill:
         manifest = await self._client.read_manifest(config.url)
-        parsed = parse_frontmatter(manifest, config.url)
+        metadata = parse_frontmatter(manifest, config.url)
 
         inventory, warnings = await self._list_files(config.url)
         block = _build_skill_files_block(inventory, self._client.max_files)
@@ -119,10 +119,10 @@ class DialSkillResolver(DialSkillResourceResolver):
         return ResolvedSkill(
             reader=self._reader,
             url=config.url,
-            metadata=parsed.metadata,
+            metadata=metadata,
             content=content,
             files=inventory.files,
-            warnings=[*parsed.warnings, *warnings],
+            warnings=warnings,
         )
 
     async def _list_files(self, url: str) -> tuple[SkillInventory, list[str]]:

@@ -114,6 +114,11 @@ itself hard (`is_hard=True`) — otherwise `COMPLETED`. Tool-init failures and w
 failures are hard; per-URL skill failures are soft. The request always proceeds; the close status is a
 UI cue.
 
+Which issues the stage shows is set by `features.initialization_issues.level` (default:
+`DEFAULT_INITIALIZATION_ISSUES_LEVEL`). Each issue has a level: skill `severity="warning"` → `warning`,
+`is_hard` → `critical`, else `error`. Issues below the threshold are logged instead; with none left,
+the stage isn't rendered.
+
 Failures that *abort* the turn take a different path: they are resolved into safe, user-facing text,
 stamped with an error reference correlated to server logs, and delivered through the DIAL error protocol
 instead of being appended as assistant content. See [Error Handling](error_handling.md).
