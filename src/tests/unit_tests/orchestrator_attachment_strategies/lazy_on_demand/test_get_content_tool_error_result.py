@@ -1,7 +1,7 @@
-"""Verify ``_GetContentTool._error_result`` payload shape across rejection paths.
+"""Verify ``_GetContentTool`` rejection errors across rejection paths.
 
-Every error path in ``_run_in_stage_async`` funnels through ``_error_result``, which
-must always emit an ``accepted_types`` JSON array so the model learns the live
+Every error path in ``_run_in_stage_async`` raises via ``_tool_error``, whose message
+must always list the accepted MIME types so the model learns the live
 ``input_attachment_types`` allowlist on rejection (per Concern 3 of
 ``docs/designs/pass_attachments_to_orchestrator.md``).
 """
@@ -13,7 +13,7 @@ import pytest
 from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
 
 from quickapp.common.dial_settings import DialSettings
-from quickapp.common.exceptions import InvalidToolCallParameterException
+from quickapp.common.exceptions import InvalidToolCallParameterException, ToolErrorException
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.core.agent import OrchestratorCapabilities
 from quickapp.dial_core_services.dial_file_promoter import DialFilePromoter
@@ -25,10 +25,6 @@ from quickapp.orchestrator_attachment_strategies.lazy_on_demand._attachment_mate
 )
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_tool import (
     _GetContentTool,
-)
-from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_tool_response import (
-    GetContentStatus,
-    GetContentToolResponse,
 )
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._tool_configs import (
     GET_CONTENT_TOOL_CONFIG,
@@ -83,18 +79,21 @@ def _user_msg_with(attachment: Attachment) -> Message:
     )
 
 
+async def _run_expecting_error(tool: _GetContentTool, attachment_url: str | None) -> str:
+    with pytest.raises(ToolErrorException) as excinfo:
+        await tool._run_in_stage_async(stage_wrapper=None, attachment_url=attachment_url)
+    return excinfo.value.error_message
+
+
 class TestErrorResultPayload:
     @pytest.mark.asyncio
     async def test_empty_attachment_url_includes_accepted_types(self):
         tool = _make_tool(["application/pdf", "text/csv"])
 
-        result = await tool._run_in_stage_async(stage_wrapper=None, attachment_url=None)
+        message = await _run_expecting_error(tool, None)
 
-        payload = GetContentToolResponse.from_state(result.state)
-        assert payload is not None
-        assert payload.status == GetContentStatus.FAIL
-        assert payload.status_message == "Missing or empty attachment_url."
-        assert payload.accepted_types == ["application/pdf", "text/csv"]
+        assert "Missing or empty attachment_url." in message
+        assert "Accepted MIME types: application/pdf, text/csv." in message
 
     @pytest.mark.asyncio
     async def test_dial_url_inferred_mime_not_accepted_includes_accepted_types(self):
@@ -102,15 +101,10 @@ class TestErrorResultPayload:
         # must still pass the orchestrator gate; rejection carries accepted_types.
         tool = _make_tool(["application/pdf"])
 
-        result = await tool._run_in_stage_async(
-            stage_wrapper=None, attachment_url="files/bucket/archive.zip"
-        )
+        message = await _run_expecting_error(tool, "files/bucket/archive.zip")
 
-        payload = GetContentToolResponse.from_state(result.state)
-        assert payload is not None
-        assert payload.status == GetContentStatus.FAIL
-        assert payload.status_message == "Orchestrator deployment does not accept this file type."
-        assert payload.accepted_types == ["application/pdf"]
+        assert "Orchestrator deployment does not accept this file type." in message
+        assert "Accepted MIME types: application/pdf." in message
 
     @pytest.mark.asyncio
     async def test_unsupported_scheme_includes_accepted_types(self):
@@ -120,14 +114,10 @@ class TestErrorResultPayload:
         attachment = Attachment(title="foo.pdf", url=url, type="application/pdf")
         tool = _make_tool(["application/pdf"], messages=[_user_msg_with(attachment)])
 
-        result = await tool._run_in_stage_async(stage_wrapper=None, attachment_url=url)
+        message = await _run_expecting_error(tool, url)
 
-        payload = GetContentToolResponse.from_state(result.state)
-        assert payload is not None
-        assert payload.status == GetContentStatus.FAIL
-        assert payload.status_message is not None
-        assert payload.status_message.startswith("Unsupported file reference.")
-        assert payload.accepted_types == ["application/pdf"]
+        assert "Unsupported file reference." in message
+        assert "Accepted MIME types: application/pdf." in message
 
     @pytest.mark.asyncio
     async def test_external_promotion_blocked_includes_accepted_types(self):
@@ -144,30 +134,32 @@ class TestErrorResultPayload:
             ["application/pdf"], messages=[_user_msg_with(attachment)], promoter=promoter
         )
 
-        result = await tool._run_in_stage_async(stage_wrapper=None, attachment_url=url)
+        message = await _run_expecting_error(tool, url)
 
-        payload = GetContentToolResponse.from_state(result.state)
-        assert payload is not None
-        assert payload.status == GetContentStatus.FAIL
-        assert payload.status_message == "External URL fetching is disabled by operator policy."
-        assert payload.accepted_types == ["application/pdf"]
+        assert "External URL fetching is disabled by operator policy." in message
+        assert "Accepted MIME types: application/pdf." in message
 
     @pytest.mark.asyncio
-    async def test_accepted_types_empty_list_when_input_attachment_types_none(self):
+    async def test_no_accepted_types_line_when_input_attachment_types_none(self):
         tool = _make_tool(None)
 
-        result = await tool._run_in_stage_async(stage_wrapper=None, attachment_url=None)
+        message = await _run_expecting_error(tool, None)
 
-        payload = GetContentToolResponse.from_state(result.state)
-        assert payload is not None
-        assert payload.accepted_types == []
+        assert "Accepted MIME types" not in message
 
     @pytest.mark.asyncio
     async def test_accepted_types_preserves_wildcard_patterns(self):
         tool = _make_tool(["image/*", "application/pdf"])
 
-        result = await tool._run_in_stage_async(stage_wrapper=None, attachment_url=None)
+        message = await _run_expecting_error(tool, None)
 
-        payload = GetContentToolResponse.from_state(result.state)
-        assert payload is not None
-        assert payload.accepted_types == ["image/*", "application/pdf"]
+        assert "Accepted MIME types: image/*, application/pdf." in message
+
+    @pytest.mark.asyncio
+    async def test_failure_is_converted_to_error_result_by_the_base_tool(self):
+        tool = _make_tool(["application/pdf"])
+
+        result = await tool.arun("call-1", attachment_url=None)
+
+        assert result.is_error is True
+        assert "Accepted MIME types: application/pdf." in result.content

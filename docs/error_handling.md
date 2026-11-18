@@ -15,6 +15,11 @@ Quick Apps surfaces failures in three distinct ways, each aimed at a different a
 | **Initialization issues** | Some tools or skills fail to load, but the request can still proceed without them | A diagnostic *Initialization issues* stage above a normal, successful answer — aimed at the app builder fixing their manifest | [Agent Design §6](agent.md#6-error-handling) |
 | **Tool-execution fallbacks** | A single tool call fails mid-conversation and the tool's configured fallback strategy decides what happens next | The tool stage shows the error and an error reference; the agent is instructed to recover, retry, or explain the failure in its own words | [Agent Design — Tool System](agent.md#error-handling) |
 
+Tools never build their own error results: a failing tool raises (`InvalidToolCallParameterException` for
+arguments the model can fix, a `ToolErrorException` for other tool failures), and `StagedBaseTool` is the single
+place that logs the failure, writes it into the stage and converts it into an `is_error` result through the
+tool's fallback strategies.
+
 The rest of this document covers the first surface.
 
 ## What Happens When a Request Fails

@@ -25,7 +25,7 @@ from quickapp.common.attachment_processing_utils import (
     user_attachments_from_messages,
 )
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
-from quickapp.common.exceptions import InvalidToolCallParameterException
+from quickapp.common.exceptions import InvalidToolCallParameterException, ToolErrorException
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
@@ -96,15 +96,15 @@ class _GetContentTool(StagedBaseTool):
         self.__materializer: _AttachmentMaterializer = materializer
         self.__home_resolver: HomePathResolver = home_resolver
 
-    def _error_result(self, message: str) -> ToolCallResult:
+    def _tool_error(self, message: str) -> ToolErrorException:
+        """A tool error whose body tells the model what failed and which MIME types are accepted."""
         response = GetContentToolResponse.fail(
             message=message,
             accepted_types=list(
                 self.__attachment_acceptance.advertised_input_attachment_types or []
             ),
         )
-        content, state = response.tool_parts()
-        return ToolCallResult(content=content, content_type="text/plain", state=state)
+        return ToolErrorException(self._resolve_tool_name(), response.content_summary())
 
     async def _run_in_stage_async(
         self,
@@ -116,14 +116,14 @@ class _GetContentTool(StagedBaseTool):
     ) -> ToolCallResult:
         if attachment_url is None or not str(attachment_url).strip():
             logger.debug("get_content tool rejected: empty attachment_url")
-            return self._error_result("Missing or empty attachment_url.")
+            raise self._tool_error("Missing or empty attachment_url.")
 
         normalized_url = normalize_attachment_url_argument(str(attachment_url))
         try:
             resolved = await self._resolve_attachment(normalized_url)
             self._ensure_mime_accepted(resolved)
         except InvalidToolCallParameterException as exc:
-            return self._error_result(str(exc))
+            raise self._tool_error(str(exc)) from exc
 
         return self._build_result(
             stage_wrapper,
