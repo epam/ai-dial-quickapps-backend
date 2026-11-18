@@ -25,6 +25,8 @@ def _make_builder(
     parameters: dict | None = None,
     reasoning_efforts: list[str] | None = None,
     cache: bool | None = None,
+    temperature: bool | None = None,
+    custom_temperature_supported: bool | None = None,
     breakpoints_enabled: bool = True,
 ) -> _ChatCompletionConfigBuilder:
     config = MagicMock()
@@ -42,7 +44,12 @@ def _make_builder(
         capabilities=OrchestratorCapabilities(
             deployment=SimpleNamespace(  # type: ignore[arg-type]
                 id="test-model",
-                features=Features(reasoning_efforts=reasoning_efforts or [], cache=cache),
+                features=Features(
+                    reasoning_efforts=reasoning_efforts or [],
+                    cache=cache,
+                    temperature=temperature,
+                    custom_temperature_supported=custom_temperature_supported,
+                ),
             )
         ),
         agent_settings=AgentSettings(PROMPT_CACHE_BREAKPOINTS_ENABLED=breakpoints_enabled),
@@ -231,6 +238,41 @@ def test_reasoning_effort_is_dropped_when_deployment_advertises_none():
     result = builder.build([])
 
     assert "reasoning_effort" not in result
+
+
+@pytest.mark.parametrize(
+    ("temperature", "custom_temperature_supported"),
+    [(False, None), (None, False), (False, False), (True, False), (False, True)],
+)
+def test_temperature_is_dropped_when_either_flag_is_off(temperature, custom_temperature_supported):
+    builder = _make_builder(
+        parameters={"temperature": 0.5, "seed": 1},
+        temperature=temperature,
+        custom_temperature_supported=custom_temperature_supported,
+    )
+
+    result = builder.build([])
+
+    assert "temperature" not in result
+    assert result["seed"] == 1
+
+
+@pytest.mark.parametrize(
+    ("temperature", "custom_temperature_supported"),
+    [(None, None), (True, None), (None, True), (True, True)],
+)
+def test_temperature_is_kept_unless_explicitly_unsupported(
+    temperature, custom_temperature_supported
+):
+    builder = _make_builder(
+        parameters={"temperature": 0.5},
+        temperature=temperature,
+        custom_temperature_supported=custom_temperature_supported,
+    )
+
+    result = builder.build([])
+
+    assert result["temperature"] == 0.5
 
 
 def test_custom_fields_are_sent_in_extra_body():

@@ -36,6 +36,21 @@ class OrchestratorCapabilities:
         return reasoning_effort in self.reasoning_efforts
 
     @property
+    def supports_temperature(self) -> bool:
+        """Whether the deployment accepts a custom ``temperature``.
+
+        Only an explicit ``false`` of ``features.temperature`` (Core ``temperatureSupported``)
+        or ``features.custom_temperature_supported`` means no: Core defaults both flags to
+        true, so an absent value is treated as supported.
+        """
+        features = self._deployment.features
+        if features is None:
+            return True
+        return (
+            features.temperature is not False and features.custom_temperature_supported is not False
+        )
+
+    @property
     def supports_cache_breakpoints(self) -> bool:
         """Whether the deployment advertises ``features.cache`` (Core ``cacheSupported``)."""
         features = self._deployment.features

@@ -22,6 +22,7 @@ from quickapp.core.agent.orchestrator_capabilities import OrchestratorCapabiliti
 logger = logging.getLogger(__name__)
 
 REASONING_EFFORT_PARAM = "reasoning_effort"
+TEMPERATURE_PARAM = "temperature"
 
 
 @inject
@@ -56,7 +57,7 @@ class _ChatCompletionConfigBuilder:
         chat_completion_config = self.__config.orchestrator.deployment.parameters.model_dump(
             exclude_none=True
         )
-        self._drop_unsupported_reasoning_effort(chat_completion_config)
+        self._drop_unsupported_parameters(chat_completion_config)
         self._move_custom_fields_to_extra_body(chat_completion_config)
         prepared_messages = self._prepare_messages(messages)
         all_tools = self._merge_tools()
@@ -154,6 +155,11 @@ class _ChatCompletionConfigBuilder:
                 logger, "Chat completion config: %s", json.dumps(loggable, ensure_ascii=False)
             )
 
+    def _drop_unsupported_parameters(self, chat_completion_config: dict[str, Any]) -> None:
+        """Remove deployment parameters the orchestrator deployment does not advertise."""
+        self._drop_unsupported_reasoning_effort(chat_completion_config)
+        self._drop_unsupported_temperature(chat_completion_config)
+
     def _drop_unsupported_reasoning_effort(self, chat_completion_config: dict[str, Any]) -> None:
         """Remove a `reasoning_effort` the deployment does not advertise.
 
@@ -167,6 +173,22 @@ class _ChatCompletionConfigBuilder:
         ):
             return
         del chat_completion_config[REASONING_EFFORT_PARAM]
+
+    def _drop_unsupported_temperature(self, chat_completion_config: dict[str, Any]) -> None:
+        """Remove a `temperature` the deployment marks as unsupported.
+
+        The manifest can carry a stale value, e.g. left over after the orchestrator model was
+        switched to one that takes it and back; the upstream rejects it for such deployments.
+        """
+        if TEMPERATURE_PARAM not in chat_completion_config:
+            return
+        if self.__capabilities.supports_temperature:
+            return
+        logger.warning(
+            "Configured temperature is not supported by deployment %s; dropping it",
+            self.__capabilities.deployment_id,
+        )
+        del chat_completion_config[TEMPERATURE_PARAM]
 
     @staticmethod
     def _move_custom_fields_to_extra_body(chat_completion_config: dict[str, Any]) -> None:
