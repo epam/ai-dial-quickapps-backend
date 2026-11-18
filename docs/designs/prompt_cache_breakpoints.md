@@ -129,7 +129,7 @@ upstream that holds the entry.
 
 **Trigger:** The model loads a deferred tool mid-turn.
 **Behavior:** The new tool is appended, so only the end of the tools block changes. The next call misses and
-writes a new entry for the new tool set. The next turn starts with the eager tools only and reads the first entry again.
+writes a new entry for the new tool set. The next turn starts with the eager tools followed by the previously discovered ones, in the same order, so it reads the latest entry again.
 **Outcome:** One cache write for each distinct tool set.
 
 ### UC-5: The next turn of the conversation
