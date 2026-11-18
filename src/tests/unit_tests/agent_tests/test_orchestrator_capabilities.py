@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 import pytest
+from aidial_client.types.deployment import Features
 
 from quickapp.core.agent import OrchestratorCapabilities
 
@@ -8,7 +9,7 @@ from quickapp.core.agent import OrchestratorCapabilities
 def _deployment(
     deployment_id: str = "gpt-4",
     input_attachment_types: list[str] | None = None,
-    features: SimpleNamespace | None = None,
+    features: SimpleNamespace | Features | None = None,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         id=deployment_id,
@@ -29,35 +30,19 @@ def test_deployment_id_and_input_attachment_types_exposed():
     assert caps.input_attachment_types == ["application/pdf", "image/*"]
 
 
-def test_reasoning_efforts_exposes_the_advertised_values():
+def test_features_exposes_the_deployment_features():
+    features = Features(temperature=False, reasoning_efforts=["low"])
     caps = OrchestratorCapabilities(
-        deployment=_deployment(  # type: ignore[arg-type]
-            features=SimpleNamespace(reasoning_efforts=["low", "medium", "high"]),
-        )
+        deployment=_deployment(features=features)  # type: ignore[arg-type]
     )
 
-    assert caps.reasoning_efforts == ["low", "medium", "high"]
-    assert caps.supports_reasoning_effort("medium") is True
-    assert caps.supports_reasoning_effort("none") is False
+    assert caps.features is features
 
 
-def test_reasoning_efforts_empty_when_deployment_advertises_none():
-    """An empty list means no value is supported, not that every value is."""
-    caps = OrchestratorCapabilities(
-        deployment=_deployment(  # type: ignore[arg-type]
-            features=SimpleNamespace(reasoning_efforts=[]),
-        )
-    )
-
-    assert caps.reasoning_efforts == []
-    assert caps.supports_reasoning_effort("low") is False
-
-
-def test_reasoning_efforts_empty_when_deployment_has_no_features():
+def test_features_empty_when_deployment_has_no_features():
     caps = OrchestratorCapabilities(deployment=_deployment(features=None))  # type: ignore[arg-type]
 
-    assert caps.reasoning_efforts == []
-    assert caps.supports_reasoning_effort("low") is False
+    assert caps.features == Features()
 
 
 def test_supports_cache_breakpoints_when_deployment_advertises_cache():

@@ -13,7 +13,7 @@ from quickapp.common.exceptions import (
     SkillCatastrophicInitializationException,
     SkillInitializationException,
     ToolInitializationException,
-    UnsupportedReasoningEffortException,
+    UnsupportedDeploymentParameterException,
 )
 from quickapp.common.utils import fenced_code_block
 
@@ -79,8 +79,9 @@ class _InitializationErrorHandler:
                     hook_lines.append(fenced_code_block(exc.details))
             elif isinstance(exc, OffloadConfigurationException):
                 offload_lines.append(f"- {exc}")
-            elif isinstance(exc, UnsupportedReasoningEffortException):
-                deployment_parameter_lines.append(f"- {exc}")
+            elif isinstance(exc, UnsupportedDeploymentParameterException):
+                prefix = f"**{exc.tool_name}**: " if exc.tool_name else ""
+                deployment_parameter_lines.append(f"- {prefix}{exc}")
             elif isinstance(exc, ProjectInstructionsException):
                 project_lines.append(f"- {exc}")
             elif isinstance(exc, ConfigResolutionException):

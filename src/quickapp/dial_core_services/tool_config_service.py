@@ -251,6 +251,7 @@ class ToolConfigCoreService:
         output_tool.open_ai_tool.function.parameters.properties = properties
         output_tool.open_ai_tool.function.parameters.required = sorted(set(required_params))
         output_tool.deployment._configuration_param_names = configuration_param_names
+        output_tool.deployment._features = deployment.features
 
         return output_tool
 

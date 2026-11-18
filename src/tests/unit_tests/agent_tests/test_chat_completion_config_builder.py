@@ -26,6 +26,7 @@ def _make_builder(
     reasoning_efforts: list[str] | None = None,
     cache: bool | None = None,
     breakpoints_enabled: bool = True,
+    features: dict | None = None,
 ) -> _ChatCompletionConfigBuilder:
     config = MagicMock()
     config.orchestrator.deployment.parameters.model_dump.return_value = parameters or {}
@@ -42,7 +43,9 @@ def _make_builder(
         capabilities=OrchestratorCapabilities(
             deployment=SimpleNamespace(  # type: ignore[arg-type]
                 id="test-model",
-                features=Features(reasoning_efforts=reasoning_efforts or [], cache=cache),
+                features=Features(
+                    reasoning_efforts=reasoning_efforts or [], cache=cache, **(features or {})
+                ),
             )
         ),
         agent_settings=AgentSettings(PROMPT_CACHE_BREAKPOINTS_ENABLED=breakpoints_enabled),
@@ -231,6 +234,33 @@ def test_reasoning_effort_is_dropped_when_deployment_advertises_none():
     result = builder.build([])
 
     assert "reasoning_effort" not in result
+
+
+@pytest.mark.parametrize(
+    "features",
+    [{"temperature": False}, {"custom_temperature_supported": False}],
+    ids=["temperature_unsupported", "custom_temperature_unsupported"],
+)
+def test_unsupported_temperature_is_dropped(features: dict):
+    builder = _make_builder(parameters={"temperature": 0.5, "seed": 7}, features=features)
+
+    result = builder.build([])
+
+    assert "temperature" not in result
+    # Core defaults `seedSupported` to false, so its flag is not enforced.
+    assert result["seed"] == 7
+
+
+def test_max_tokens_is_sent_as_max_completion_tokens_when_only_that_is_supported():
+    builder = _make_builder(
+        parameters={"max_tokens": 100},
+        features={"max_tokens_supported": False, "max_completion_tokens_supported": True},
+    )
+
+    result = builder.build([])
+
+    assert "max_tokens" not in result
+    assert result["max_completion_tokens"] == 100
 
 
 def test_custom_fields_are_sent_in_extra_body():

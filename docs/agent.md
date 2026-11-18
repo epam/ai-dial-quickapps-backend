@@ -90,6 +90,14 @@ skills) are visible to transformers:
   orchestrator's `dial` system prompt and fails the request if it cannot be loaded; the deployment
   tool initializer fetches each deployment tool's `dial` prompt the same way, but records a failure
   as an initialization issue instead.
+- **Deployment parameters**: `common/deployment_parameter_support.py` removes the request parameters
+  the target deployment's DialCore `features` declare unsupported: `temperature`
+  (`temperatureSupported`, `customTemperatureSupported`), `max_tokens` (`maxTokensSupported`; sent
+  as `max_completion_tokens` when that is supported) and `reasoning_effort` (`reasoningEfforts`). It
+  applies to the orchestrator and to deployment tools. Each drop is reported as a soft
+  `UnsupportedDeploymentParameterException` in the Initialization issues stage, and the request
+  proceeds without the parameter. Only flags Core defaults to `true` are enforced, so `seed`
+  (`seedSupported` defaults to `false`) is always sent.
 - **Message preprocessing**: after initializers, `_RequestContextSetup.setup_messages()` calls
   `_MessagesSetup.extract_tool_calls()` to expand packed tool-call state, then runs all
   `MessagesTransformer` instances (adding system prompts, injecting context notifications). After

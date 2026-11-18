@@ -5,8 +5,12 @@ from injector import AssistedBuilder, ProviderOf, inject
 from quickapp.common import StagedBaseTool
 from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.deferred_tools_accumulator import is_toolset_deferred
+from quickapp.common.deployment_parameter_support import FEATURE_GATED_PARAMETERS, adapt_to_features
 from quickapp.common.deployment_tool_cache import DialDeploymentToolCacheService
-from quickapp.common.exceptions import ToolInitializationException
+from quickapp.common.exceptions import (
+    ToolInitializationException,
+    UnsupportedDeploymentParameterException,
+)
 from quickapp.common.localized_string import resolve_localized
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.prompt import DialSystemPromptConfig
@@ -88,6 +92,7 @@ class _DeploymentToolInitializer(CompletionInitializer):
                     )
                     continue
                 await self.__resolve_system_prompt(tool_config)
+                await self.__attach_deployment_features(tool_config)
                 tools.append(self.__build_deployment_tool(tool_config))
             elif isinstance(tool_config, DialDeploymentSimpleTool) and tool_config.enabled:
                 # Checked before the metadata fetch, so inaccessible simple tools cost no round-trips.
@@ -114,6 +119,47 @@ class _DeploymentToolInitializer(CompletionInitializer):
             self.__deployment_context.append_exception(
                 ToolInitializationException(
                     message=f"Failed to load system prompt '{system_prompt.path}': {e}",
+                    tool_name=tool.open_ai_tool.function.name,
+                )
+            )
+
+    async def __attach_deployment_features(self, tool: DialDeploymentTool) -> None:
+        """Snapshot the target deployment's features onto a tool whose parameters they gate.
+
+        Only a tool that configures such a parameter pays for the (cached) metadata fetch. If the
+        fetch fails, the parameters are sent unchanged, as before.
+        """
+        parameters = tool.deployment.parameters.model_dump(exclude_none=True)
+        if FEATURE_GATED_PARAMETERS.isdisjoint(parameters):
+            return
+        deployment_id = tool.deployment.deployment_id
+        try:
+            basic_config = await self.__deployment_cache.fetch_basic_tool_config(
+                self.__tool_config_service.get_basic_tool_config,
+                deployment_id,
+            )
+        except Exception:
+            logger.warning(
+                "Could not fetch features of deployment %s; its tool parameters are sent unchanged",
+                deployment_id,
+                exc_info=True,
+            )
+            return
+        features = basic_config.deployment._features
+        if features is None:
+            return
+        tool.deployment._features = features
+        for unsupported in adapt_to_features(parameters, features):
+            logger.warning(
+                "Configured %s is not supported by deployment %s; dropping it",
+                unsupported.name,
+                deployment_id,
+            )
+            self.__deployment_context.append_exception(
+                UnsupportedDeploymentParameterException(
+                    parameter=unsupported.name,
+                    value=unsupported.value,
+                    reason=unsupported.reason,
                     tool_name=tool.open_ai_tool.function.name,
                 )
             )

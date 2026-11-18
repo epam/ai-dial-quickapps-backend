@@ -4,7 +4,7 @@ from aidial_sdk.chat_completion.request import StaticTool
 
 from quickapp.common import StagedBaseTool
 
-from .exceptions import InitializationException, ToolInitializationException
+from .exceptions import InitializationException
 from .model_hidden_tool import ModelHiddenTool
 
 
@@ -50,6 +50,6 @@ class ToolingContextBase:
     def exceptions(self) -> list[InitializationException]:
         return self._exceptions
 
-    def append_exception(self, exception: ToolInitializationException) -> None:
+    def append_exception(self, exception: InitializationException) -> None:
         with self._lock:
             self._exceptions.append(exception)

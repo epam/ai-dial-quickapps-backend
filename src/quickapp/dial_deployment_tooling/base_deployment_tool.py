@@ -16,6 +16,7 @@ from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.chat_completion_stream.argument_stream_presentation import ArgumentStreamMode
+from quickapp.common.deployment_parameter_support import adapt_to_features
 from quickapp.common.dial_request_fields import CONFIGURATION, CUSTOM_FIELDS
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.payload_logging import log_payload
@@ -316,6 +317,17 @@ class BaseDeploymentTool(StagedBaseTool):
         # Applied after the model's own arguments: which tools the deployment may run is the
         # app's decision, so a `tools` argument the model invents cannot replace configured ones.
         self._apply_static_tools(params, prepared)
+
+        # Last, so a value the model passes as an argument is filtered too. The initializer
+        # already reported the configured values it drops in the Initialization issues stage.
+        features = tool_config.deployment._features
+        if features is not None:
+            for unsupported in adapt_to_features(prepared, features):
+                logger.debug(
+                    "Dropped %s unsupported by deployment %s",
+                    unsupported.name,
+                    tool_config.deployment.deployment_id,
+                )
 
         logger.debug("Pre-processed tool parameters: keys=%s", list(prepared))
         log_payload(logger, "Pre-processed tool parameters: %s", prepared)

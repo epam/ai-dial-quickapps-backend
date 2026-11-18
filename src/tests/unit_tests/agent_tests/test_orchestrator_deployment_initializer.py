@@ -2,11 +2,13 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from aidial_client.types.deployment import Features
 
 from quickapp.common.exceptions import (
     OrchestratorInitializationException,
-    UnsupportedReasoningEffortException,
+    UnsupportedDeploymentParameterException,
 )
+from quickapp.config.dial_deployment import DialDeploymentParameters
 from quickapp.core.agent import OrchestratorCapabilities
 from quickapp.core.agent._orchestrator_deployment_initializer import (
     _OrchestratorDeploymentInitializer,
@@ -18,12 +20,13 @@ def _make_deployment(
     input_attachment_types: list[str] | None = None,
     defaults: dict | None = None,
     reasoning_efforts: list[str] | None = None,
+    temperature: bool | None = None,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         id=deployment_id,
         input_attachment_types=input_attachment_types,
         defaults=defaults,
-        features=SimpleNamespace(reasoning_efforts=reasoning_efforts or []),
+        features=Features(reasoning_efforts=reasoning_efforts or [], temperature=temperature),
     )
 
 
@@ -32,10 +35,13 @@ def _make_initializer(
     deployment_id: str = "gpt-4",
     fetch_metadata: AsyncMock | None = None,
     reasoning_effort: str | None = None,
+    temperature: float | None = None,
 ) -> tuple[_OrchestratorDeploymentInitializer, AsyncMock, AsyncMock]:
     app_config = MagicMock()
     app_config.orchestrator.deployment.deployment_id = deployment_id
-    app_config.orchestrator.deployment.parameters.reasoning_effort = reasoning_effort
+    app_config.orchestrator.deployment.parameters = DialDeploymentParameters(
+        reasoning_effort=reasoning_effort, temperature=temperature
+    )
 
     resolver = AsyncMock()
     tool_config_service = MagicMock()
@@ -142,13 +148,43 @@ async def test_unadvertised_reasoning_effort_is_reported_as_a_soft_issue():
 
     assert len(initializer.initialization_exceptions) == 1
     issue = initializer.initialization_exceptions[0]
-    assert isinstance(issue, UnsupportedReasoningEffortException)
+    assert isinstance(issue, UnsupportedDeploymentParameterException)
     assert issue.is_hard is False
-    assert issue.requested == "high"
-    assert issue.supported == ["low"]
+    assert issue.parameter == "reasoning_effort"
+    assert issue.value == "high"
+    assert issue.tool_name is None
     assert "`low`" in str(issue)
+    assert "`reasoning_effort=high`" in str(issue)
     # The orchestrator deployment is never named in user-facing text.
     assert "gpt-4" not in str(issue)
+
+
+@pytest.mark.asyncio
+async def test_unsupported_temperature_is_reported_as_a_soft_issue():
+    initializer, _resolver, _fetch = _make_initializer(
+        fetch_metadata=AsyncMock(return_value=_make_deployment(temperature=False)),
+        temperature=0.2,
+    )
+
+    await initializer.initialize()
+
+    assert len(initializer.initialization_exceptions) == 1
+    issue = initializer.initialization_exceptions[0]
+    assert isinstance(issue, UnsupportedDeploymentParameterException)
+    assert issue.parameter == "temperature"
+    assert "does not support `temperature`" in str(issue)
+
+
+@pytest.mark.asyncio
+async def test_no_issue_when_temperature_is_supported():
+    initializer, _resolver, _fetch = _make_initializer(
+        fetch_metadata=AsyncMock(return_value=_make_deployment(temperature=True)),
+        temperature=0.2,
+    )
+
+    await initializer.initialize()
+
+    assert initializer.initialization_exceptions == []
 
 
 @pytest.mark.asyncio
