@@ -10,6 +10,7 @@ from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.config.application import StageDisplayLevel
 from quickapp.config.tools.internal import InternalTool
+from quickapp.skills.exceptions import SkillFileNotFoundError, SkillFilesNotSupportedError
 from quickapp.skills.registry._skill_reader_stage_wrapper import _SkillReaderStageWrapper
 from quickapp.skills.registry._skills_registry import SkillsRegistry
 
@@ -62,11 +63,12 @@ class _SkillReaderTool(StagedBaseTool):
                 content = await self.__skills_registry.read_skill_file(skill_name, file_path)
             else:
                 content = self.__skills_registry.get_skill_content(skill_name)
-        except (FileNotFoundError, ValueError) as e:
-            # A wrong skill name / file path is something the model can correct.
-            raise InvalidToolCallParameterException(
-                "file_path" if file_path else "skill_name", str(e)
-            ) from e
+        except (SkillFileNotFoundError, SkillFilesNotSupportedError) as e:
+            # The skill exists; the requested file does not (or the source has none).
+            raise InvalidToolCallParameterException("file_path", str(e)) from e
+        except FileNotFoundError as e:
+            # The registry only raises a bare FileNotFoundError for an unknown skill.
+            raise InvalidToolCallParameterException("skill_name", str(e)) from e
 
         result = ToolCallResult(content=content, content_type="text/markdown")
         if stage_wrapper:

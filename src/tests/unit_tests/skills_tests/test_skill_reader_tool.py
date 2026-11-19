@@ -94,6 +94,31 @@ class TestSkillReaderTool:
         assert "has no bundled files" in excinfo.value.message
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("file_path", [None, "a.md"])
+    async def test_unknown_skill_is_attributed_to_skill_name(self, file_path):
+        registry = _make_registry()
+        registry.get_skill_content.side_effect = FileNotFoundError("Skill not found: nope")
+        registry.read_skill_file = AsyncMock(side_effect=FileNotFoundError("Skill not found: nope"))
+        tool = _make_tool(registry)
+
+        with pytest.raises(InvalidToolCallParameterException) as excinfo:
+            await tool._run_in_stage_async(skill_name="nope", file_path=file_path)
+
+        assert excinfo.value.parameter_name == "skill_name"
+        assert "Skill not found: nope" in excinfo.value.message
+
+    @pytest.mark.asyncio
+    async def test_unrelated_errors_are_not_relabelled_as_bad_parameters(self):
+        registry = _make_registry()
+        registry.read_skill_file = AsyncMock(
+            side_effect=UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
+        )
+        tool = _make_tool(registry)
+
+        with pytest.raises(UnicodeDecodeError):
+            await tool._run_in_stage_async(skill_name="refunds", file_path="a.md")
+
+    @pytest.mark.asyncio
     async def test_failure_is_converted_to_error_result_by_the_base_tool(self):
         registry = _make_registry()
         registry.read_skill_file = AsyncMock(
