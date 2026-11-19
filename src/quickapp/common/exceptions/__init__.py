@@ -12,7 +12,6 @@ from .skill_initialization import (
 )
 from .tool_initialization import ToolInitializationException
 from .tool_timeout import TOOL_TIMEOUT_PHRASE, ToolTimeoutError
-from .unsupported_reasoning_effort import UnsupportedReasoningEffortException
 from .tool_error import ToolErrorException
 
 __all__ = [
@@ -28,7 +27,6 @@ __all__ = [
     "SkillInitializationException",
     "ToolInitializationException",
     "ToolTimeoutError",
-    "UnsupportedReasoningEffortException",
     "HookInitializationException",
     "ToolErrorException",
 ]

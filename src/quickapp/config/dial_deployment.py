@@ -1,5 +1,6 @@
 from typing import Annotated, Any, Literal
 
+from aidial_client.types.deployment import Features
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
 from quickapp.common.base_config import DialResourceConfigField, LegacyAlias, LegacyAliasModel
@@ -109,6 +110,9 @@ class DialDeploymentConfig(LegacyAliasModel):
         description="The predefined parameters for the DIAL deployment.",
     )
     _configuration_param_names: set[str] = PrivateAttr(default_factory=set)
+    # The target deployment's DialCore features, snapshotted at tool-config build time; `None`
+    # when they were not fetched, in which case `parameters` are sent unchanged.
+    _features: Features | None = PrivateAttr(default=None)
 
 
 # `tools` lives here rather than on `DialDeploymentParameters` because the orchestrator builds

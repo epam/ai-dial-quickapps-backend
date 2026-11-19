@@ -4,6 +4,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from aidial_client.types.deployment import Features
 from aidial_sdk.chat_completion import Message, Role
 from aidial_sdk.chat_completion.request import Attachment as SdkAttachment
 from aidial_sdk.chat_completion.request import CustomContent, FunctionCall, ToolCall
@@ -364,6 +365,7 @@ def _make_tool_config(
     configuration_param_names: set[str] | None = None,
     conversation_mode: ConversationMode | None = None,
     propagate_annotations_to_choice: bool | None = None,
+    features: Features | None = None,
 ) -> DialDeploymentTool:
     """Build a real DialDeploymentTool for _pre_process_params tests."""
     deployment = DialDeploymentToolConfig(
@@ -372,6 +374,7 @@ def _make_tool_config(
     )
     if configuration_param_names:
         deployment._configuration_param_names = configuration_param_names
+    deployment._features = features
     return DialDeploymentTool(
         deployment=deployment,
         conversation_mode=conversation_mode,
@@ -481,6 +484,34 @@ async def test_pre_process_params_standard_params_stay_flat():
     assert result["temperature"] == 0.7
     assert "temperature" not in result.get("custom_fields", {}).get("configuration", {})
     assert result["custom_fields"]["configuration"]["size"] == "1024x1024"
+
+
+@pytest.mark.asyncio
+async def test_pre_process_params_drops_parameters_the_deployment_does_not_support():
+    """Configured and model-passed values alike are filtered by the target's features."""
+    tool_config = _make_tool_config(
+        parameters=DialDeploymentToolParameters(temperature=0.2, seed=7),
+        features=Features(temperature=False, reasoning_efforts=["low"]),
+    )
+    tool = _build_tool_with_config(tool_config)
+
+    result = await tool._pre_process_params(query="draw", reasoning_effort="high")
+
+    assert "temperature" not in result
+    assert "reasoning_effort" not in result
+    assert result["seed"] == 7
+    # The drop runs on the locally built payload; the shared tool config is untouched.
+    assert tool_config.deployment.parameters.temperature == 0.2
+
+
+@pytest.mark.asyncio
+async def test_pre_process_params_sends_parameters_unchanged_without_features():
+    tool_config = _make_tool_config(parameters=DialDeploymentToolParameters(temperature=0.2))
+    tool = _build_tool_with_config(tool_config)
+
+    result = await tool._pre_process_params(query="draw")
+
+    assert result["temperature"] == 0.2
 
 
 # ---------------------------------------------------------------------------
