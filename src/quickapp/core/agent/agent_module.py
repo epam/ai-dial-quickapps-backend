@@ -161,12 +161,10 @@ class AgentModule(Module):
 
     @multiprovider
     def _provide_initialization_exceptions(
-        self,
-        initializer: _OrchestratorDeploymentInitializer,
-        system_prompt_initializer: _DialSystemPromptInitializer,
+        self, system_prompt_initializer: _DialSystemPromptInitializer
     ) -> list[InitializationException]:
         # Resolved by _InitializationErrorHandler after the initializers have run, so the
-        # lists already hold whatever initialize() recorded.
+        # list already holds whatever initialize() recorded.
         return list(system_prompt_initializer.initialization_exceptions)
 
     @provider

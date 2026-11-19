@@ -8,7 +8,7 @@ from injector import inject
 
 from quickapp.common import RESPONSE_FORMAT, ForwardedHeaders
 from quickapp.common.abstract.base_transformer import PreInvocationTransformer
-from quickapp.common.deployment_parameter_support import unsupported_parameters
+from quickapp.common.deployment_parameter_support import remove_unsupported_parameters
 from quickapp.common.dial_request_fields import CUSTOM_FIELDS, EXTRA_BODY, to_custom_fields_payload
 from quickapp.common.payload_logging import log_payload, payloads_enabled, summarize_roles
 from quickapp.common.presentation_settings import PresentationSettings
@@ -52,9 +52,10 @@ class _ChatCompletionConfigBuilder:
         self.__prompt_cache_breakpoints = prompt_cache_breakpoints
 
     def build(self, messages: list[Message]) -> dict[str, Any]:
-        chat_completion_config = self._supported_parameters(
-            self.__config.orchestrator.deployment.parameters.model_dump(exclude_none=True)
+        chat_completion_config = self.__config.orchestrator.deployment.parameters.model_dump(
+            exclude_none=True
         )
+        remove_unsupported_parameters(chat_completion_config, self.__capabilities.features)
         self._move_custom_fields_to_extra_body(chat_completion_config)
         prepared_messages = self._prepare_messages(messages)
         all_tools = self._merge_tools()
@@ -151,16 +152,6 @@ class _ChatCompletionConfigBuilder:
             log_payload(
                 logger, "Chat completion config: %s", json.dumps(loggable, ensure_ascii=False)
             )
-
-    def _supported_parameters(self, parameters: dict[str, Any]) -> dict[str, Any]:
-        """The parameters without those the deployment's features declare unsupported.
-
-        Sending them anyway is rejected upstream with an opaque `400` that reaches the user as a
-        generic "request was rejected as invalid". `_OrchestratorDeploymentInitializer` logs the
-        same drops once per request, so they are not silent.
-        """
-        unsupported = unsupported_parameters(parameters, self.__capabilities.features)
-        return {name: value for name, value in parameters.items() if name not in unsupported}
 
     @staticmethod
     def _move_custom_fields_to_extra_body(chat_completion_config: dict[str, Any]) -> None:

@@ -6,6 +6,7 @@ from aidial_client.types.deployment import Features
 from aidial_sdk.chat_completion import Message, Role
 
 from quickapp.config.agent_settings import AgentSettings
+from quickapp.config.dial_deployment import DialDeploymentParameters
 from quickapp.core.agent._chat_completion_config_builder import _ChatCompletionConfigBuilder
 from quickapp.core.agent._prompt_cache_breakpoints import _PromptCacheBreakpoints
 from quickapp.core.agent._tool_choice_holder import _ToolChoiceHolder
@@ -27,9 +28,13 @@ def _make_builder(
     cache: bool | None = None,
     breakpoints_enabled: bool = True,
     features: dict | None = None,
+    parameters_model: DialDeploymentParameters | None = None,
 ) -> _ChatCompletionConfigBuilder:
     config = MagicMock()
-    config.orchestrator.deployment.parameters.model_dump.return_value = parameters or {}
+    if parameters_model is not None:
+        config.orchestrator.deployment.parameters = parameters_model
+    else:
+        config.orchestrator.deployment.parameters.model_dump.return_value = parameters or {}
     config.orchestrator.deployment.deployment_id = "test-model"
     return _ChatCompletionConfigBuilder(
         config=config,
@@ -249,6 +254,19 @@ def test_unsupported_temperature_is_dropped(features: dict):
     assert "temperature" not in result
     # Core defaults `seedSupported` to false, so its flag is not enforced.
     assert result["seed"] == 7
+
+
+def test_dropping_leaves_the_app_config_untouched():
+    """The drop runs on a fresh dump, so the shared config keeps the value across builds."""
+    parameters = DialDeploymentParameters(temperature=0.5)
+    builder = _make_builder(parameters_model=parameters, features={"temperature": False})
+
+    first = builder.build([])
+    second = builder.build([])
+
+    assert "temperature" not in first
+    assert "temperature" not in second
+    assert parameters.temperature == 0.5
 
 
 def test_custom_fields_are_sent_in_extra_body():

@@ -501,6 +501,8 @@ async def test_pre_process_params_drops_parameters_the_deployment_does_not_suppo
     assert "temperature" not in result
     assert "reasoning_effort" not in result
     assert result["seed"] == 7
+    # The drop runs on the locally built payload; the shared tool config is untouched.
+    assert tool_config.deployment.parameters.temperature == 0.2
 
 
 @pytest.mark.asyncio
