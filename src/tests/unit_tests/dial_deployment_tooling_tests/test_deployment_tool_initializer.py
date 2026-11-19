@@ -241,7 +241,7 @@ async def test_full_tool_snapshots_features_and_logs_unsupported_parameters(
 
     assert tool.deployment._features == Features(temperature=False)
     assert context.exceptions == []
-    assert [r.getMessage() for r in caplog.records] == [
+    assert [r.getMessage() for r in caplog.records if r.name == _INITIALIZER_LOGGER] == [
         "Configured temperature of tool summarizer is not supported by deployment my-app; "
         "dropping it"
     ]

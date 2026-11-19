@@ -138,7 +138,7 @@ async def test_no_warning_when_configured_parameters_are_supported(
     with caplog.at_level(logging.WARNING, logger=_LOGGER):
         await initializer.initialize()
 
-    assert caplog.records == []
+    assert [r for r in caplog.records if r.name == _LOGGER] == []
 
 
 @pytest.mark.asyncio
@@ -167,8 +167,9 @@ async def test_unsupported_parameter_is_logged_once_per_request(
     with caplog.at_level(logging.WARNING, logger=_LOGGER):
         await initializer.initialize()
 
-    assert len(caplog.records) == 1
-    message = caplog.records[0].getMessage()
+    records = [r for r in caplog.records if r.name == _LOGGER]
+    assert len(records) == 1
+    message = records[0].getMessage()
     assert f"Configured {parameter} is not supported by deployment gpt-4" in message
     # Logs carry structure, not content: the configured value is never logged.
     assert str(reasoning_effort or temperature) not in message
