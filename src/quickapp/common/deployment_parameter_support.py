@@ -1,0 +1,63 @@
+"""Drop chat-completion parameters the target deployment's DialCore features declare unsupported.
+
+A deployment advertises in `features` which request parameters its upstream accepts (Core
+`temperatureSupported`, `reasoningEfforts`, ...). Core forwards a request unchanged, so a
+parameter the upstream rejects fails the call with an opaque `400` that reaches the user as a
+generic "request was rejected as invalid". This module leaves such parameters out for the
+orchestrator and for deployment tools.
+
+Boolean flags are enforced only when Core defaults them to `true`, because for those `false` means
+an admin turned the parameter off. A default-`false` flag such as `seedSupported` cannot tell
+"unsupported" from "never configured", so `seed` passes through, as do parameters Core has no flag
+for. `reasoningEfforts` is the exception: Core defines an empty list as "not supported".
+"""
+
+from collections.abc import Callable, Mapping
+from typing import Any
+
+from aidial_client.types.deployment import Features
+
+TEMPERATURE_PARAM = "temperature"
+REASONING_EFFORT_PARAM = "reasoning_effort"
+
+# A rule tells whether the deployment accepts the configured value.
+_Rule = Callable[[Features, Any], bool]
+
+
+def _temperature_rule(features: Features, _value: Any) -> bool:
+    # `customTemperatureSupported=false` accepts only the API default, which leaving the
+    # parameter out yields anyway.
+    return features.temperature is not False and features.custom_temperature_supported is not False
+
+
+def _reasoning_effort_rule(features: Features, value: Any) -> bool:
+    # An empty `reasoningEfforts` means no value is supported: a deployment that takes the
+    # parameter is expected to list the values it takes.
+    return value in features.reasoning_efforts
+
+
+_RULES: dict[str, _Rule] = {
+    TEMPERATURE_PARAM: _temperature_rule,
+    REASONING_EFFORT_PARAM: _reasoning_effort_rule,
+}
+
+FEATURE_GATED_PARAMETERS: frozenset[str] = frozenset(_RULES)
+
+
+def unsupported_parameters(params: Mapping[str, Any], features: Features) -> list[str]:
+    """The names of the parameters set in `params` that `features` declares unsupported."""
+    return [
+        name
+        for name, rule in _RULES.items()
+        if (value := params.get(name)) is not None and not rule(features, value)
+    ]
+
+
+def remove_unsupported_parameters(params: dict[str, Any], features: Features) -> None:
+    """Remove, in place, the parameters `features` declares unsupported.
+
+    Pass only a dict the caller owns (a fresh `model_dump` or a payload built locally), never one
+    shared with the app config or another request.
+    """
+    for name in unsupported_parameters(params, features):
+        del params[name]
