@@ -16,7 +16,7 @@ from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.chat_completion_stream.argument_stream_presentation import ArgumentStreamMode
-from quickapp.common.deployment_parameter_support import adapt_to_features
+from quickapp.common.deployment_parameter_support import drop_unsupported
 from quickapp.common.dial_request_fields import CONFIGURATION, CUSTOM_FIELDS
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.payload_logging import log_payload
@@ -323,7 +323,7 @@ class BaseDeploymentTool(StagedBaseTool):
         # that configures a gated parameter; otherwise parameters are sent unchanged.
         features = tool_config.deployment._features
         if features is not None:
-            for name in adapt_to_features(prepared, features):
+            for name in drop_unsupported(prepared, features):
                 logger.debug(
                     "Dropped %s unsupported by deployment %s",
                     name,

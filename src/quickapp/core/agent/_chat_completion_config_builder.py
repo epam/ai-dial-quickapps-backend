@@ -8,7 +8,7 @@ from injector import inject
 
 from quickapp.common import RESPONSE_FORMAT, ForwardedHeaders
 from quickapp.common.abstract.base_transformer import PreInvocationTransformer
-from quickapp.common.deployment_parameter_support import adapt_to_features
+from quickapp.common.deployment_parameter_support import drop_unsupported
 from quickapp.common.dial_request_fields import CUSTOM_FIELDS, EXTRA_BODY, to_custom_fields_payload
 from quickapp.common.payload_logging import log_payload, payloads_enabled, summarize_roles
 from quickapp.common.presentation_settings import PresentationSettings
@@ -160,7 +160,7 @@ class _ChatCompletionConfigBuilder:
         generic "request was rejected as invalid". `_OrchestratorDeploymentInitializer` logs the
         same drops once per request, so they are not silent.
         """
-        adapt_to_features(chat_completion_config, self.__capabilities.features)
+        drop_unsupported(chat_completion_config, self.__capabilities.features)
 
     @staticmethod
     def _move_custom_fields_to_extra_body(chat_completion_config: dict[str, Any]) -> None:

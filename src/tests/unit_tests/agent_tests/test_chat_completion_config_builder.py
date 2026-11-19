@@ -251,18 +251,6 @@ def test_unsupported_temperature_is_dropped(features: dict):
     assert result["seed"] == 7
 
 
-def test_max_tokens_is_sent_as_max_completion_tokens_when_only_that_is_supported():
-    builder = _make_builder(
-        parameters={"max_tokens": 100},
-        features={"max_tokens_supported": False, "max_completion_tokens_supported": True},
-    )
-
-    result = builder.build([])
-
-    assert "max_tokens" not in result
-    assert result["max_completion_tokens"] == 100
-
-
 def test_custom_fields_are_sent_in_extra_body():
     """`custom_fields` reaches DIAL Core via `extra_body`, not as an openai client kwarg."""
     custom_fields = {"configuration": {"betas": ["b1"]}}
