@@ -435,7 +435,8 @@ made at this step.
 **As built, this differs from the original proposal:** there is no orchestrator-side interception
 or `_lazy_loaded_tools` state inside `orchestrator.py`. Instead:
 1. `LazyLoadedToolsHolder` is a request-scoped holder (`core/agent/lazy_loaded_tools_holder.py`)
-   that `_ToolSearchTool` writes into directly during its own tool-call execution.
+   that `_ToolSearchTool` writes into directly during its own tool-call execution. It is bound by
+   `AgentModule` and restores and persists its own state (see cross-turn persistence below).
 2. On every subsequent `_ChatCompletionConfigBuilder.build()` call within the same request,
    the builder reads `lazy_loaded_tools_holder.get_all()` and merges those definitions into
    `payload["tools"]`, de-duplicated by function name against the eager tools.
@@ -445,9 +446,23 @@ or `_lazy_loaded_tools` state inside `orchestrator.py`. Instead:
 The main LLM now sees the discovered tools natively alongside `tool_search` and the eager tools,
 and calls them with proper schema-based argument generation.
 
-Cross-turn persistence (serialising discovered tool names into
-`custom_content.state["lazy_loaded_tools"]` so rediscovery is skipped on the next user message)
-was **not implemented** — see [Out of Scope](#out-of-scope-mvp).
+**Cross-turn persistence** (implemented in #755; persistence lives in `tool_discovery/`, the executor guard in `core/agent/tool_executor.py`). A tool's
+schema is only sent while it is in `tools`, so a deferred tool discovered in turn 1 would be
+called with guessed arguments in turn 2 if it were dropped. Discovered names therefore stay
+loaded for the rest of the conversation:
+- `AgentModule` binds `LazyLoadedToolsHolder`, which mirrors its names into
+  `custom_content.state["discovered_tools"]` through the request's `StateHolder` after every
+  change. The orchestrator already sends that state with the final assistant message.
+- The holder reads the key from the latest assistant message and
+  restores the schemas in discovery order on first use rather than on construction, because REST
+  and internal tools register their deferred definitions while the tool list is being built.
+  Names that are no longer deferred (config changed, toolset removed) are dropped, so a forged
+  state cannot load anything outside the configured catalog.
+- `_DiscoveredToolsStateStripper`, a `PreInvocationTransformer`, removes the key from copies of
+  the messages before every model call; the model never sees it.
+- `ToolExecutor` rejects a call to a deferred tool that is not loaded and tells the model to call
+  `internal_tool_search` first, instead of running it with unvalidated arguments. A conversation
+  started before this change has no stored names, so it gets one such rejection.
 
 #### Flow diagram
 
@@ -552,14 +567,15 @@ eagerly, no discovery overhead.
 | `tool_discovery/strategies/` (`ToolSearchStrategy`, `PlainStrategy`, `WindowStrategy`, `HierarchyStrategy`) | The search strategies, see [Search strategies](#search-strategies). Chosen per request by `ToolDiscoveryModule._provide_search_strategy` |
 | `tool_discovery/_tool_search_tool.py` (`_ToolSearchTool`) | Internal `tool_search` (registered name: `internal_tool_search`) tool injected via `ToolDiscoveryModule`'s own `@multiprovider` (enabled by `tool_discovery.enabled`); calls the configured `ToolSearchStrategy`, looks up matched names in `DeferredToolsContext`, writes results into `LazyLoadedToolsHolder`, returns the matched names (`["name", ...]`) to the main LLM. Its own `enrich_openai_tool_schema` override appends a dynamic list of deferred toolset names/descriptions (`DeferredToolsContext.toolset_summaries`) to the static tool description |
 | `core/agent/lazy_loaded_tools_holder.py` (`LazyLoadedToolsHolder`) | Request-scoped holder of discovered `OpenAiToolConfigDict`s — replaces the originally-proposed lazy-initializer + orchestrator-side `_lazy_loaded_tools` state |
+| `core/agent/lazy_loaded_tools_holder.py` (`LazyLoadedToolsHolder`), `tool_discovery/_discovered_tools_state_stripper.py` | Cross-turn persistence: the holder writes `state["discovered_tools"]` and restores it on first use, reading the key from the latest assistant message (bound by `AgentModule`); the stripper hides the key from the model |
+| `core/agent/tool_executor.py` | Rejects a call to a deferred tool whose schema is not loaded, pointing the model at `internal_tool_search` |
 | `tool_discovery/_tool_search_hint_prompt_provider.py` (`_ToolSearchHintPromptProvider`) | System-prompt-level reminder to call `internal_tool_search` before declaring a limitation, plus the same deferred-toolset summary list (name, tool count, description — via the shared `_toolset_summary_format.format_toolset_summaries`) that `_ToolSearchTool.enrich_openai_tool_schema` appends to the tool's own description. Contributed by `ToolDiscoveryModule`'s own `_provide_prompt_parts` (same `tool_discovery.enabled` condition as the tool itself). `ToolDiscoveryModule` is registered in `app_factory.py` **before** `SkillsModule` specifically so this hint lands immediately ahead of the `<available_skills>` block in the aggregated system prompt |
 | `_chat_completion_config_builder.py` | Reads `LazyLoadedToolsHolder.get_all()` on every build and merges into `payload["tools"]`, de-duplicated against eager tool names — **`orchestrator.py` itself was not changed** |
-| Cross-turn state persistence | **Not implemented** — see [Out of Scope](#out-of-scope-mvp) |
 
 **Round-trip cost:** +1 turn before first native tool use (search + inject → tool call).
 The anonymous agent call happens inside the `tool_search` tool execution, not as a separate
 orchestrator iteration. Subsequent calls to the same tool within a turn are free (already in
-`_lazy_loaded_tools`). With cross-turn state, rediscovery is skipped on later turns.
+`LazyLoadedToolsHolder`). Discovered tools stay loaded on later turns, so they are not rediscovered.
 
 **Token cost of `tool_search` (anonymous agent call):**
 `catalog_tokens + query_tokens` — independent of conversation length. For 200 deferred tools
@@ -582,8 +598,7 @@ with ~20-token descriptions each, this is ~4 K tokens regardless of how long the
 **Cons:**
 - +1 orchestrator iteration before first native use of a deferred tool.
 - `AnonymousAgent` introduces a new code path for isolated completions.
-- Discovered tools only live for the current turn (`LazyLoadedToolsHolder` is request-scoped);
-  cross-turn persistence would require state serialisation (not implemented, see Out of Scope).
+- The loaded set only grows during a conversation, so the tools block grows with it.
 - Search quality depends on service model and catalog description quality.
 
 ---
@@ -593,7 +608,7 @@ with ~20-token descriptions each, this is ~4 K tokens regardless of how long the
 | | Option 1 | Option 2 | Option 3 | Option 4 | Option 5 | **Option 6** |
 |---|---|---|---|---|---|---|
 | Model-agnostic | Yes | Yes | Yes | No (Anthropic 4.5+) | Yes | **Yes** |
-| Orchestrator changes | None | None | Significant | Medium | Medium | **None** (as built) |
+| Orchestrator changes | None | None | Significant | Medium | Medium | **None** (as built; state persistence lives in `tool_discovery/`) |
 | Native schema on discovered tool call | No | No | Yes | Yes | Depends | **Yes** |
 | Full name-space visible upfront | No | Yes | No | No | No | **No** |
 | Prompt cache preserved | — | — | — | Yes (by design) | — | **Partial** ¹ |
@@ -638,8 +653,9 @@ top of Option 6 incrementally.
    `_AnonymousAgent`, no keyword-only fallback. Later extended with the configurable
    [search strategies](#search-strategies) (all still LLM routing).
 
-4. ~~**Multi-turn persistence**~~ — **Resolved, as built: not implemented.** Discovered tools
-   are always rediscovered each turn; see [Out of Scope](#out-of-scope-mvp).
+4. ~~**Multi-turn persistence**~~ — **Resolved in #755:** discovered tool names are stored in
+   `custom_content.state["discovered_tools"]` and restored on the next turn; see
+   [Step 5](#step-5--lazy-schema-injection-no-orchestrator-involvement).
 
 5. **Always-on threshold:** Should there be a heuristic that automatically promotes a
    frequently-discovered tool to eager loading (e.g. seen in last N turns), or is that always
@@ -656,7 +672,6 @@ top of Option 6 incrementally.
 | Dynamic MCP server connection/disconnection | Significant lifecycle change; Option 5 follow-on |
 | Per-tool granularity within a toolset | Per-toolset is sufficient for the initial use case |
 | Automatic threshold based on token count | Tool-count threshold is simpler and good enough for MVP |
-| Cross-turn discovery persistence (`custom_content.state["lazy_loaded_tools"]`) | Not implemented — `LazyLoadedToolsHolder` is request-scoped only; discovered tools are rediscovered every turn |
 | `dial-app` toolset deferral | A `DialAppToolSet` always resolves to exactly one synthetic deployment tool (chat-completion branch) or an `MCPToolSet` (MCP branch, which already supports deferral); batching by count never applies to the single-tool case |
 
 ---

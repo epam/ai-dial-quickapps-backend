@@ -12,6 +12,7 @@ from quickapp.core.agent._tool_choice_holder import _ToolChoiceHolder
 from quickapp.core.agent.lazy_loaded_tools_holder import LazyLoadedToolsHolder
 from quickapp.core.agent.models import STATE_KEY_ORCHESTRATOR as ORCH
 from quickapp.core.agent.orchestrator_capabilities import OrchestratorCapabilities
+from tests.unit_tests.common.common import make_tools_holder
 
 
 def _make_tool_dict(name: str) -> dict:
@@ -37,7 +38,7 @@ def _make_builder(
         pre_invocation_transformers=[],
         presentation_settings=MagicMock(show_usage_statistics=False),
         forwarded_headers=None,
-        lazy_loaded_tools_holder=lazy_holder or LazyLoadedToolsHolder(),
+        lazy_loaded_tools_holder=lazy_holder or make_tools_holder(),
         capabilities=OrchestratorCapabilities(
             deployment=SimpleNamespace(  # type: ignore[arg-type]
                 id="test-model",
@@ -55,7 +56,7 @@ def _system_and_user() -> list[Message]:
 
 def test_build_appends_lazy_tools_after_sorted_eager_tools():
     """Eager tools are sorted by name; discovered (lazy) tools follow in discovery order."""
-    lazy_holder = LazyLoadedToolsHolder()
+    lazy_holder = make_tools_holder()
     lazy_holder.add([_make_tool_dict("c"), _make_tool_dict("a")])
     builder = _make_builder([_make_tool_dict("z"), _make_tool_dict("b")], lazy_holder)
 
@@ -67,7 +68,7 @@ def test_build_appends_lazy_tools_after_sorted_eager_tools():
 
 def test_build_dedupes_lazy_tools_against_eager_names():
     """A lazy tool whose name collides with an eager tool is dropped, not duplicated."""
-    lazy_holder = LazyLoadedToolsHolder()
+    lazy_holder = make_tools_holder()
     lazy_holder.add([_make_tool_dict("shared_name"), _make_tool_dict("discovered_tool")])
     builder = _make_builder([_make_tool_dict("shared_name")], lazy_holder)
 
@@ -78,7 +79,7 @@ def test_build_dedupes_lazy_tools_against_eager_names():
 
 
 def test_build_with_no_lazy_tools_returns_eager_tools_only():
-    lazy_holder = LazyLoadedToolsHolder()
+    lazy_holder = make_tools_holder()
     builder = _make_builder([_make_tool_dict("eager_tool")], lazy_holder)
 
     payload = builder.build([Message(role=Role.USER, content="hi")])
@@ -118,7 +119,7 @@ def test_static_tools_sort_first_and_breakpoint_lands_on_last_function_tool():
 
 
 def test_breakpoint_lands_on_last_discovered_tool():
-    lazy_holder = LazyLoadedToolsHolder()
+    lazy_holder = make_tools_holder()
     lazy_holder.add([_make_tool_dict("a")])
     builder = _make_builder([_make_tool_dict("b")], lazy_holder, cache=True)
 
