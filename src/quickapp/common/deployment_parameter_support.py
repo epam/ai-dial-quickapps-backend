@@ -12,7 +12,7 @@ an admin turned the parameter off. A default-`false` flag such as `seedSupported
 for. `reasoningEfforts` is the exception: Core defines an empty list as "not supported".
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Any
 
 from aidial_client.types.deployment import Features
@@ -44,12 +44,10 @@ _RULES: dict[str, _Rule] = {
 FEATURE_GATED_PARAMETERS: frozenset[str] = frozenset(_RULES)
 
 
-def drop_unsupported(params: dict[str, Any], features: Features) -> list[str]:
-    """Remove, in place, the parameters `features` declares unsupported; return their names."""
-    dropped: list[str] = []
-    for name, rule in _RULES.items():
-        value = params.get(name)
-        if value is not None and not rule(features, value):
-            del params[name]
-            dropped.append(name)
-    return dropped
+def unsupported_parameters(params: Mapping[str, Any], features: Features) -> list[str]:
+    """The names of the parameters set in `params` that `features` declares unsupported."""
+    return [
+        name
+        for name, rule in _RULES.items()
+        if (value := params.get(name)) is not None and not rule(features, value)
+    ]

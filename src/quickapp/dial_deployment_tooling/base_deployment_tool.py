@@ -16,7 +16,7 @@ from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.chat_completion_stream.argument_stream_presentation import ArgumentStreamMode
-from quickapp.common.deployment_parameter_support import drop_unsupported
+from quickapp.common.deployment_parameter_support import unsupported_parameters
 from quickapp.common.dial_request_fields import CONFIGURATION, CUSTOM_FIELDS
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.payload_logging import log_payload
@@ -322,13 +322,14 @@ class BaseDeploymentTool(StagedBaseTool):
         # only when the target's features were fetched: for a basic tool config, or a full tool
         # that configures a gated parameter; otherwise parameters are sent unchanged.
         features = tool_config.deployment._features
-        if features is not None:
-            for name in drop_unsupported(prepared, features):
-                logger.debug(
-                    "Dropped %s unsupported by deployment %s",
-                    name,
-                    tool_config.deployment.deployment_id,
-                )
+        unsupported = unsupported_parameters(prepared, features) if features is not None else []
+        if unsupported:
+            logger.debug(
+                "Dropped %s unsupported by deployment %s",
+                unsupported,
+                tool_config.deployment.deployment_id,
+            )
+            prepared = {name: value for name, value in prepared.items() if name not in unsupported}
 
         logger.debug("Pre-processed tool parameters: keys=%s", list(prepared))
         log_payload(logger, "Pre-processed tool parameters: %s", prepared)

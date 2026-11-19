@@ -5,7 +5,10 @@ from injector import AssistedBuilder, ProviderOf, inject
 from quickapp.common import StagedBaseTool
 from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.deferred_tools_accumulator import is_toolset_deferred
-from quickapp.common.deployment_parameter_support import FEATURE_GATED_PARAMETERS, drop_unsupported
+from quickapp.common.deployment_parameter_support import (
+    FEATURE_GATED_PARAMETERS,
+    unsupported_parameters,
+)
 from quickapp.common.deployment_tool_cache import DialDeploymentToolCacheService
 from quickapp.common.exceptions import ToolInitializationException
 from quickapp.common.localized_string import resolve_localized
@@ -146,7 +149,7 @@ class _DeploymentToolInitializer(CompletionInitializer):
         if features is None:
             return
         tool.deployment._features = features
-        for name in drop_unsupported(parameters, features):
+        for name in unsupported_parameters(parameters, features):
             logger.warning(
                 "Configured %s of tool %s is not supported by deployment %s; dropping it",
                 name,
