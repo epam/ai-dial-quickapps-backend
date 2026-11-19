@@ -48,7 +48,7 @@ See [Feature Lifecycle](../README.md#feature-lifecycle) in the root README.
 | Nested sub-stage propagation | [CONFIGURATION — Stage display](../CONFIGURATION.md#stage-display-configuration) | — | [sub-stage-propagation.md](./designs/sub-stage-propagation.md) |
 | Time awareness | [CONFIGURATION — Timestamp](../CONFIGURATION.md#timestamp-configuration) | [time_awareness.md](./time_awareness.md) | [time_awareness.md](./designs/time_awareness.md), [user_timezone.md](./designs/user_timezone.md) |
 | Resumable subagents | [CONFIGURATION — Conversation mode](../CONFIGURATION.md#conversation-mode) | — | [subagents_conversation_mode.md](./designs/subagents_conversation_mode.md) |
-| Form schema propagation | [CONFIGURATION — Form schema propagation](../CONFIGURATION.md#form-schema-propagation) | — | — |
+| Form schema propagation | [CONFIGURATION — Form schema propagation](../CONFIGURATION.md#form-schema-propagation) | — | [form_schema_propagation.md](./designs/form_schema_propagation.md) |
 | Conversation starters | [CONFIGURATION — Conversation starters](../CONFIGURATION.md#conversation-starters-configuration) | — | — |
 | MCP resources | [CONFIGURATION — MCP resources](../CONFIGURATION.md#mcp-resources-configuration) | — | [mcp_capabilities_extension.md](./designs/mcp_capabilities_extension.md) |
 | Interactive login (MCP) | [CONFIGURATION — Environment Variables](../CONFIGURATION.md#environment-variables) (`DIAL_INTERACTIVE_LOGIN_TIMEOUT_SECONDS`) | [agent.md](./agent.md) | [interactive_login.md](./designs/interactive_login.md) |
