@@ -8,14 +8,14 @@ from injector import inject
 
 from quickapp.common.attachment_processing_utils import inferred_mime_type_for_file_context_url
 from quickapp.common.dial_settings import DialSettings
+from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.file_reference_pattern import strip_file_prefix
-from quickapp.common.project_context import PROJECT_CONTEXT
-from quickapp.common.url_classification import (
-    UrlScheme,
-    classify_url,
-    to_relative_project_url,
-    unsupported_scheme_error,
+from quickapp.common.project_context import (
+    CURRENT_PROJECT_ONLY_MESSAGE,
+    PROJECT_CONTEXT,
+    current_project_url,
 )
+from quickapp.common.url_classification import UrlScheme, classify_url, unsupported_scheme_error
 from quickapp.common.utils import filename_from_url_path
 from quickapp.dial_core_services.dial_file_promoter import DialFilePromoter
 from quickapp.shared.home_path.home_path_resolver import HomePathResolver
@@ -30,12 +30,14 @@ class AttachmentResolver:
     Dispatches on URL classification and the deployment's
     ``features.url_attachments`` capability:
 
+    * **Home-relative path** (``reports/a.pdf``) — resolved under the agent home via
+      :class:`HomePathResolver`, like in the file tools and ``get_content``, then dispatched
+      as the URL it resolves to.
     * **DIAL** — read metadata via ``dial_client.metadata.get`` and emit a
       ``url=`` attachment.
-    * **Project chat: a file of the request's project, or a home-relative path** (resolved
-      under the project's ``artifacts/``) — emit a ``url=`` attachment as is, with no v1
-      metadata call (v1 can't read ``projects/`` URLs). A deployment that can't read
-      ``projects/`` URLs answers with its own error, surfaced as a tool error.
+    * **Project file** (only the request's project) — emit a ``url=`` attachment as is,
+      with no v1 metadata call (v1 can't read ``projects/`` URLs). A deployment that can't
+      read ``projects/`` URLs answers with its own error, surfaced as a tool error.
     * **External + ``supports_url_attachments``** — emit a ``reference_url=``
       attachment; the deployment fetches the bytes itself, no QuickApps egress.
     * **External + not supported** — materialise via :class:`DialFilePromoter`
@@ -86,15 +88,23 @@ class AttachmentResolver:
     async def _resolve_attachment(
         self, file_relative_url: str, supports_url_attachments: bool
     ) -> AttachmentParam:
-        bare = to_relative_project_url(strip_file_prefix(file_relative_url), self.__base_url)
+        bare = strip_file_prefix(file_relative_url)
         scheme = classify_url(bare, self.__base_url)
 
-        # The resolver accepts only the current project's URLs (and rejects any outside a
-        # project chat), in canonical form.
-        if bare.startswith("projects/") or (
-            self.__project is not None and scheme == UrlScheme.DIAL_APPDIR_RELATIVE
-        ):
-            return _pass_through(await self.__home_resolver.resolve_appdata_url(bare))
+        if scheme == UrlScheme.DIAL_APPDIR_RELATIVE:
+            # Under the agent home: the project's `artifacts/` in a project chat.
+            bare = await self.__home_resolver.resolve_appdata_url(
+                bare, parameter_name="attachment_urls"
+            )
+            scheme = UrlScheme.DIAL
+
+        if bare.startswith("projects/"):
+            project_url = current_project_url(self.__project, bare)
+            if project_url is None:
+                raise InvalidToolCallParameterException(
+                    "attachment_urls", CURRENT_PROJECT_ONLY_MESSAGE
+                )
+            return _pass_through(project_url)
 
         if scheme == UrlScheme.DIAL:
             metadata: AsyncMetadata = self.__dial_client.metadata

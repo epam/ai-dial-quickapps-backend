@@ -72,6 +72,7 @@ def _make_tool(
         deferred_stage_close_registry=MagicMock(),
         materializer=materializer,
         home_resolver=home_resolver,
+        project=None,
     )
 
 

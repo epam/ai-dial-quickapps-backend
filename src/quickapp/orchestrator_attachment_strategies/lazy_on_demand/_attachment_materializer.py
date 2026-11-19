@@ -6,12 +6,7 @@ from aidial_sdk.chat_completion import Attachment
 from injector import inject
 
 from quickapp.common.dial_settings import DialSettings
-from quickapp.common.url_classification import (
-    UrlScheme,
-    classify_url,
-    is_dial_storage_path,
-    to_relative_project_url,
-)
+from quickapp.common.url_classification import UrlScheme, classify_url, is_dial_storage_path
 from quickapp.dial_core_services.dial_file_promoter import DialFilePromoter
 
 logger = logging.getLogger(__name__)
@@ -35,11 +30,6 @@ class _AttachmentMaterializer:
 
     def classify(self, url: str) -> UrlScheme:
         return classify_url(url, self.__dial_url)
-
-    def to_relative(self, url: str) -> str:
-        """A host-matched absolute project URL in its relative form; any other ``url``
-        unchanged."""
-        return to_relative_project_url(url, self.__dial_url)
 
     def is_storage_path(self, url: str) -> bool:
         """Whether ``url`` is a relative DIAL storage path (``files/...`` or ``projects/...``)."""

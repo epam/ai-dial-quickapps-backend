@@ -2,12 +2,13 @@ from injector import inject
 
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.project_context import PROJECT_CONTEXT, has_unsafe_segments
+from quickapp.common.url_classification import is_dial_storage_path
 from quickapp.common.utils import canonical_url, readable_url
 from quickapp.config.dial_files import DialFilesConfig
 from quickapp.dial_core_services.dial_file_service import DialFileService
 
 
-def _validate_relative_path(path: str) -> None:
+def _validate_relative_path(path: str, parameter_name: str) -> None:
     """Reject relative paths that are unsafe or malformed (leading '/', '..', etc.).
 
     Deliberately laxer than ``is_appdir_relative`` in ``common.url_classification``:
@@ -17,16 +18,22 @@ def _validate_relative_path(path: str) -> None:
     """
     if path != path.strip():
         raise InvalidToolCallParameterException(
-            "path", "path must not have leading/trailing whitespace"
+            parameter_name, f"{parameter_name} must not have leading/trailing whitespace"
         )
     if path.startswith("/"):
-        raise InvalidToolCallParameterException("path", "path must not start with '/'")
+        raise InvalidToolCallParameterException(
+            parameter_name, f"{parameter_name} must not start with '/'"
+        )
     segments = path.split("/")
     if ".." in segments:
-        raise InvalidToolCallParameterException("path", "path must not contain '..'")
+        raise InvalidToolCallParameterException(
+            parameter_name, f"{parameter_name} must not contain '..'"
+        )
     # Trailing '' (caused by a trailing '/') is allowed to denote a folder URL.
     if "" in segments[:-1]:
-        raise InvalidToolCallParameterException("path", "path must not contain empty segments")
+        raise InvalidToolCallParameterException(
+            parameter_name, f"{parameter_name} must not contain empty segments"
+        )
 
 
 @inject
@@ -40,8 +47,9 @@ class HomePathResolver:
     tools, the path-argument transformer, and any other agent-home consumer so the home is
     resolved a single time per request.
 
-    Absolute URLs are ``files/...`` and ``projects/...`` (see ``is_absolute``); a
-    ``projects/...`` URL resolves only to a file of the request's project.
+    Absolute URLs (``files/...`` and ``projects/...``, see ``is_absolute``) come back
+    unchanged: which of them a caller may use is not decided here (see
+    ``current_project_url`` and ``RoutedFileStorage``).
     """
 
     def __init__(
@@ -59,7 +67,7 @@ class HomePathResolver:
         """Whether ``path`` is an absolute DIAL URL (``files/...`` or ``projects/...``) rather
         than a path relative to the agent home. Like ``files``, ``projects`` is a Core resource
         type, so a home folder of that name can't be addressed by a relative path."""
-        return path.startswith(("files/", "projects/"))
+        return is_dial_storage_path(path)
 
     async def resolve_write_url(self, parameter_name: str, path: str) -> str:
         """Resolve a write target: only a path under the agent home is accepted, so files
@@ -78,30 +86,29 @@ class HomePathResolver:
                 "projects/... URL",
             )
 
-    async def resolve_appdata_url(self, path: str) -> str:
+    async def resolve_appdata_url(self, path: str, parameter_name: str = "path") -> str:
+        """The DIAL URL for ``path``: a relative path resolves under the agent home, and
+        ``files/...`` and ``projects/...`` come back unchanged. ``parameter_name`` names the
+        caller's tool parameter in the errors."""
         if not isinstance(path, str) or path == "":
-            raise InvalidToolCallParameterException("path", "path must be a non-empty string")
+            raise InvalidToolCallParameterException(
+                parameter_name, f"{parameter_name} must be a non-empty string"
+            )
         if "\n" in path or "\r" in path:
             raise InvalidToolCallParameterException(
-                "path", "path must not contain newline characters"
+                parameter_name, f"{parameter_name} must not contain newline characters"
             )
-        if path.startswith("files/"):
+        if self.is_absolute(path):
             return path
-        if path.startswith("projects/"):
-            if self._project is None or not self._project.contains(path):
-                raise InvalidToolCallParameterException(
-                    "path",
-                    "only files of the current project can be accessed by a projects/... URL",
-                )
-            return canonical_url(path)
-        _validate_relative_path(path)
+        _validate_relative_path(path, parameter_name)
         if self._project is not None:
             # Canonicalizing decodes each segment, so check the decoded form first:
             # `%2e%2e` or an encoded `/` would otherwise turn into a real `..` or `/`.
             if has_unsafe_segments(path):
                 raise InvalidToolCallParameterException(
-                    "path",
-                    "path must not contain '.', '..' or empty segments, or an encoded '/'",
+                    parameter_name,
+                    f"{parameter_name} must not contain '.', '..' or empty segments, or an "
+                    "encoded '/'",
                 )
             # Canonical, like the URLs Core lists, so prefix math against listings works.
             return canonical_url(f"{await self.resolve_home_dir()}{path}")

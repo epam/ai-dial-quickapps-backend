@@ -214,7 +214,7 @@ async def test_resolve_attachment_urls_first_failure_surfaces_sibling_completion
     dial_client.metadata.get.assert_called_once()
 
 
-class TestProjectChat:
+class TestHomeRelativeAndProjectUrls:
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
         "url",
@@ -222,7 +222,6 @@ class TestProjectChat:
             "projects/bucket/My%20Project/files/context/My%20Report.pdf",
             "projects/bucket/My Project/files/context/My Report.pdf",
             "file:url::projects/bucket/My%20Project/files/context/My%20Report.pdf",
-            "https://dial.example/v1/projects/bucket/My%20Project/files/context/My%20Report.pdf",
         ],
     )
     async def test_current_project_url_passes_through_without_metadata(self, url: str):
@@ -265,10 +264,11 @@ class TestProjectChat:
     async def test_other_project_url_is_rejected(self):
         """Only the current project's URLs resolve (D8)."""
         resolver = _make_resolver(project=_PROJECT)
-        with pytest.raises(InvalidToolCallParameterException, match="current project"):
+        with pytest.raises(InvalidToolCallParameterException, match="current project") as excinfo:
             await resolver._resolve_attachment(
                 "projects/other/P/files/a.pdf", supports_url_attachments=False
             )
+        assert excinfo.value.parameter_name == "attachment_urls"
 
     @pytest.mark.asyncio
     async def test_project_url_without_project_is_rejected(self):
@@ -279,7 +279,14 @@ class TestProjectChat:
             )
 
     @pytest.mark.asyncio
-    async def test_without_project_home_relative_stays_unsupported(self):
-        resolver = _make_resolver()
-        with pytest.raises(InvalidToolCallParameterException):
-            await resolver._resolve_attachment("notes.md", supports_url_attachments=False)
+    async def test_without_project_home_relative_resolves_under_appdata(self):
+        fileinfo = MagicMock(content_type="text/markdown", url="files/appbucket/notes.md")
+        fileinfo.name = "notes.md"
+        dial_client = MagicMock()
+        dial_client.metadata.get = AsyncMock(return_value=fileinfo)
+        resolver = _make_resolver(dial_client=dial_client)
+
+        result = await resolver._resolve_attachment("notes.md", supports_url_attachments=False)
+
+        dial_client.metadata.get.assert_awaited_once_with("files", "files/appbucket/notes.md")
+        assert result["url"] == "files/appbucket/notes.md"
