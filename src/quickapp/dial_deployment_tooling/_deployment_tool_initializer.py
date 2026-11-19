@@ -1,5 +1,7 @@
 import logging
+from typing import Any
 
+from aidial_client.types.deployment import Features
 from injector import AssistedBuilder, ProviderOf, inject
 
 from quickapp.common import StagedBaseTool
@@ -145,7 +147,13 @@ class _DeploymentToolInitializer(CompletionInitializer):
                 exc_info=True,
             )
             return
-        features = basic_config.deployment._features
+        self.__apply_deployment_features(tool, basic_config.deployment._features, parameters)
+
+    @staticmethod
+    def __apply_deployment_features(
+        tool: DialDeploymentTool, features: Features | None, parameters: dict[str, Any]
+    ) -> None:
+        """Attach `features` to the tool and log each configured parameter they rule out."""
         if features is None:
             return
         tool.deployment._features = features
@@ -154,7 +162,7 @@ class _DeploymentToolInitializer(CompletionInitializer):
                 "Configured %s of tool %s is not supported by deployment %s; dropping it",
                 name,
                 tool.open_ai_tool.function.name,
-                deployment_id,
+                tool.deployment.deployment_id,
             )
 
     def __build_deployment_tool(self, tool: DialDeploymentTool) -> StagedBaseTool:
