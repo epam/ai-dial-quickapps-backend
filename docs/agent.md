@@ -94,10 +94,9 @@ skills) are visible to transformers:
   the target deployment's DialCore `features` declare unsupported: `temperature`
   (`temperatureSupported`, `customTemperatureSupported`), `max_tokens` (`maxTokensSupported`; sent
   as `max_completion_tokens` when that is supported) and `reasoning_effort` (`reasoningEfforts`). It
-  applies to the orchestrator and to deployment tools. Each drop is reported as a soft
-  `UnsupportedDeploymentParameterException` in the Initialization issues stage, and the request
-  proceeds without the parameter. Only flags Core defaults to `true` are enforced, so `seed`
-  (`seedSupported` defaults to `false`) is always sent.
+  applies to the orchestrator and to deployment tools; each drop is logged as a warning and the
+  request proceeds without the parameter. Only flags Core defaults to `true` are enforced, so
+  `seed` (`seedSupported` defaults to `false`) is always sent.
 - **Message preprocessing**: after initializers, `_RequestContextSetup.setup_messages()` calls
   `_MessagesSetup.extract_tool_calls()` to expand packed tool-call state, then runs all
   `MessagesTransformer` instances (adding system prompts, injecting context notifications). After

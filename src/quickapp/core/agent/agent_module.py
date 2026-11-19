@@ -167,10 +167,7 @@ class AgentModule(Module):
     ) -> list[InitializationException]:
         # Resolved by _InitializationErrorHandler after the initializers have run, so the
         # lists already hold whatever initialize() recorded.
-        return [
-            *system_prompt_initializer.initialization_exceptions,
-            *initializer.initialization_exceptions,
-        ]
+        return list(system_prompt_initializer.initialization_exceptions)
 
     @provider
     def provide_orchestrator_capabilities(

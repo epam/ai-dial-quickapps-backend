@@ -157,8 +157,8 @@ class _ChatCompletionConfigBuilder:
         """Remove the parameters the deployment's features declare unsupported.
 
         Sending them anyway is rejected upstream with an opaque `400` that reaches the user as a
-        generic "request was rejected as invalid". `_OrchestratorDeploymentInitializer` reports
-        the same drops in the Initialization issues stage, so they are not silent.
+        generic "request was rejected as invalid". `_OrchestratorDeploymentInitializer` logs the
+        same drops once per request, so they are not silent.
         """
         adapt_to_features(chat_completion_config, self.__capabilities.features)
 

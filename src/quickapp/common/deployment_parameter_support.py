@@ -15,69 +15,35 @@ from collections.abc import Callable
 from typing import Any
 
 from aidial_client.types.deployment import Features
-from pydantic import BaseModel, ConfigDict
 
 TEMPERATURE_PARAM = "temperature"
 MAX_TOKENS_PARAM = "max_tokens"
 MAX_COMPLETION_TOKENS_PARAM = "max_completion_tokens"
 REASONING_EFFORT_PARAM = "reasoning_effort"
 
-
-class UnsupportedParameter(BaseModel):
-    """A parameter removed from a request because the deployment does not support it."""
-
-    model_config = ConfigDict(frozen=True)
-
-    name: str
-    value: Any
-    # Completes "The AI model ... <reason>", e.g. "does not support `temperature`".
-    reason: str
+# A rule returns the name the value is sent under, or `None` when the parameter is dropped.
+_Rule = Callable[[Features, Any], str | None]
 
 
-class _Drop(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-    reason: str
-
-
-class _Rename(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-    to: str
+def _temperature_rule(features: Features, _value: Any) -> str | None:
+    if features.temperature is False or features.custom_temperature_supported is False:
+        return None
+    return TEMPERATURE_PARAM
 
 
-_Verdict = _Drop | _Rename | None
-_Rule = Callable[[Features, Any], _Verdict]
-
-
-def _temperature_rule(features: Features, _value: Any) -> _Verdict:
-    if features.temperature is False:
-        return _Drop(reason=f"does not support `{TEMPERATURE_PARAM}`")
-    if features.custom_temperature_supported is False:
-        return _Drop(reason=f"does not support a custom `{TEMPERATURE_PARAM}`")
+def _max_tokens_rule(features: Features, _value: Any) -> str | None:
+    if features.max_tokens_supported is not False:
+        return MAX_TOKENS_PARAM
+    # Renamed rather than dropped: dropping would lift the cap on the response length.
+    if features.max_completion_tokens_supported is True:
+        return MAX_COMPLETION_TOKENS_PARAM
     return None
 
 
-def _max_tokens_rule(features: Features, _value: Any) -> _Verdict:
-    if features.max_tokens_supported is not False:
-        return None
-    # Renamed rather than dropped: dropping would lift the cap on the response length.
-    if features.max_completion_tokens_supported is True:
-        return _Rename(to=MAX_COMPLETION_TOKENS_PARAM)
-    return _Drop(
-        reason=f"supports neither `{MAX_TOKENS_PARAM}` nor `{MAX_COMPLETION_TOKENS_PARAM}`"
-    )
-
-
-def _reasoning_effort_rule(features: Features, value: Any) -> _Verdict:
+def _reasoning_effort_rule(features: Features, value: Any) -> str | None:
     # An empty `reasoningEfforts` means no value is supported: a deployment that takes the
     # parameter is expected to list the values it takes.
-    supported = features.reasoning_efforts
-    if value in supported:
-        return None
-    if supported:
-        return _Drop(reason="supports " + ", ".join(f"`{effort}`" for effort in supported))
-    return _Drop(reason=f"does not advertise support for `{REASONING_EFFORT_PARAM}`")
+    return REASONING_EFFORT_PARAM if value in features.reasoning_efforts else None
 
 
 _RULES: dict[str, _Rule] = {
@@ -89,22 +55,24 @@ _RULES: dict[str, _Rule] = {
 FEATURE_GATED_PARAMETERS: frozenset[str] = frozenset(_RULES)
 
 
-def adapt_to_features(params: dict[str, Any], features: Features) -> list[UnsupportedParameter]:
+def adapt_to_features(params: dict[str, Any], features: Features) -> list[str]:
     """Drop or rename, in place, the parameters `features` declares unsupported.
 
-    Returns the dropped parameters. A rename (`max_tokens` to `max_completion_tokens`) keeps the
-    value's effect, so it is not reported; a value already set under the new name wins.
+    Returns the names of the dropped parameters. A rename (`max_tokens` to
+    `max_completion_tokens`) keeps the value's effect, so it is not reported; a value already set
+    under the new name wins.
     """
-    dropped: list[UnsupportedParameter] = []
+    dropped: list[str] = []
     for name, rule in _RULES.items():
         value = params.get(name)
         if value is None:
             continue
-        verdict = rule(features, value)
-        if isinstance(verdict, _Rename):
-            del params[name]
-            params.setdefault(verdict.to, value)
-        elif isinstance(verdict, _Drop):
-            del params[name]
-            dropped.append(UnsupportedParameter(name=name, value=value, reason=verdict.reason))
+        target = rule(features, value)
+        if target == name:
+            continue
+        del params[name]
+        if target is None:
+            dropped.append(name)
+        else:
+            params.setdefault(target, value)
     return dropped

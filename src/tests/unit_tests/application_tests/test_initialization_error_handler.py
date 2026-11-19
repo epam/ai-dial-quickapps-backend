@@ -10,7 +10,6 @@ from quickapp.common.exceptions import (
     OrchestratorSystemPromptException,
     ProjectInstructionsException,
     SkillInitializationException,
-    UnsupportedDeploymentParameterException,
 )
 from quickapp.core.application import _InitializationErrorHandler
 
@@ -187,40 +186,6 @@ class TestOffloadConfigurationRendering:
         assert "read_lines/search" in rendered
         # is_hard=False — a lone offload issue keeps the stage COMPLETED.
         stage.close.assert_called_once_with(Status.COMPLETED)
-
-
-class TestUnsupportedDeploymentParameterRendering:
-    def test_renders_under_deployment_parameters_as_a_warning(self):
-        stage = MagicMock(spec=Stage)
-        exc = UnsupportedDeploymentParameterException(
-            parameter="reasoning_effort", value="high", reason="supports `low`, `medium`"
-        )
-        handler = _make_handler(stage, [exc])
-
-        handler.handle_initialization_issues()
-
-        rendered = _stage_content(stage)
-        assert "#### Deployment parameters" in rendered
-        assert "`reasoning_effort=high`" in rendered
-        assert "`low`, `medium`" in rendered
-        # Soft issue: the request still produced an answer.
-        stage.close.assert_called_once_with(Status.COMPLETED)
-
-    def test_names_the_tool_whose_deployment_dropped_the_parameter(self):
-        stage = MagicMock(spec=Stage)
-        exc = UnsupportedDeploymentParameterException(
-            parameter="temperature",
-            value=0.2,
-            reason="does not support `temperature`",
-            tool_name="summarizer",
-        )
-        handler = _make_handler(stage, [exc])
-
-        handler.handle_initialization_issues()
-
-        rendered = _stage_content(stage)
-        assert "- **summarizer**: The deployment this tool calls does not support" in rendered
-        assert "`temperature=0.2`" in rendered
 
 
 class TestOrchestratorSystemPromptRendering:

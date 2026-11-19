@@ -318,14 +318,15 @@ class BaseDeploymentTool(StagedBaseTool):
         # app's decision, so a `tools` argument the model invents cannot replace configured ones.
         self._apply_static_tools(params, prepared)
 
-        # Last, so a value the model passes as an argument is filtered too. The initializer
-        # already reported the configured values it drops in the Initialization issues stage.
+        # Last, so a value the model passes as an argument is filtered too. `_features` is set
+        # only when the target's features were fetched: for a basic tool config, or a full tool
+        # that configures a gated parameter; otherwise parameters are sent unchanged.
         features = tool_config.deployment._features
         if features is not None:
-            for unsupported in adapt_to_features(prepared, features):
+            for name in adapt_to_features(prepared, features):
                 logger.debug(
                     "Dropped %s unsupported by deployment %s",
-                    unsupported.name,
+                    name,
                     tool_config.deployment.deployment_id,
                 )
 

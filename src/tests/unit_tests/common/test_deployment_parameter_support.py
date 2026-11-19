@@ -3,11 +3,7 @@ from typing import Any
 import pytest
 from aidial_client.types.deployment import Features
 
-from quickapp.common.deployment_parameter_support import (
-    FEATURE_GATED_PARAMETERS,
-    UnsupportedParameter,
-    adapt_to_features,
-)
+from quickapp.common.deployment_parameter_support import FEATURE_GATED_PARAMETERS, adapt_to_features
 
 
 class TestTemperature:
@@ -25,25 +21,16 @@ class TestTemperature:
         assert adapt_to_features(params, features) == []
         assert params == {"temperature": 0.2}
 
-    def test_dropped_when_temperature_is_unsupported(self):
+    @pytest.mark.parametrize(
+        "features",
+        [Features(temperature=False), Features(custom_temperature_supported=False)],
+        ids=["temperature_unsupported", "custom_temperature_unsupported"],
+    )
+    def test_dropped_when_a_flag_is_false(self, features: Features):
         params: dict[str, Any] = {"temperature": 0.2}
 
-        dropped = adapt_to_features(params, Features(temperature=False))
-
+        assert adapt_to_features(params, features) == ["temperature"]
         assert params == {}
-        assert dropped == [
-            UnsupportedParameter(
-                name="temperature", value=0.2, reason="does not support `temperature`"
-            )
-        ]
-
-    def test_dropped_when_custom_temperature_is_unsupported(self):
-        params: dict[str, Any] = {"temperature": 0.2}
-
-        dropped = adapt_to_features(params, Features(custom_temperature_supported=False))
-
-        assert params == {}
-        assert dropped[0].reason == "does not support a custom `temperature`"
 
 
 class TestMaxTokens:
@@ -71,10 +58,8 @@ class TestMaxTokens:
     def test_dropped_when_neither_is_supported(self):
         params: dict[str, Any] = {"max_tokens": 100}
 
-        dropped = adapt_to_features(params, Features(max_tokens_supported=False))
-
+        assert adapt_to_features(params, Features(max_tokens_supported=False)) == ["max_tokens"]
         assert params == {}
-        assert [d.name for d in dropped] == ["max_tokens"]
 
 
 class TestReasoningEffort:
@@ -89,17 +74,15 @@ class TestReasoningEffort:
 
         dropped = adapt_to_features(params, Features(reasoning_efforts=["low", "medium"]))
 
+        assert dropped == ["reasoning_effort"]
         assert params == {}
-        assert dropped[0].reason == "supports `low`, `medium`"
 
     def test_dropped_when_deployment_advertises_none(self):
         """An empty list means no value is supported, not that every value is."""
         params: dict[str, Any] = {"reasoning_effort": "low"}
 
-        dropped = adapt_to_features(params, Features())
-
+        assert adapt_to_features(params, Features()) == ["reasoning_effort"]
         assert params == {}
-        assert dropped[0].reason == "does not advertise support for `reasoning_effort`"
 
 
 def test_ungated_parameters_pass_through():

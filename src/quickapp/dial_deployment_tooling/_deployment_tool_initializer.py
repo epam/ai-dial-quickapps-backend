@@ -7,10 +7,7 @@ from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.deferred_tools_accumulator import is_toolset_deferred
 from quickapp.common.deployment_parameter_support import FEATURE_GATED_PARAMETERS, adapt_to_features
 from quickapp.common.deployment_tool_cache import DialDeploymentToolCacheService
-from quickapp.common.exceptions import (
-    ToolInitializationException,
-    UnsupportedDeploymentParameterException,
-)
+from quickapp.common.exceptions import ToolInitializationException
 from quickapp.common.localized_string import resolve_localized
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.prompt import DialSystemPromptConfig
@@ -149,19 +146,12 @@ class _DeploymentToolInitializer(CompletionInitializer):
         if features is None:
             return
         tool.deployment._features = features
-        for unsupported in adapt_to_features(parameters, features):
+        for name in adapt_to_features(parameters, features):
             logger.warning(
-                "Configured %s is not supported by deployment %s; dropping it",
-                unsupported.name,
+                "Configured %s of tool %s is not supported by deployment %s; dropping it",
+                name,
+                tool.open_ai_tool.function.name,
                 deployment_id,
-            )
-            self.__deployment_context.append_exception(
-                UnsupportedDeploymentParameterException(
-                    parameter=unsupported.name,
-                    value=unsupported.value,
-                    reason=unsupported.reason,
-                    tool_name=tool.open_ai_tool.function.name,
-                )
             )
 
     def __build_deployment_tool(self, tool: DialDeploymentTool) -> StagedBaseTool:

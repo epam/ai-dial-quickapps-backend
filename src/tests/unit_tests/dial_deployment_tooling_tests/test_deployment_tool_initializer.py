@@ -1,12 +1,10 @@
+import logging
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from aidial_client.types.deployment import Features
 
-from quickapp.common.exceptions import (
-    ToolInitializationException,
-    UnsupportedDeploymentParameterException,
-)
+from quickapp.common.exceptions import ToolInitializationException
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.dial_deployment import DialDeploymentToolConfig, DialDeploymentToolParameters
 from quickapp.config.prompt import CustomSystemPromptConfig, DialSystemPromptConfig
@@ -200,6 +198,9 @@ async def test_simple_tool_without_propagate_annotations_leaves_synthetic_defaul
     assert builder.build.call_args.kwargs["tool_config"].propagate_annotations_to_choice is None
 
 
+_INITIALIZER_LOGGER = "quickapp.dial_deployment_tooling._deployment_tool_initializer"
+
+
 def _make_tool_with_parameters(parameters: DialDeploymentToolParameters) -> DialDeploymentTool:
     tool = _make_deployment_tool("summarizer")
     tool.deployment.parameters = parameters
@@ -227,20 +228,23 @@ def _make_features_initializer(
 
 
 @pytest.mark.asyncio
-async def test_full_tool_snapshots_features_and_reports_unsupported_parameters():
+async def test_full_tool_snapshots_features_and_logs_unsupported_parameters(
+    caplog: pytest.LogCaptureFixture,
+):
     tool = _make_tool_with_parameters(DialDeploymentToolParameters(temperature=0.2))
     initializer, context, _fetch = _make_features_initializer(
         tool, features=Features(temperature=False)
     )
 
-    await initializer.initialize()
+    with caplog.at_level(logging.WARNING, logger=_INITIALIZER_LOGGER):
+        await initializer.initialize()
 
     assert tool.deployment._features == Features(temperature=False)
-    assert len(context.exceptions) == 1
-    issue = context.exceptions[0]
-    assert isinstance(issue, UnsupportedDeploymentParameterException)
-    assert issue.parameter == "temperature"
-    assert issue.tool_name == "summarizer"
+    assert context.exceptions == []
+    assert [r.getMessage() for r in caplog.records] == [
+        "Configured temperature of tool summarizer is not supported by deployment my-app; "
+        "dropping it"
+    ]
 
 
 @pytest.mark.asyncio
