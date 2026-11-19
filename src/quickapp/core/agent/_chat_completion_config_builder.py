@@ -8,6 +8,7 @@ from injector import inject
 
 from quickapp.common import RESPONSE_FORMAT, ForwardedHeaders
 from quickapp.common.abstract.base_transformer import PreInvocationTransformer
+from quickapp.common.deployment_parameter_support import remove_unsupported_parameters
 from quickapp.common.dial_request_fields import CUSTOM_FIELDS, EXTRA_BODY, to_custom_fields_payload
 from quickapp.common.payload_logging import log_payload, payloads_enabled, summarize_roles
 from quickapp.common.presentation_settings import PresentationSettings
@@ -20,8 +21,6 @@ from quickapp.core.agent.models import STATE_KEY_ORCHESTRATOR, OpenAiToolConfigD
 from quickapp.core.agent.orchestrator_capabilities import OrchestratorCapabilities
 
 logger = logging.getLogger(__name__)
-
-REASONING_EFFORT_PARAM = "reasoning_effort"
 
 
 @inject
@@ -56,7 +55,7 @@ class _ChatCompletionConfigBuilder:
         chat_completion_config = self.__config.orchestrator.deployment.parameters.model_dump(
             exclude_none=True
         )
-        self._drop_unsupported_reasoning_effort(chat_completion_config)
+        remove_unsupported_parameters(chat_completion_config, self.__capabilities.features)
         self._move_custom_fields_to_extra_body(chat_completion_config)
         prepared_messages = self._prepare_messages(messages)
         all_tools = self._merge_tools()
@@ -153,20 +152,6 @@ class _ChatCompletionConfigBuilder:
             log_payload(
                 logger, "Chat completion config: %s", json.dumps(loggable, ensure_ascii=False)
             )
-
-    def _drop_unsupported_reasoning_effort(self, chat_completion_config: dict[str, Any]) -> None:
-        """Remove a `reasoning_effort` the deployment does not advertise.
-
-        Sending it anyway is rejected upstream with an opaque `400` that reaches the user as a
-        generic "request was rejected as invalid". `_OrchestratorDeploymentInitializer` reports
-        the same condition in the Initialization issues stage, so the drop is not silent.
-        """
-        reasoning_effort = chat_completion_config.get(REASONING_EFFORT_PARAM)
-        if reasoning_effort is None or self.__capabilities.supports_reasoning_effort(
-            reasoning_effort
-        ):
-            return
-        del chat_completion_config[REASONING_EFFORT_PARAM]
 
     @staticmethod
     def _move_custom_fields_to_extra_body(chat_completion_config: dict[str, Any]) -> None:

@@ -1,6 +1,8 @@
+import logging
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from aidial_client.types.deployment import Features
 
 from quickapp.config.dial_deployment import DialDeploymentToolConfig, DialDeploymentToolParameters
 from quickapp.config.tool_access_filter import ToolAccessFilterConfig
@@ -181,6 +183,84 @@ async def test_simple_tool_without_propagate_annotations_leaves_synthetic_defaul
     await _make_simple_initializer(simple_tool, builder, cached_config).initialize()
 
     assert builder.build.call_args.kwargs["tool_config"].propagate_annotations_to_choice is None
+
+
+_INITIALIZER_LOGGER = "quickapp.dial_deployment_tooling._deployment_tool_initializer"
+
+
+def _make_tool_with_parameters(parameters: DialDeploymentToolParameters) -> DialDeploymentTool:
+    tool = _make_deployment_tool("summarizer")
+    tool.deployment.parameters = parameters
+    return tool
+
+
+def _make_features_initializer(
+    tool: DialDeploymentTool,
+    *,
+    features: Features | None = None,
+    fetch: AsyncMock | None = None,
+) -> tuple[_DeploymentToolInitializer, _DeploymentToolingContext, AsyncMock]:
+    cached_config = _make_deployment_tool("summarizer")
+    cached_config.deployment._features = features
+    deployment_cache = MagicMock()
+    deployment_cache.fetch_basic_tool_config = fetch or AsyncMock(return_value=cached_config)
+    context = _DeploymentToolingContext()
+    initializer = _DeploymentToolInitializer(
+        context=context,
+        deferred_context=MagicMock(),
+        tool_config_service=MagicMock(),
+        builder=MagicMock(),
+        deployment_cache=deployment_cache,
+        dial_tools_provider=make_provider([]),
+        app_config=create_app_configuration([DeploymentToolSet(name="deployment", tools=[tool])]),
+        access_filter=make_access_filter(),
+    )
+    return initializer, context, deployment_cache.fetch_basic_tool_config
+
+
+@pytest.mark.asyncio
+async def test_full_tool_snapshots_features_and_logs_unsupported_parameters(
+    caplog: pytest.LogCaptureFixture,
+):
+    tool = _make_tool_with_parameters(DialDeploymentToolParameters(temperature=0.2))
+    initializer, context, _fetch = _make_features_initializer(
+        tool, features=Features(temperature=False)
+    )
+
+    with caplog.at_level(logging.WARNING, logger=_INITIALIZER_LOGGER):
+        await initializer.initialize()
+
+    assert tool.deployment._features == Features(temperature=False)
+    assert context.exceptions == []
+    assert [r.getMessage() for r in caplog.records if r.name == _INITIALIZER_LOGGER] == [
+        "Configured temperature of tool summarizer is not supported by deployment my-app; "
+        "dropping it"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_full_tool_without_gated_parameters_skips_the_features_fetch():
+    tool = _make_tool_with_parameters(DialDeploymentToolParameters(seed=7))
+    initializer, context, fetch = _make_features_initializer(tool, features=Features())
+
+    await initializer.initialize()
+
+    fetch.assert_not_awaited()
+    assert tool.deployment._features is None
+    assert context.exceptions == []
+
+
+@pytest.mark.asyncio
+async def test_full_tool_keeps_parameters_when_the_features_fetch_fails():
+    tool = _make_tool_with_parameters(DialDeploymentToolParameters(temperature=0.2))
+    builder_fetch = AsyncMock(side_effect=RuntimeError("core unavailable"))
+    initializer, context, _fetch = _make_features_initializer(tool, fetch=builder_fetch)
+
+    await initializer.initialize()
+
+    assert tool.deployment._features is None
+    assert context.exceptions == []
+    assert len(context.tools) == 1
 
 
 def _make_recording_builder() -> MagicMock:

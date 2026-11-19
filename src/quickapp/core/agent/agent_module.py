@@ -26,7 +26,6 @@ from quickapp.common.chat_completion_stream.chat_stream_sink_factory import Chat
 from quickapp.common.chat_completion_stream.handler import ChatCompletionStreamHandler
 from quickapp.common.deferred_tool_types import DeferredToolName
 from quickapp.common.dial_settings import DialSettings
-from quickapp.common.exceptions import InitializationException
 from quickapp.common.model_hidden_tool import ModelHiddenTool
 from quickapp.common.request_async_close_registry import RequestAsyncCloseRegistry
 from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
@@ -150,14 +149,6 @@ class AgentModule(Module):
         self, initializer_provider: ProviderOf[_OrchestratorDeploymentInitializer]
     ) -> list[CompletionInitializer]:
         return [initializer_provider.get()]
-
-    @multiprovider
-    def _provide_initialization_exceptions(
-        self, initializer: _OrchestratorDeploymentInitializer
-    ) -> list[InitializationException]:
-        # Resolved by _InitializationErrorHandler after the initializers have run, so the
-        # list already holds whatever initialize() recorded.
-        return initializer.initialization_exceptions
 
     @provider
     def provide_orchestrator_capabilities(
