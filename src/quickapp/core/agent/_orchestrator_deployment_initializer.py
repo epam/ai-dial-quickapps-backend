@@ -5,7 +5,7 @@ import logging
 from injector import inject
 
 from quickapp.common.base_initializer import CompletionInitializer
-from quickapp.common.deployment_parameter_support import remove_unsupported_parameters
+from quickapp.common.deployment_parameter_support import unsupported_parameters
 from quickapp.config.application import ApplicationConfig
 from quickapp.core.agent._orchestrator_static_tools_context import _OrchestratorStaticToolsContext
 from quickapp.core.agent.orchestrator_capabilities import OrchestratorCapabilities
@@ -56,7 +56,7 @@ class _OrchestratorDeploymentInitializer(CompletionInitializer):
         parameters = self.__app_config.orchestrator.deployment.parameters.model_dump(
             exclude_none=True
         )
-        for name in remove_unsupported_parameters(parameters, capabilities.features):
+        for name in unsupported_parameters(parameters, capabilities.features):
             logger.warning(
                 "Configured %s is not supported by deployment %s; dropping it",
                 name,

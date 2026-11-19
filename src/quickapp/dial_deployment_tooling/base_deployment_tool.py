@@ -323,13 +323,8 @@ class BaseDeploymentTool(StagedBaseTool):
         # that configures a gated parameter; otherwise parameters are sent unchanged.
         features = tool_config.deployment._features
         if features is not None:
-            # `prepared` is built in this method, so dropping in place touches nothing shared.
-            for name in remove_unsupported_parameters(prepared, features):
-                logger.debug(
-                    "Dropped %s unsupported by deployment %s",
-                    name,
-                    tool_config.deployment.deployment_id,
-                )
+            # `prepared` is built in this method, so removing in place touches nothing shared.
+            remove_unsupported_parameters(prepared, features)
 
         logger.debug("Pre-processed tool parameters: keys=%s", list(prepared))
         log_payload(logger, "Pre-processed tool parameters: %s", prepared)
