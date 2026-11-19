@@ -149,12 +149,9 @@ class _AttachmentGetContentInjector(MessagesTransformer):
         url = str(attachment.url or "").strip()
         if not url:
             return None
-        relative = self.__materializer.to_relative(url)
-        scheme = self.__materializer.classify(relative)
+        scheme = self.__materializer.classify(url)
         if scheme == UrlScheme.DIAL:
-            return (
-                attachment if relative == url else attachment.model_copy(update={"url": relative})
-            )
+            return attachment
         if scheme == UrlScheme.EXTERNAL:
             return await self._promote_external(attachment, url)
         logger.debug("get_content injector: skipping attachment with unsupported url scheme")

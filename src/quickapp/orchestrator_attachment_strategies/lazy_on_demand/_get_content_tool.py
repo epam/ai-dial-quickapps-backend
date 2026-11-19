@@ -29,6 +29,11 @@ from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.exceptions import InvalidToolCallParameterException, ToolErrorException
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
+from quickapp.common.project_context import (
+    CURRENT_PROJECT_ONLY_MESSAGE,
+    PROJECT_CONTEXT,
+    current_project_url,
+)
 from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
 from quickapp.common.url_classification import UrlScheme
 from quickapp.config.application import StageDisplayLevel
@@ -79,6 +84,7 @@ class _GetContentTool(StagedBaseTool):
         deferred_stage_close_registry: DeferredStageCloseRegistry,
         materializer: _AttachmentMaterializer,
         home_resolver: HomePathResolver,
+        project: PROJECT_CONTEXT,
         argument_transformers: list[ToolArgumentTransformer] | None = None,
         **kwargs: Any,
     ):
@@ -96,6 +102,7 @@ class _GetContentTool(StagedBaseTool):
         self.__stage_close_registry: DeferredStageCloseRegistry = deferred_stage_close_registry
         self.__materializer: _AttachmentMaterializer = materializer
         self.__home_resolver: HomePathResolver = home_resolver
+        self.__project = project
 
     def _tool_error(self, message: str) -> ToolErrorException:
         """A tool error whose body tells the model what failed and which MIME types are accepted."""
@@ -119,9 +126,7 @@ class _GetContentTool(StagedBaseTool):
             logger.debug("get_content tool rejected: empty attachment_url")
             raise self._tool_error("Missing or empty attachment_url.")
 
-        normalized_url = self.__materializer.to_relative(
-            normalize_attachment_url_argument(str(attachment_url))
-        )
+        normalized_url = normalize_attachment_url_argument(str(attachment_url))
         try:
             resolved = await self._resolve_attachment(normalized_url)
             self._ensure_mime_accepted(resolved)
@@ -154,6 +159,16 @@ class _GetContentTool(StagedBaseTool):
                 raise InvalidToolCallParameterException(
                     "attachment_url", _UNSUPPORTED_REFERENCE_MESSAGE
                 )
+            if normalized_url.startswith("projects/"):
+                # Only the current project's files, as in the file tools and the attachment
+                # resolver: Core's grant covers all of the user's projects.
+                project_url = current_project_url(self.__project, normalized_url)
+                if project_url is None:
+                    logger.info("get_content tool rejected: not the current project's url")
+                    raise InvalidToolCallParameterException(
+                        "attachment_url", CURRENT_PROJECT_ONLY_MESSAGE
+                    )
+                return self._resolve_dial(project_url)
             return self._resolve_dial(normalized_url)
         if scheme == UrlScheme.DIAL_APPDIR_RELATIVE:
             # Agent-home-relative reference (the convention spoken by the file

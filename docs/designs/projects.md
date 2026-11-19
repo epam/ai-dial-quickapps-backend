@@ -87,7 +87,7 @@ flowchart LR
   PC --> P3[3. agent home = artifacts/]
   PC --> P4[4. user outputs → artifacts/]
   PC --> P5[5. forward x-project-id downstream]
-  P3 --> FS[FileStorage router<br/>current project → v2, else v1]
+  P3 --> FS[FileStorage router<br/>files/ → v1, current project → v2, other projects refused]
 ```
 
 ### Decisions
@@ -110,11 +110,10 @@ flowchart LR
 |---|---|
 | `PROJECT_CONTEXT` | `None` when `ENABLE_PREVIEW_FEATURES` is off |
 | `ProjectModule` (prompt section, preflight) | module filter (`@preview_module`) |
-| `projects/` routing in `RoutedFileStorage`, `projects/` URLs resolved by `HomePathResolver`, home = `artifacts/`, output root | `PROJECT_CONTEXT is not None` and the URL is under its root |
+| `projects/` routing in `RoutedFileStorage`, home = `artifacts/`, output root | `PROJECT_CONTEXT is not None` and the URL is under its root |
 | `projects/` prefix = absolute (`HomePathResolver.is_absolute`, `classify_url`) | ungated (D8) |
 | File-tool 403 → non-retryable permission error | ungated (a secondary fix, see [Secondary Fixes](#secondary-fixes)) |
-| `x-project-id` stripped from REST API tool calls | ungated (the header only exists in project chats) |
-| `x-project-id` to nested apps and MCP | unchanged: the existing `X-*` catch-all, raw header value |
+| `x-project-id` to nested apps, MCP and REST API tools | unchanged: the existing `X-*` catch-all, raw header value |
 
 ### Project context (PR1)
 
@@ -135,9 +134,9 @@ flowchart LR
   |---|---|
   | `V1FileStorage` | `files/…` through the v1 API (native conditional upload, copy, move) |
   | `ProjectFileStorage` | current-project files through a small v2 client (`_project_files.py`); copy/move = download + upload |
-  | `RoutedFileStorage` | the only `project.contains()` check: current-project URLs → project storage, everything else (other `projects/…` included) → v1; copy/move between the two = download + upload |
+  | `RoutedFileStorage` | the file tools' current-project check: `files/…` → v1, current-project URLs → project storage (canonical), any other `projects/…` URL → refused with a 403, which the file tools report as "access denied"; copy/move between the two = download + upload |
 
-  DI returns `V1FileStorage` when there is no project, `RoutedFileStorage` otherwise. `DialFileService` (cache, write
+  DI always returns `RoutedFileStorage`, so a `projects/…` URL is refused outside a project chat too. `DialFileService` (cache, write
   semantics) and `DialDownloader` sit on top and don't know about projects.
 - **Reads:** projects have no per-file metadata call, so a project file is read as a streamed GET: the size limit is
   checked from `Content-Length` before the body is read, or while reading when the header is missing (needs
@@ -162,17 +161,17 @@ flowchart LR
 ### Agent home and prompt (PR2)
 
 - **Home:** `HomePathResolver` returns `artifacts_root` when a project is present, and appdata otherwise. It owns the
-  D8 rule: `files/` and `projects/` are absolute (`is_absolute`), `resolve_appdata_url` accepts a `projects/` URL only
-  under the current project's root, and write targets (file tools, `web_fetch` `save_path`) resolve only through
+  path rules: `files/` and `projects/` are absolute (`is_absolute`) and `resolve_appdata_url` returns them unchanged
+  (it only maps a relative path to a URL), and write targets (file tools, `web_fetch` `save_path`) resolve only through
   `resolve_write_url`, which rejects any absolute URL. `classify_url` matches the same prefixes, so it needs no project. A `projects/` URL is
   `UrlScheme.DIAL`:
 
   | Call site | `projects/` URL |
   |---|---|
   | file tools, `web_fetch`, file loader | v2 through `DialFileService` (PR1) |
-  | `dial_file_promoter.py` (DIAL branch) | v2 metadata (PR4) |
-  | `_attachment_resolver.py` | passes through (PR4) |
-  | `input_file_handler.py` (interpreter input) | fast tool error: "project files can't be passed to the interpreter yet" (PR4) |
+  | `_attachment_resolver.py`, lazy `get_content` | current project only (`current_project_url`); passes through (PR4) |
+  | `dial_file_promoter.py` | never reached: its callers pass only external URLs |
+  | `input_file_handler.py` (interpreter input) | passed as is; the interpreter answers with its own error (C4) |
 - **Read-only files:** write targets accept relative paths only, so nothing outside `artifacts/` is written (D4, UC-5).
 - **Prompt:** a `PromptPartProvider` adds sections after the app's own system prompt:
 
@@ -221,15 +220,17 @@ flowchart LR
 
 ### Downstream propagation (PR4)
 
-- Nested DIAL apps and MCP toolsets keep receiving `x-project-id` through the existing `X-*` catch-all (raw value).
-- Strip it from REST API tool calls (`rest_api_tooling/_rest_api_tool.py`): it carries the user's bucket and project
-  name to external hosts. The orchestrator model call goes through Core and keeps it.
+- Nested DIAL apps, MCP toolsets and REST API tools keep receiving `x-project-id` through the existing `X-*` catch-all
+  (raw value, [I#67](https://github.com/epam/ai-dial-quickapps-backend/issues/67)). It is context, not a credential;
+  limiting what reaches external hosts is a policy for all `X-*` headers, out of scope here.
 - Nested apps declare and get their own grants (#1930 resolves dependencies at every hop of a chain).
-- `AttachmentResolver`: home-relative and `projects/` URLs go through `HomePathResolver` (only the current project's
-  resolve) and pass through without the v1 metadata call. A deployment
-  that can't read `projects/` URLs (anything but a QuickApp, C4) returns its own error, surfaced as a tool error.
-- Remove the remaining `files/`-only assumptions: lazy `get_content`, `config/dial_files.py`, the attachment
-  strategies, the promoter's DIAL branch (`dial_file_promoter.py`, v1 `files.get_metadata`).
+- `AttachmentResolver`: home-relative paths resolve through `HomePathResolver` in every chat, as in `get_content`.
+  `projects/` URLs pass `current_project_url` (D8: the current project only, canonical form), then go out without the
+  v1 metadata call;
+  a deployment that can't read `projects/` URLs (anything but a QuickApp, C4) returns its own error, surfaced as a
+  tool error.
+- Remove the remaining `files/`-only assumptions: lazy `get_content` (current project only, like the resolver),
+  `config/dial_files.py`, the attachment strategies. The promoter needs no change: its callers pass only external URLs.
 
 ### External dependencies
 
@@ -332,7 +333,6 @@ None for non-project chats. Project behaviour is preview-gated and triggered onl
 ### Non-breaking changes
 
 - File tools report Core 403 as a non-retryable permission error, in every chat ([Secondary Fixes](#secondary-fixes)).
-- `x-project-id` is no longer sent to REST API tools.
 
 ## Delivery
 
@@ -341,7 +341,7 @@ None for non-project chats. Project behaviour is preview-gated and triggered onl
 | 1 | `ProjectContext` / `PROJECT_CONTEXT`, v2 client, `FileStorage` routing, write flows, streamed reads | — | yes (no header → no-op) |
 | 2 | Home = `artifacts/`, `projects/` prefix rule, prompt section + `PROJECT.md` warning, preflight, 403 secondary fix, L0–L2 docs | PR1 | yes, with preview off where Core lacks C1 (D9) |
 | 3 | Split upload roots; user outputs into `artifacts/` | PR2 | yes, useful after C1 |
-| 4 | REST header strip, attachment resolver, interpreter input error, remaining `files/` assumptions | PR2 | yes |
+| 4 | Attachment resolver, remaining `files/` assumptions | PR2 | yes |
 | 5 | Core-path integration suite (per-request key) in CI | PR1–4, C1 released | n/a |
 
 ## Summary of Changes
@@ -353,6 +353,6 @@ None for non-project chats. Project behaviour is preview-gated and triggered onl
 | `shared/home_path/` | home = `artifacts/` in a project |
 | `dial_core_services/` | `_project_files.py` (v2 client); `storage/` (`FileStorage`, v1 and project storages, `RoutedFileStorage` = current-project routing); `PartialMoveException` in `exceptions.py`; `AttachmentService` split into output-root and appdata-root uploads |
 | `shared/home_path/home_path_resolver.py`, `dial_files_tooling/` (`_base_file_tool.py`, write tools), `web_tooling/`, `common/url_classification.py` | `projects/` prefix as absolute; `require_relative`; `DialFilePermissionException` on 403 |
-| `rest_api_tooling/`, `dial_deployment_tooling/_attachment_resolver.py`, `dial_core_services/dial_file_promoter.py`, `internal_tooling/…/input_file_handler.py` | REST strip; project URLs pass through; interpreter input error |
+| `dial_deployment_tooling/_attachment_resolver.py`, `orchestrator_attachment_strategies/lazy_on_demand/` | current-project URLs pass through |
 | `internal_tooling/py_interpreter_tooling/handlers/display_content_processor.py` | own upload replaced by `AttachmentService.upload_output_bytes` |
 | `docs/README.md`, `CONFIGURATION.md`, `docs/projects.md` | L0–L2 |
