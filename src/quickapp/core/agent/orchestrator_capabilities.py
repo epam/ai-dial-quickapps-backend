@@ -1,5 +1,5 @@
 from aidial_client.types.application import Application
-from aidial_client.types.deployment import Deployment
+from aidial_client.types.deployment import Deployment, Features
 
 
 class OrchestratorCapabilities:
@@ -22,18 +22,9 @@ class OrchestratorCapabilities:
         return self._deployment.input_attachment_types
 
     @property
-    def reasoning_efforts(self) -> list[str]:
-        """The reasoning-effort values the deployment advertises, empty when it advertises none."""
-        features = self._deployment.features
-        return list(features.reasoning_efforts) if features else []
-
-    def supports_reasoning_effort(self, reasoning_effort: str) -> bool:
-        """Whether ``reasoning_effort`` is advertised by the deployment.
-
-        An empty ``features.reasoningEfforts`` means no value is supported: a deployment
-        that takes the parameter is expected to list the values it takes.
-        """
-        return reasoning_effort in self.reasoning_efforts
+    def features(self) -> Features:
+        """The deployment's features, or an empty ``Features`` when it reports none."""
+        return self._deployment.features or Features()
 
     @property
     def supports_cache_breakpoints(self) -> bool:

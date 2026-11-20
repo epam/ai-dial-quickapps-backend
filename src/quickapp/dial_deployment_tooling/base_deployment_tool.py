@@ -16,6 +16,7 @@ from quickapp.common import REQUEST_MESSAGES, StagedBaseTool, ToolCallResult
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.chat_completion_stream.argument_stream_presentation import ArgumentStreamMode
+from quickapp.common.deployment_parameter_support import remove_unsupported_parameters
 from quickapp.common.dial_request_fields import CONFIGURATION, CUSTOM_FIELDS
 from quickapp.common.form_utils import form_source_tool_name_before
 from quickapp.common.messages_mixin import MessagesMixin
@@ -344,6 +345,14 @@ class BaseDeploymentTool(StagedBaseTool):
         # Applied after the model's own arguments: which tools the deployment may run is the
         # app's decision, so a `tools` argument the model invents cannot replace configured ones.
         self._apply_static_tools(params, prepared)
+
+        # Last, so a value the model passes as an argument is filtered too. `_features` is set
+        # only when the target's features were fetched: for a basic tool config, or a full tool
+        # that configures a gated parameter; otherwise parameters are sent unchanged.
+        features = tool_config.deployment._features
+        if features is not None:
+            # `prepared` is built in this method, so removing in place touches nothing shared.
+            remove_unsupported_parameters(prepared, features)
 
         logger.debug("Pre-processed tool parameters: keys=%s", list(prepared))
         log_payload(logger, "Pre-processed tool parameters: %s", prepared)

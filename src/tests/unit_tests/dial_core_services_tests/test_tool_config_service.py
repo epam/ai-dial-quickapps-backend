@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from aidial_client import DialException, ToolsetInfo
+from aidial_client.types.deployment import Features
 from pydantic import SecretStr
 
 from quickapp.common.dial_settings import DialSettings
@@ -229,6 +230,7 @@ def _make_deployment(
     description: str = "A test deployment",
     input_attachment_types: list[str] | None = None,
     display_name: str | None = None,
+    features: Features | None = None,
 ):
     """Create a minimal deployment-like object for ToolConfigCoreService."""
     return SimpleNamespace(
@@ -236,7 +238,7 @@ def _make_deployment(
         display_name=display_name,
         description=description,
         input_attachment_types=input_attachment_types,
-        features=None,
+        features=features,
     )
 
 
@@ -372,3 +374,11 @@ class TestSupportsUrlAttachmentsFlag:
         outer_desc = attachment_param.description
         assert outer_desc is not None
         assert "external" in outer_desc.lower()
+
+
+def test_deployment_features_are_snapshotted_on_the_tool_config():
+    features = Features(temperature=False)
+    deployment = _make_deployment(features=features)
+    result = ToolConfigCoreService._convert_to_openai_tool_format(deployment)
+
+    assert result.deployment._features is features

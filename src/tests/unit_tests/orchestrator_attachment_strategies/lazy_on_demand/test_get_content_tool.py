@@ -14,7 +14,7 @@ import pytest
 from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
 
 from quickapp.common.dial_settings import DialSettings
-from quickapp.common.exceptions import InvalidToolCallParameterException
+from quickapp.common.exceptions import InvalidToolCallParameterException, ToolErrorException
 from quickapp.common.file_reference_pattern import to_file_url_reference
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.core.agent import OrchestratorCapabilities
@@ -207,14 +207,14 @@ class TestGetContentTool:
             ["application/pdf"], messages=[_user_msg_with(attachment)], promoter=promoter
         )
 
-        result = await tool._run_in_stage_async(
-            stage_wrapper=None, attachment_url="https://example.com/data.pdf"
-        )
+        with pytest.raises(ToolErrorException) as excinfo:
+            await tool._run_in_stage_async(
+                stage_wrapper=None, attachment_url="https://example.com/data.pdf"
+            )
 
-        payload = GetContentToolResponse.from_state(result.state)
-        assert payload is not None
-        assert payload.status == GetContentStatus.FAIL
-        assert payload.status_message == "Orchestrator deployment does not accept this file type."
+        assert "Orchestrator deployment does not accept this file type." in (
+            excinfo.value.error_message
+        )
 
     @pytest.mark.asyncio
     async def test_home_relative_path_is_resolved_under_agent_home(self):
@@ -251,14 +251,10 @@ class TestGetContentTool:
         )
         tool = _make_tool(["image/*"], home_resolver=home_resolver)
 
-        result = await tool._run_in_stage_async(
-            stage_wrapper=None, attachment_url="reports/img.png"
-        )
+        with pytest.raises(ToolErrorException) as excinfo:
+            await tool._run_in_stage_async(stage_wrapper=None, attachment_url="reports/img.png")
 
-        payload = GetContentToolResponse.from_state(result.state)
-        assert payload is not None
-        assert payload.status == GetContentStatus.FAIL
-        assert "appdata namespace is not available" in (payload.status_message or "")
+        assert "appdata namespace is not available" in excinfo.value.error_message
 
     @pytest.mark.asyncio
     async def test_traversal_reference_is_unsupported_before_resolution(self):
@@ -267,23 +263,19 @@ class TestGetContentTool:
         home_resolver = _make_home_resolver()
         tool = _make_tool(["image/*"], home_resolver=home_resolver)
 
-        result = await tool._run_in_stage_async(stage_wrapper=None, attachment_url="../escape.png")
+        with pytest.raises(ToolErrorException) as excinfo:
+            await tool._run_in_stage_async(stage_wrapper=None, attachment_url="../escape.png")
 
         home_resolver.resolve_appdata_url.assert_not_awaited()
-        payload = GetContentToolResponse.from_state(result.state)
-        assert payload is not None
-        assert payload.status == GetContentStatus.FAIL
-        assert (payload.status_message or "").startswith("Unsupported file reference.")
+        assert "Unsupported file reference." in excinfo.value.error_message
 
     @pytest.mark.asyncio
     async def test_home_relative_path_rejected_when_mime_not_accepted(self):
         tool = _make_tool(["image/*"])
 
-        result = await tool._run_in_stage_async(
-            stage_wrapper=None, attachment_url="archives/data.zip"
-        )
+        with pytest.raises(ToolErrorException) as excinfo:
+            await tool._run_in_stage_async(stage_wrapper=None, attachment_url="archives/data.zip")
 
-        payload = GetContentToolResponse.from_state(result.state)
-        assert payload is not None
-        assert payload.status == GetContentStatus.FAIL
-        assert payload.status_message == "Orchestrator deployment does not accept this file type."
+        assert "Orchestrator deployment does not accept this file type." in (
+            excinfo.value.error_message
+        )
