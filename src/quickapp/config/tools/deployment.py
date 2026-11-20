@@ -1,6 +1,6 @@
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
 
 from quickapp.config.dial_deployment import DialDeploymentToolConfig
 from quickapp.config.prompt import ToolSystemPromptConfig
@@ -73,3 +73,15 @@ class DialDeploymentTool(BaseOpenAITool):
             "when false, they are materialised into DIAL files first."
         ),
     )
+    # Runtime-only, never read from a manifest: a tool synthesized from a DialAppToolSet has no
+    # owning DeploymentToolSet, so the headers resolved for that toolset travel on the tool.
+    _forwarded_headers: dict[str, str] | None = PrivateAttr(default=None)
+
+    @property
+    def forwarded_headers(self) -> dict[str, str] | None:
+        return self._forwarded_headers
+
+    def with_forwarded_headers(self, headers: dict[str, str] | None) -> Self:
+        copy = self.model_copy()
+        copy._forwarded_headers = headers
+        return copy

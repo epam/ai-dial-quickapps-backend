@@ -16,6 +16,7 @@ from quickapp.config.toolsets.authorization import MCPApiKeyAuthorization
 from quickapp.config.toolsets.dial_app import DialAppToolSet
 from quickapp.config.toolsets.mcp import MCPProtocol, MCPServerInfo, MCPToolSet
 from quickapp.dial_core_services.tool_config_service import ToolConfigCoreService
+from quickapp.shared.forwarded_headers.forwarded_headers_policy import ForwardedHeadersPolicy
 from quickapp.shared.user_access import ToolAccessFilter
 
 from ._dial_app_resolver_context import _DialAppResolverContext
@@ -42,7 +43,9 @@ class _DialAppResolver(CompletionInitializer):
         deployment_cache: DialDeploymentToolCacheService,
         context: _DialAppResolverContext,
         access_filter: ToolAccessFilter,
+        forwarded_headers_policy: ForwardedHeadersPolicy,
     ):
+        self.__forwarded_headers_policy: ForwardedHeadersPolicy = forwarded_headers_policy
         self.__app_config: ApplicationConfig = app_config
         self.__dial_settings: DialSettings = dial_settings
         self.__api_key_provider: ProviderOf[DIAL_API_KEY] = api_key_provider
@@ -146,6 +149,7 @@ class _DialAppResolver(CompletionInitializer):
                 ),
                 protocol=MCPProtocol.streamable_http,
             ),
+            forwarded_headers=toolset.forwarded_headers,
         )
         self.__context.append_mcp_toolset(mcp_toolset)
 
@@ -173,5 +177,5 @@ class _DialAppResolver(CompletionInitializer):
                 "fallback_configuration": toolset.fallback_configuration,
                 "conversation_mode": toolset.conversation_mode,
             }
-        )
+        ).with_forwarded_headers(self.__forwarded_headers_policy.for_toolset(toolset))
         self.__context.append_deployment_tool(customised)

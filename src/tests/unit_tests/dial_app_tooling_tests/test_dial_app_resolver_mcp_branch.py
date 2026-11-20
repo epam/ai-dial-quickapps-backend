@@ -73,6 +73,26 @@ async def test_mcp_toolset_copies_fields_from_source():
 
 
 @pytest.mark.asyncio
+async def test_mcp_toolset_carries_forwarded_headers():
+    toolset = DialAppToolSet(name="app", deployment_id="dep", forwarded_headers=["X-Tenant-Id"])
+    resolver, context, _, _ = make_resolver(toolsets=[toolset], metadata=make_metadata(mcp=True))
+
+    await resolver.resolve()
+
+    assert context.resolved_mcp_toolsets[0].forwarded_headers == ["x-tenant-id"]
+
+
+@pytest.mark.asyncio
+async def test_mcp_toolset_without_forwarded_headers_leaves_them_unset():
+    toolset = DialAppToolSet(name="app", deployment_id="dep")
+    resolver, context, _, _ = make_resolver(toolsets=[toolset], metadata=make_metadata(mcp=True))
+
+    await resolver.resolve()
+
+    assert context.resolved_mcp_toolsets[0].forwarded_headers is None
+
+
+@pytest.mark.asyncio
 async def test_mcp_toolset_carries_hidden_from_model():
     toolset = DialAppToolSet(
         name="app",

@@ -1795,16 +1795,43 @@ other error text as-is.
 
 ## Forwarding headers
 
-Incoming request headers whose names start with `X-` (case-insensitive) are automatically forwarded to all outbound
-calls made during that chat completion. No configuration is required.
+`X-*` request headers (names starting with `X-`, case-insensitive) are forwarded to the outbound calls of a chat
+completion. Which toolset gets which header is decided per toolset:
 
-- **Orchestrator (Azure OpenAI):** forwarded headers are sent on each chat completion request.
-- **MCP tools:** forwarded headers are merged into the HTTP/SSE headers used when connecting to MCP servers.
-- **DIAL deployment tools:** forwarded headers are sent as `extra_headers` when calling DIAL chat completions.
-- **REST API tools:** forwarded headers are merged into the outgoing HTTP request headers.
+| Toolset | Receives when `forwarded_headers` is unset |
+|---|---|
+| `dial-deployment`, `dial-app`, `dial-mcp` | every `X-*` header |
+| `mcp` whose server URL has the same origin (scheme, host, port) as `DIAL_URL` | every `X-*` header |
+| `mcp` on any other origin | none |
+| `rest-api` | none |
 
-Use this for tracing (e.g. `X-Request-Id`, `X-Correlation-Id`), multi-tenancy (`X-Tenant-Id`), or any custom header
-your gateways or downstream services expect.
+The orchestrator model call and the tool-discovery routing call are not toolsets and always receive every `X-*`
+header. `api-key` and `authorization` are never forwarded.
+
+Set `forwarded_headers` on a `rest-api`, `mcp`, `dial-mcp`, `dial-deployment` or `dial-app` toolset to send exactly the
+listed headers to it, whatever its default. Names are case-insensitive, must start with `x-` and cannot contain
+wildcards. `[]` sends none, also for a toolset inside the DIAL contour. A listed header the request did not carry is
+not sent.
+
+```json
+{
+  "type": "rest-api",
+  "name": "Billing",
+  "forwarded_headers": ["X-Tenant-Id", "X-Request-Id"],
+  "tools": []
+}
+```
+
+Use this for tracing (e.g. `X-Request-Id`), multi-tenancy (`X-Tenant-Id`) or any custom header a third-party service
+expects. Headers that carry user or project identity, such as `x-project-id`, reach an external host only when the
+builder lists them.
+
+**Upgrading.** Earlier versions forwarded every `X-*` header to every toolset. An external toolset that relied on that
+now needs `forwarded_headers`. When it sets none and the request carried `X-*` headers, an INFO line names the headers
+that were not sent (names only, once per process). Until the toolsets are updated, the operator can set the deprecated
+`FORWARD_ALL_X_HEADERS_TO_EXTERNAL_TOOLSETS=true` to restore the old behaviour for external toolsets that set no list.
+
+Design: [docs/designs/forwarded_headers_per_toolset.md](docs/designs/forwarded_headers_per_toolset.md).
 
 ## Projects
 
@@ -1882,6 +1909,8 @@ behave the same. Use `true` only for apps that make no sense outside a project.
 | `EXTERNAL_URL_FETCH_MAX_REDIRECTS`         | `5`                                                             | No       | Maximum HTTP redirects on external URL fetches. Each hop is SSRF-checked. Hard ceiling 10.                   |
 | `EXTERNAL_URL_FETCH_CONNECT_TIMEOUT_SECONDS` | `5.0`                                                           | No       | TCP connect timeout (seconds) for external URL fetches. Read/write/pool timeouts use the resolved tool timeout. |
 | `EXTERNAL_URL_FETCH_USER_AGENT`            | `QuickApps-ExternalFetch/1.0 (+https://github.com/epam/ai-dial-quickapps-backend)` | No       | `User-Agent` header sent on external URL fetches. Some sites (e.g. Wikipedia) reject generic library user agents with `403`. Must not be empty. |
+| **Header Forwarding**                      |                                                                 |          |                                                                             |
+| `FORWARD_ALL_X_HEADERS_TO_EXTERNAL_TOOLSETS` | `false`                                                         | No       | **Deprecated** migration switch, to be removed. When `true`, an external toolset (REST API, or MCP on a non-DIAL origin) that sets no `forwarded_headers` receives every `X-*` request header, as before. A toolset that sets `forwarded_headers` is unaffected. See [Forwarding headers](#forwarding-headers). |
 | **Dynamic Tool Discovery**                 |                                                                 |          |                                                                                                              |
 | `MIN_TOOLS_FOR_DEFERRAL`                   | `10`                                                            | No       | Deployment-wide minimum toolset size for deferral to apply. Toolsets with fewer tools than this threshold are promoted to eager loading even when `deferred=true`. Apps override per-app via `orchestrator.tool_discovery.min_tools_for_deferral`. |
 | **Skills**                                 |                                                                 |          |                                                                                                              |

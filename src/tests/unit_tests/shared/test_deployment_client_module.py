@@ -16,7 +16,6 @@ def test_provide_deployment_openai_client_applies_resolved_timeout():
     client = module.provide_deployment_openai_client(
         dial_settings=dial_settings,
         api_key=api_key,
-        forwarded_headers=None,
         timeout_resolver=resolver,
         bearer=None,
     )
@@ -40,14 +39,12 @@ def test_provide_deployment_openai_client_forwards_bearer_to_default_headers():
         module.provide_deployment_openai_client(
             dial_settings=dial_settings,
             api_key=api_key,
-            forwarded_headers={"X-Request-Id": "req-1"},
             timeout_resolver=resolver,
             bearer=SecretStr("incoming-token"),
         )
 
     expected_timeout = openai.Timeout(connect=5.0, read=42.0, write=42.0, pool=42.0)
     assert openai_client.call_args.kwargs["default_headers"] == {
-        "X-Request-Id": "req-1",
         "Authorization": "Bearer incoming-token",
     }
     assert openai_client.call_args.kwargs["timeout"] == expected_timeout
@@ -67,9 +64,8 @@ def test_provide_deployment_openai_client_handles_missing_bearer_without_authori
         module.provide_deployment_openai_client(
             dial_settings=dial_settings,
             api_key=api_key,
-            forwarded_headers={"X-Request-Id": "req-1"},
             timeout_resolver=noop_timeout_resolver(),
             bearer=None,
         )
 
-    assert openai_client.call_args.kwargs["default_headers"] == {"X-Request-Id": "req-1"}
+    assert openai_client.call_args.kwargs["default_headers"] == {}

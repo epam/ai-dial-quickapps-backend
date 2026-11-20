@@ -4,7 +4,7 @@ from collections.abc import Callable
 from fastapi_injector import request_scope
 from injector import Binder, ClassAssistedBuilder, Module, ProviderOf, multiprovider
 
-from quickapp.common import ACCEPT_LANGUAGE, StagedBaseTool
+from quickapp.common import ACCEPT_LANGUAGE, ForwardedHeaders, StagedBaseTool
 from quickapp.common.deferred_tool_types import (
     DeferredToolCatalogEntry,
     DeferredToolDefinition,
@@ -18,6 +18,7 @@ from quickapp.common.utils import sanitize_toolname
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.tools.rest_api import RestApiTool
 from quickapp.config.toolsets.rest_api import RestApiToolSet
+from quickapp.shared.forwarded_headers.forwarded_headers_policy import ForwardedHeadersPolicy
 
 from ._request_detail_builder import _RequestDetailsBuilder
 from ._rest_api_deferred_tools_context import _RestApiDeferredToolsContext
@@ -47,6 +48,7 @@ class RestApiToolingModule(Module):
         accept_language: ACCEPT_LANGUAGE,
         deferred_context: _RestApiDeferredToolsContext,
         request_details_builder_provider: ProviderOf[_RequestDetailsBuilder],
+        forwarded_headers_policy: ForwardedHeadersPolicy,
     ) -> list[StagedBaseTool]:
         result: list[StagedBaseTool] = []
         for toolset_info in app_config.tool_sets:
@@ -57,6 +59,7 @@ class RestApiToolingModule(Module):
                     tool_builder,
                     toolset_stage_name,
                     request_details_builder_provider.get,
+                    forwarded_headers_policy.for_toolset(toolset_info),
                 )
                 discovery_cfg = app_config.orchestrator.tool_discovery
                 if is_toolset_deferred(toolset_info, discovery_cfg, len(tools)):
@@ -103,6 +106,7 @@ class RestApiToolingModule(Module):
         tool_builder: ClassAssistedBuilder[_RestApiTool],
         toolset_stage_name: str,
         request_details_builder_factory: Callable[[], _RequestDetailsBuilder],
+        forwarded_headers: ForwardedHeaders,
     ) -> list[StagedBaseTool]:
         result: list[StagedBaseTool] = []
         for tool_config in rest_api_toolset.tools:
@@ -144,6 +148,7 @@ class RestApiToolingModule(Module):
                 tool_config=tool_config,
                 auth_info=rest_api_toolset.authorization,
                 request_details_builder_factory=request_details_builder_factory,
+                forwarded_headers=forwarded_headers,
             )
             tool.stage_name_component = (
                 f"{toolset_stage_name}: {tool_label}" if tool_label else toolset_stage_name

@@ -36,7 +36,12 @@ from quickapp.mcp_tooling._mcp_tool_initializer import _MCPToolInitializer
 
 # noinspection PyProtectedMember
 from quickapp.mcp_tooling._mcp_toolset_client import _MCPToolsetClient
-from tests.unit_tests.common.common import make_access_filter, make_provider, noop_timeout_resolver
+from tests.unit_tests.common.common import (
+    make_access_filter,
+    make_forwarded_headers_policy,
+    make_provider,
+    noop_timeout_resolver,
+)
 
 _SEARCH_SCHEMA = {
     "type": "object",
@@ -100,6 +105,7 @@ def _initializer(
         None,
         app_config,
         make_access_filter(),
+        make_forwarded_headers_policy(),
     )
     return initializer, mcp_context, client_builder, tool_builder
 

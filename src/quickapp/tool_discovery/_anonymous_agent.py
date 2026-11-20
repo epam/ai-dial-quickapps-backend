@@ -10,7 +10,7 @@ from openai.types.chat import (
     ChatCompletionUserMessageParam,
 )
 
-from quickapp.common import DEPLOYMENT_AZURE_CLIENT
+from quickapp.common import DEPLOYMENT_AZURE_CLIENT, ForwardedHeaders
 from quickapp.common.deployment_usage import ModelUsage
 from quickapp.config.application import ApplicationConfig
 from quickapp.tool_discovery._routing_prompt import (
@@ -44,9 +44,12 @@ class _AnonymousAgent:
         # `model` kwarg below a no-op; the unpinned deployment client honours service_model.
         client: DEPLOYMENT_AZURE_CLIENT,
         config: ApplicationConfig,
+        # Not a toolset call, so it gets every X-* header like the orchestrator does.
+        forwarded_headers: ForwardedHeaders = None,
     ) -> None:
         self.__client = client
         self.__config = config
+        self.__forwarded_headers: ForwardedHeaders = forwarded_headers
 
     async def route(
         self,
@@ -109,6 +112,7 @@ class _AnonymousAgent:
             ],
             response_format=build_response_format(),
             stream=False,
+            extra_headers=self.__forwarded_headers,
         )
 
 

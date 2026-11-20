@@ -13,6 +13,7 @@ from quickapp.config.toolsets.authorization import (
     MCPApiKeyAuthorization,
 )
 from quickapp.config.toolsets.base import BaseToolSet
+from quickapp.config.toolsets.forwarded_headers_config import ForwardedHeadersMixin
 from quickapp.config.toolsets.hidden_from_model import HIDDEN_FROM_MODEL_DESCRIPTION
 from quickapp.config.toolsets.mcp_tools_config import TOOLS_CONFIG_DESCRIPTION, MCPToolConfig
 from quickapp.config.toolsets.rest_api import BearerAuthorization
@@ -60,7 +61,7 @@ class MCPServerInfo(BaseModel):
     protocol: MCPProtocol
 
 
-class MCPToolSet(BaseToolSet):
+class MCPToolSet(BaseToolSet, ForwardedHeadersMixin):
     type: Literal["mcp"] = Field(default="mcp", description="The type of the tool set.")
     mcp_server_info: MCPServerInfo
     allowed_tools: list[str] | None = Field(

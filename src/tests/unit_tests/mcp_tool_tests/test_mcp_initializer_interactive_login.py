@@ -15,7 +15,12 @@ from quickapp.dial_core_services._login_result import LoginResult
 from quickapp.mcp_tooling._mcp_tool import _MCPTool
 from quickapp.mcp_tooling._mcp_tool_initializer import _MCPToolInitializer
 from quickapp.mcp_tooling._mcp_unauthorized_exception import MCPUnauthorizedException
-from tests.unit_tests.common.common import make_access_filter, make_provider, noop_timeout_resolver
+from tests.unit_tests.common.common import (
+    make_access_filter,
+    make_forwarded_headers_policy,
+    make_provider,
+    noop_timeout_resolver,
+)
 
 
 def _setup_open_init_session(conn: MagicMock, supports_tools: bool = True) -> MagicMock:
@@ -89,6 +94,7 @@ def _make_initializer(
     toolset_list,
     login_service=None,
     toolset_client_builder=None,
+    forwarded_headers_policy=None,
 ):
     mcp_context = MagicMock()
 
@@ -130,8 +136,43 @@ def _make_initializer(
         accept_language=None,
         app_config=MagicMock(),
         access_filter=make_access_filter(),
+        forwarded_headers_policy=forwarded_headers_policy or make_forwarded_headers_policy(),
     )
     return initializer, mcp_context, login_service
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "toolset",
+    [
+        DialMCPToolSet(deployment_id="toolsets/public/ts1", name="ts1", forwarded_headers=["X-A"]),
+        MCPToolSet(
+            mcp_server_info=MCPServerInfo(
+                url="https://ext-mcp", authorization=None, protocol=MCPProtocol.sse
+            ),
+            name="ext",
+            forwarded_headers=["X-A"],
+        ),
+    ],
+)
+async def test_client_gets_the_headers_resolved_for_the_toolset_with_its_setting(toolset):
+    """For a DialMCPToolSet the policy sees the synthesized MCPToolSet, which keeps the setting."""
+    conn = MagicMock()
+    conn.get_tools_list = AsyncMock(return_value=[])
+    _setup_open_init_session(conn)
+    conn_builder = MagicMock()
+    conn_builder.build.return_value = conn
+    policy = make_forwarded_headers_policy({"X-A": "1"})
+
+    initializer, _, _ = _make_initializer(
+        [toolset], toolset_client_builder=conn_builder, forwarded_headers_policy=policy
+    )
+    await initializer.initialize()
+
+    resolved = policy.for_toolset.call_args.args[0]
+    assert isinstance(resolved, MCPToolSet)
+    assert resolved.forwarded_headers == ["x-a"]
+    assert conn_builder.build.call_args.kwargs["forwarded_headers"] == {"X-A": "1"}
 
 
 @pytest.mark.asyncio

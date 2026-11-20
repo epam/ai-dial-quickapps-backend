@@ -6,7 +6,7 @@ import pytest
 from injector import Binder, Injector
 from openai.types import CompletionUsage
 
-from quickapp.common import DEPLOYMENT_AZURE_CLIENT, ORCHESTRATOR_AZURE_CLIENT
+from quickapp.common import DEPLOYMENT_AZURE_CLIENT, ORCHESTRATOR_AZURE_CLIENT, ForwardedHeaders
 from quickapp.common.deferred_tool_types import DeferredToolCatalogEntry
 from quickapp.common.deployment_usage import ModelUsage
 from quickapp.config.application import ApplicationConfig
@@ -175,6 +175,7 @@ async def test_route_uses_deployment_client_not_orchestrator_client():
         binder.bind(DEPLOYMENT_AZURE_CLIENT, to=deployment_client)
         binder.bind(ORCHESTRATOR_AZURE_CLIENT, to=orchestrator_client)
         binder.bind(ApplicationConfig, to=_make_config(tool_discovery=True))
+        binder.bind(ForwardedHeaders, to=lambda: None)
 
     agent = Injector([configure]).get(_AnonymousAgent)
 
@@ -183,6 +184,18 @@ async def test_route_uses_deployment_client_not_orchestrator_client():
     assert result.names == ["tool_a"]
     deployment_client.chat.completions.create.assert_awaited_once()
     orchestrator_client.chat.completions.create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_route_sends_every_forwarded_header_on_the_call():
+    client = AsyncMock()
+    client.chat.completions.create.return_value = _make_response(_answer("tool_a"))
+    headers = {"X-Request-Id": "req-1", "x-project-id": "projects/b/p"}
+    agent = _AnonymousAgent(client, _make_config(tool_discovery=True), headers)
+
+    await _route(agent, CATALOG)
+
+    assert client.chat.completions.create.call_args.kwargs["extra_headers"] == headers
 
 
 @pytest.mark.asyncio

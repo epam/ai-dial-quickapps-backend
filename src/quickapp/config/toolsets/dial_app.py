@@ -8,11 +8,12 @@ from quickapp.config.tools.deployment import ConversationMode
 from quickapp.config.tools.tool_fallback import ToolFallbackConfig
 from quickapp.config.toolsets.allowed_tools import validate_listed_in_allowed_tools
 from quickapp.config.toolsets.base import BaseToolSet
+from quickapp.config.toolsets.forwarded_headers_config import ForwardedHeadersMixin
 from quickapp.config.toolsets.hidden_from_model import HIDDEN_FROM_MODEL_DESCRIPTION
 from quickapp.config.toolsets.mcp_tools_config import TOOLS_CONFIG_DESCRIPTION, MCPToolConfig
 
 
-class DialAppToolSet(BaseToolSet):
+class DialAppToolSet(BaseToolSet, ForwardedHeadersMixin):
     type: Literal["dial-app"] = Field(default="dial-app", description="The type of the tool set.")
     deployment_id: Annotated[
         str,

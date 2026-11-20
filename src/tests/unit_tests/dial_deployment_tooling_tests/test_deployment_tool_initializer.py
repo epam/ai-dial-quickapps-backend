@@ -31,6 +31,7 @@ from tests.unit_tests.common.common import (
     create_app_configuration,
     make_access_filter,
     make_deployment_names_service,
+    make_forwarded_headers_policy,
     make_prompt_loader,
     make_provider,
 )
@@ -63,6 +64,8 @@ def _build_initializer(
     deployment_cache: MagicMock | None = None,
     access_filter: ToolAccessFilter | None = None,
     prompt_loader: MagicMock | None = None,
+    forwarded_headers_policy: MagicMock | None = None,
+    dial_tools: list[DialDeploymentTool] | None = None,
 ) -> _DeploymentToolInitializer:
     return _DeploymentToolInitializer(
         context=context or MagicMock(),
@@ -70,10 +73,11 @@ def _build_initializer(
         tool_config_service=MagicMock(),
         builder=builder,
         deployment_cache=deployment_cache or MagicMock(),
-        dial_tools_provider=make_provider([]),
+        dial_tools_provider=make_provider(dial_tools or []),
         app_config=app_config,
         access_filter=access_filter or make_access_filter(),
         prompt_loader=prompt_loader or MagicMock(spec=DialPromptLoader),
+        forwarded_headers_policy=forwarded_headers_policy or make_forwarded_headers_policy(),
     )
 
 
@@ -196,6 +200,70 @@ async def test_simple_tool_without_propagate_annotations_leaves_synthetic_defaul
     await _make_simple_initializer(simple_tool, builder, cached_config).initialize()
 
     assert builder.build.call_args.kwargs["tool_config"].propagate_annotations_to_choice is None
+
+
+@pytest.mark.asyncio
+async def test_tools_of_a_toolset_get_the_headers_resolved_for_that_toolset():
+    toolset = DeploymentToolSet(
+        name="agents", tools=[_make_deployment_tool("t1")], forwarded_headers=["X-Tenant-Id"]
+    )
+    policy = make_forwarded_headers_policy({"X-Tenant-Id": "tenant-1"})
+    builder = MagicMock()
+    initializer = _build_initializer(
+        create_app_configuration([toolset]), builder, forwarded_headers_policy=policy
+    )
+
+    await initializer.initialize()
+
+    policy.for_toolset.assert_called_once_with(toolset)
+    assert builder.build.call_args.kwargs["forwarded_headers"] == {"X-Tenant-Id": "tenant-1"}
+
+
+@pytest.mark.asyncio
+async def test_simple_tool_gets_the_headers_resolved_for_its_toolset():
+    simple_tool = DialDeploymentSimpleTool(deployment_id="my-app")
+    toolset = DeploymentToolSet(name="agents", tools=[simple_tool])
+    policy = make_forwarded_headers_policy({"X-Tenant-Id": "tenant-1"})
+    builder = MagicMock()
+    deployment_cache = MagicMock()
+    deployment_cache.fetch_basic_tool_config = AsyncMock(
+        return_value=_make_deployment_tool("my_app_tool")
+    )
+    initializer = _build_initializer(
+        create_app_configuration([toolset]),
+        builder,
+        deployment_cache=deployment_cache,
+        forwarded_headers_policy=policy,
+    )
+
+    await initializer.initialize()
+
+    assert builder.build.call_args.kwargs["forwarded_headers"] == {"X-Tenant-Id": "tenant-1"}
+
+
+@pytest.mark.asyncio
+async def test_tool_synthesized_from_a_dial_app_toolset_keeps_its_own_headers():
+    synthesized = _make_deployment_tool("app_tool").with_forwarded_headers({"X-Tenant-Id": "t"})
+    builder = MagicMock()
+    initializer = _build_initializer(
+        create_app_configuration([]), builder, dial_tools=[synthesized]
+    )
+
+    await initializer.initialize()
+
+    assert builder.build.call_args.kwargs["forwarded_headers"] == {"X-Tenant-Id": "t"}
+
+
+def test_with_forwarded_headers_copies_the_tool_and_is_not_a_manifest_field():
+    tool = _make_deployment_tool("t")
+
+    carrying = tool.with_forwarded_headers({"X-A": "1"})
+
+    assert carrying is not tool
+    assert tool.forwarded_headers is None
+    assert carrying.forwarded_headers == {"X-A": "1"}
+    assert "forwarded_headers" not in DialDeploymentTool.model_fields
+    assert "forwarded_headers" not in carrying.model_dump()
 
 
 _INITIALIZER_LOGGER = "quickapp.dial_deployment_tooling._deployment_tool_initializer"

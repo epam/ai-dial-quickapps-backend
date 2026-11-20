@@ -20,6 +20,7 @@ from mcp.types import (
 from pydantic import AnyUrl as _AnyUrl
 
 from quickapp.common import DIAL_BEARER, ForwardedHeaders
+from quickapp.common.dial_origin import is_dial_origin
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.localized_string import resolve_localized
 from quickapp.common.oauth_token_fetcher import OAuthTokenFetcher
@@ -111,8 +112,8 @@ class _MCPToolsetClient:
             {"Authorization": f"Bearer {self.__bearer.get_secret_value()}"}
             if (
                 self.__bearer
-                and self.__toolset_info.mcp_server_info.url.startswith(
-                    self.__dial_settings.url
+                and is_dial_origin(
+                    self.__toolset_info.mcp_server_info.url, self.__dial_settings.url
                 )  # append header only for Dial-internal servers
             )
             else {}

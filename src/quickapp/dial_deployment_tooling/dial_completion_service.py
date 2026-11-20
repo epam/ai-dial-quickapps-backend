@@ -46,7 +46,6 @@ class DialCompletionService:
     def __init__(
         self,
         azure_client: DEPLOYMENT_AZURE_CLIENT,
-        forwarded_headers: ForwardedHeaders,
         stream_handler: ChatCompletionStreamHandler,
         timeout_resolver: ToolTimeoutResolver,
         attachment_resolver: AttachmentResolver,
@@ -54,7 +53,6 @@ class DialCompletionService:
         presentation_settings: PresentationSettings,
     ) -> None:
         self.__azure_client = azure_client
-        self.__forwarded_headers: ForwardedHeaders = forwarded_headers
         self.__stream_handler = stream_handler
         self.__timeout_resolver: ToolTimeoutResolver = timeout_resolver
         self.__attachment_resolver = attachment_resolver
@@ -72,6 +70,7 @@ class DialCompletionService:
         supports_url_attachments: bool = False,
         parent_stage: Stage | None = None,
         system_prompt: str | None = None,
+        forwarded_headers: ForwardedHeaders = None,
     ) -> ToolCallResult:
         # Expect params to be pre-processed by BaseDeploymentTool._pre_process_params
         content = params.get(CONTENT_PARAM, "")
@@ -88,7 +87,7 @@ class DialCompletionService:
                 content, relative_attachment_urls, history, supports_url_attachments, system_prompt
             )
             chat_params = self._build_chat_completion_params(
-                params, deployment_id, messages, self.__forwarded_headers, self.__include_usage
+                params, deployment_id, messages, forwarded_headers, self.__include_usage
             )
             mark_tool_milestone("dial_request_built")
             chunks = await self.__azure_client.chat.completions.create(**chat_params)

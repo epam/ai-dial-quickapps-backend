@@ -17,6 +17,7 @@ from quickapp.config.toolsets.toolset import ToolSet
 from quickapp.core.agent.lazy_loaded_tools_holder import LazyLoadedToolsHolder
 from quickapp.dial_core_services.deployment_names_service import DeploymentNamesCoreService
 from quickapp.dial_core_services.dial_prompt_loader import DialPromptLoader
+from quickapp.shared.forwarded_headers.forwarded_headers_policy import ForwardedHeadersPolicy
 from quickapp.shared.user_access import ToolAccessFilter
 from quickapp.skills import ResolvedSkill, SkillFileReader
 from quickapp.skills.skill_metadata import SkillMetadata
@@ -126,6 +127,14 @@ def make_access_filter(
         app_config=app_config or create_app_configuration([]),
         deployment_names_service=deployment_names_service or make_deployment_names_service([]),
     )
+
+
+def make_forwarded_headers_policy(headers: dict[str, str] | None = None) -> MagicMock:
+    """MagicMock for `ForwardedHeadersPolicy` that returns ``headers`` for every toolset."""
+    policy = MagicMock(spec=ForwardedHeadersPolicy)
+    policy.all.return_value = headers
+    policy.for_toolset.return_value = headers
+    return policy
 
 
 def noop_timeout_resolver(value: float = 300.0) -> MagicMock:

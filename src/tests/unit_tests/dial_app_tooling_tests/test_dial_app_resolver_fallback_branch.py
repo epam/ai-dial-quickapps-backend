@@ -6,6 +6,7 @@ from quickapp.config.tools.base import AttachmentConfig
 from quickapp.config.tools.deployment import ConversationMode
 from quickapp.config.tools.tool_fallback import StopStrategyModel, ToolFallbackConfig
 from quickapp.config.toolsets.dial_app import DialAppToolSet
+from tests.unit_tests.common.common import make_forwarded_headers_policy
 
 from ._helpers import make_async_loader, make_metadata, make_resolver, make_tool_config
 
@@ -89,6 +90,23 @@ async def test_fallback_threads_conversation_mode_onto_synthetic_tool():
     customised = context.resolved_deployment_tools[0]
     assert customised.conversation_mode is not None
     assert customised.conversation_mode.resumable is True
+
+
+@pytest.mark.asyncio
+async def test_fallback_tool_carries_the_headers_resolved_for_its_toolset():
+    toolset = DialAppToolSet(name="app", deployment_id="dep", forwarded_headers=["X-Tenant-Id"])
+    policy = make_forwarded_headers_policy({"X-Tenant-Id": "tenant-1"})
+    resolver, context, _, _ = make_resolver(
+        toolsets=[toolset],
+        metadata=make_metadata(mcp=False),
+        tool_config=make_tool_config(),
+        forwarded_headers_policy=policy,
+    )
+
+    await resolver.resolve()
+
+    policy.for_toolset.assert_called_once_with(toolset)
+    assert context.resolved_deployment_tools[0].forwarded_headers == {"X-Tenant-Id": "tenant-1"}
 
 
 @pytest.mark.asyncio

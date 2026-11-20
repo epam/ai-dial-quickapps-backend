@@ -1,6 +1,7 @@
 from injector import AssistedBuilder, inject
 from pydantic import BaseModel, Field
 
+from quickapp.common import ForwardedHeaders
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
@@ -33,6 +34,7 @@ class DeploymentTool(BaseDeploymentTool):
         messages_mixin: MessagesMixin,
         stage_wrapper_builder: AssistedBuilder[DeploymentStageWrapper],
         perf_timer: PerformanceTimer,
+        forwarded_headers: ForwardedHeaders,
         propagate_sub_stages: PROPAGATE_SUB_STAGES = True,
         stage_display_level: StageDisplayLevel = StageDisplayLevel.INFO,
         argument_transformers: list[ToolArgumentTransformer] | None = None,
@@ -48,6 +50,7 @@ class DeploymentTool(BaseDeploymentTool):
             stage_wrapper_builder=stage_wrapper_builder,
             description=description,
             perf_timer=perf_timer,
+            forwarded_headers=forwarded_headers,
             propagate_sub_stages=propagate_sub_stages,
             stage_display_level=stage_display_level,
             argument_transformers=argument_transformers,

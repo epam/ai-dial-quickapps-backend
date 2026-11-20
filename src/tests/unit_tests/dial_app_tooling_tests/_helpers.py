@@ -18,7 +18,11 @@ from quickapp.config.toolsets.dial_app import DialAppToolSet
 from quickapp.dial_app_tooling._dial_app_resolver import _DialAppResolver
 from quickapp.dial_app_tooling._dial_app_resolver_context import _DialAppResolverContext
 from quickapp.shared.user_access import ToolAccessFilter
-from tests.unit_tests.common.common import create_app_configuration, make_access_filter
+from tests.unit_tests.common.common import (
+    create_app_configuration,
+    make_access_filter,
+    make_forwarded_headers_policy,
+)
 
 
 def make_metadata(*, mcp: bool | None = None, with_features: bool = True) -> SimpleNamespace:
@@ -62,6 +66,7 @@ def make_resolver(
     api_key: str = "test-api-key",
     dial_url: str = "https://dial.example",
     access_filter: ToolAccessFilter | None = None,
+    forwarded_headers_policy: MagicMock | None = None,
 ) -> tuple[_DialAppResolver, _DialAppResolverContext, MagicMock, DialDeploymentToolCacheService]:
     """Build a _DialAppResolver with all dependencies mocked.
 
@@ -107,5 +112,6 @@ def make_resolver(
         deployment_cache=deployment_cache,
         context=context,
         access_filter=access_filter or make_access_filter(),
+        forwarded_headers_policy=forwarded_headers_policy or make_forwarded_headers_policy(),
     )
     return resolver, context, tool_config_service, deployment_cache

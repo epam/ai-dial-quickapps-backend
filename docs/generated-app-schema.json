@@ -644,6 +644,22 @@
     },
     "DeploymentToolSet": {
       "properties": {
+        "forwarded_headers": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Names of the `X-*` request headers this toolset receives. Names are case-insensitive, must start with `x-` and must not contain wildcards. When unset, a toolset inside the DIAL contour (DIAL deployments, DIAL apps, DIAL MCP, MCP servers on the DIAL origin) receives every `X-*` request header and an external toolset (REST API, MCP servers on other origins) receives none. When set, exactly the listed headers are sent, and `[]` sends none.",
+          "title": "Forwarded Headers"
+        },
         "name": {
           "anyOf": [
             {
@@ -732,6 +748,22 @@
     },
     "DialAppToolSet": {
       "properties": {
+        "forwarded_headers": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Names of the `X-*` request headers this toolset receives. Names are case-insensitive, must start with `x-` and must not contain wildcards. When unset, a toolset inside the DIAL contour (DIAL deployments, DIAL apps, DIAL MCP, MCP servers on the DIAL origin) receives every `X-*` request header and an external toolset (REST API, MCP servers on other origins) receives none. When set, exactly the listed headers are sent, and `[]` sends none.",
+          "title": "Forwarded Headers"
+        },
         "name": {
           "anyOf": [
             {
@@ -1516,6 +1548,22 @@
         }
       ],
       "properties": {
+        "forwarded_headers": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Names of the `X-*` request headers this toolset receives. Names are case-insensitive, must start with `x-` and must not contain wildcards. When unset, a toolset inside the DIAL contour (DIAL deployments, DIAL apps, DIAL MCP, MCP servers on the DIAL origin) receives every `X-*` request header and an external toolset (REST API, MCP servers on other origins) receives none. When set, exactly the listed headers are sent, and `[]` sends none.",
+          "title": "Forwarded Headers"
+        },
         "name": {
           "default": "untitled-mcp-toolset",
           "description": "default name of the toolset",
@@ -2647,6 +2695,22 @@
     },
     "MCPToolSet": {
       "properties": {
+        "forwarded_headers": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Names of the `X-*` request headers this toolset receives. Names are case-insensitive, must start with `x-` and must not contain wildcards. When unset, a toolset inside the DIAL contour (DIAL deployments, DIAL apps, DIAL MCP, MCP servers on the DIAL origin) receives every `X-*` request header and an external toolset (REST API, MCP servers on other origins) receives none. When set, exactly the listed headers are sent, and `[]` sends none.",
+          "title": "Forwarded Headers"
+        },
         "name": {
           "anyOf": [
             {
@@ -3569,6 +3633,22 @@
     },
     "RestApiToolSet": {
       "properties": {
+        "forwarded_headers": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Names of the `X-*` request headers this toolset receives. Names are case-insensitive, must start with `x-` and must not contain wildcards. When unset, a toolset inside the DIAL contour (DIAL deployments, DIAL apps, DIAL MCP, MCP servers on the DIAL origin) receives every `X-*` request header and an external toolset (REST API, MCP servers on other origins) receives none. When set, exactly the listed headers are sent, and `[]` sends none.",
+          "title": "Forwarded Headers"
+        },
         "name": {
           "anyOf": [
             {

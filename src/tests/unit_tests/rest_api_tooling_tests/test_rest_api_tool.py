@@ -362,10 +362,24 @@ async def test_toolset_level_response_as_attachment_propagation(mock_async_clien
     assert response.status_code == 200
 
 
+@pytest.mark.parametrize(
+    ("toolset_headers", "expected_sent"),
+    [
+        (None, {}),
+        ([], {}),
+        (["x-request-id"], {"X-Request-Id": "req-123"}),
+        (
+            ["X-REQUEST-ID", "x-custom-header"],
+            {"X-Request-Id": "req-123", "X-Custom-Header": "custom-value"},
+        ),
+    ],
+)
 @pytest.mark.asyncio
 @patch("httpx.AsyncClient")
-async def test_forwarded_x_headers_passed_to_rest_api_request(mock_async_client):
-    """X-* headers from forwarded_headers (dict) are included in the outgoing HTTP request."""
+async def test_forwarded_x_headers_follow_the_toolset_setting(
+    mock_async_client, toolset_headers, expected_sent
+):
+    """A REST toolset sends only the X-* headers it lists; with no list it sends none."""
     url = "https://example.com/api"
     mock_stage = MagicMock(spec=Stage)
     response_data = {
@@ -380,6 +394,7 @@ async def test_forwarded_x_headers_passed_to_rest_api_request(mock_async_client)
         name="rest-api",
         authorization=BearerAuthorization(token="test_token"),
         tools=[_make_rest_api_tool(url, ToolEndpointInfoMethodType.get)],
+        forwarded_headers=toolset_headers,
     )
 
     forwarded = {"X-Request-Id": "req-123", "X-Custom-Header": "custom-value"}
@@ -411,10 +426,7 @@ async def test_forwarded_x_headers_passed_to_rest_api_request(mock_async_client)
     actual_headers = mock_async_client.return_value.__aenter__.return_value.request.call_args[1][
         "headers"
     ]
-    assert "X-Request-Id" in actual_headers
-    assert actual_headers["X-Request-Id"] == "req-123"
-    assert "X-Custom-Header" in actual_headers
-    assert actual_headers["X-Custom-Header"] == "custom-value"
+    assert {k: v for k, v in actual_headers.items() if k.lower().startswith("x-")} == expected_sent
 
 
 def test_openai_tools_names():

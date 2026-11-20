@@ -12,7 +12,7 @@ from aidial_sdk.chat_completion import CustomContent, Role
 from aidial_sdk.chat_completion.request import Attachment as SdkAttachment
 from injector import AssistedBuilder
 
-from quickapp.common import StagedBaseTool, ToolCallResult
+from quickapp.common import ForwardedHeaders, StagedBaseTool, ToolCallResult
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.chat_completion_stream.argument_stream_presentation import ArgumentStreamMode
@@ -49,6 +49,7 @@ class BaseDeploymentTool(StagedBaseTool):
         messages_mixin: MessagesMixin,
         perf_timer: PerformanceTimer,
         stage_wrapper_builder: AssistedBuilder[DeploymentStageWrapper],
+        forwarded_headers: ForwardedHeaders,
         propagate_sub_stages: bool = True,
         argument_transformers: list[ToolArgumentTransformer] | None = None,
         **kwargs: Any,
@@ -63,6 +64,7 @@ class BaseDeploymentTool(StagedBaseTool):
         self.__application_id: str = application_id
         self.__application_name: str = application_name
         self.__dial_completion_service: DialCompletionService = dial_completion_service
+        self.__forwarded_headers: ForwardedHeaders = forwarded_headers
         self.__attachment_resolver: AttachmentResolver = attachment_resolver
         self.__content_propagation: ContentPropagation | None = content_propagation
         self.__propagate_sub_stages: bool = propagate_sub_stages
@@ -140,6 +142,7 @@ class BaseDeploymentTool(StagedBaseTool):
             supports_url_attachments=tool_config.supports_url_attachments,
             parent_stage=parent_stage,
             system_prompt=tool_config.system_prompt.content if tool_config.system_prompt else None,
+            forwarded_headers=self.__forwarded_headers,
         )
         if is_first_call and session_id:
             result.content = result.content + f"\n\n[session_id: {session_id}]"

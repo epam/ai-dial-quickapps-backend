@@ -113,8 +113,8 @@ flowchart LR
 | `projects/` routing in `RoutedFileStorage`, `projects/` URLs resolved by `HomePathResolver`, home = `artifacts/`, output root | `PROJECT_CONTEXT is not None` and the URL is under its root |
 | `projects/` prefix = absolute (`HomePathResolver.is_absolute`, `classify_url`) | ungated (D8) |
 | File-tool 403 → non-retryable permission error | ungated (a secondary fix, see [Secondary Fixes](#secondary-fixes)) |
-| `x-project-id` stripped from REST API tool calls | ungated (the header only exists in project chats) |
-| `x-project-id` to nested apps and MCP | unchanged: the existing `X-*` catch-all, raw header value |
+| `x-project-id` to REST API tools | not sent unless the toolset lists it in `forwarded_headers` ([forwarded_headers_per_toolset.md](./forwarded_headers_per_toolset.md)) |
+| `x-project-id` to nested apps and MCP | toolsets inside the DIAL contour get it by default; an external MCP gets it only if listed in `forwarded_headers` (raw header value) |
 
 ### Project context (PR1)
 
@@ -221,9 +221,10 @@ flowchart LR
 
 ### Downstream propagation (PR4)
 
-- Nested DIAL apps and MCP toolsets keep receiving `x-project-id` through the existing `X-*` catch-all (raw value).
-- Strip it from REST API tool calls (`rest_api_tooling/_rest_api_tool.py`): it carries the user's bucket and project
-  name to external hosts. The orchestrator model call goes through Core and keeps it.
+- Nested DIAL apps and DIAL-origin MCP toolsets receive `x-project-id` through the per-toolset `X-*` forwarding (raw value).
+- REST API tools and MCP servers on other origins do not receive it unless the toolset lists it in `forwarded_headers`:
+  it carries the user's bucket and project name to external hosts. The orchestrator model call goes through Core and
+  keeps it.
 - Nested apps declare and get their own grants (#1930 resolves dependencies at every hop of a chain).
 - `AttachmentResolver`: home-relative and current-project URLs pass through without the v1 metadata call. A deployment
   that can't read `projects/` URLs (anything but a QuickApp, C4) returns its own error, surfaced as a tool error.
@@ -331,7 +332,7 @@ None for non-project chats. Project behaviour is preview-gated and triggered onl
 ### Non-breaking changes
 
 - File tools report Core 403 as a non-retryable permission error, in every chat ([Secondary Fixes](#secondary-fixes)).
-- `x-project-id` is no longer sent to REST API tools.
+- `x-project-id` is not sent to REST API tools or external MCP servers unless the toolset lists it in `forwarded_headers`.
 
 ## Delivery
 

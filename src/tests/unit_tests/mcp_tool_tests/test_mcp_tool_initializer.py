@@ -32,6 +32,7 @@ from tests.unit_tests.common.common import (
     create_app_configuration,
     make_access_filter,
     make_deployment_names_service,
+    make_forwarded_headers_policy,
     make_provider,
     noop_timeout_resolver,
 )
@@ -244,6 +245,7 @@ def initializer_factory(builder_mock, toolset_client_builder):
             None,  # accept_language
             _make_app_config_mock(),  # app_config
             make_access_filter(),  # access_filter
+            make_forwarded_headers_policy(),
         )
         return initializer, mcp_context
 
@@ -333,6 +335,7 @@ async def test_initialize_multiple_toolsets(tool1, tool2, builder_mock):
         None,  # accept_language
         _make_app_config_mock(),  # app_config
         make_access_filter(),  # access_filter
+        make_forwarded_headers_policy(),
     )
 
     await initializer.initialize()
@@ -424,6 +427,7 @@ async def test_no_exception_if_toolset_list_is_empty():
         None,  # accept_language
         _make_app_config_mock(),  # app_config
         make_access_filter(),  # access_filter
+        make_forwarded_headers_policy(),
     )
     await initializer.initialize()
     mcp_context.append_tool.assert_not_called()
@@ -466,6 +470,7 @@ async def test_inaccessible_dial_toolset_is_skipped_before_any_fetch() -> None:
         None,  # accept_language
         _make_app_config_mock(),  # app_config
         access_filter,
+        make_forwarded_headers_policy(),
     )
 
     await initializer.initialize()
@@ -542,6 +547,30 @@ async def test_toolset_client_forwards_request_bearer_for_dial_internal_server()
 async def test_toolset_client_does_not_forward_request_bearer_for_external_server():
     server_info = MCPServerInfo(
         url="https://external.test/mcp", authorization=None, protocol=MCPProtocol.streamable_http
+    )
+    toolset_info = MCPToolSet(mcp_server_info=server_info, allowed_tools=None, name="set1")
+
+    conn_manager = _MCPToolsetClient(
+        toolset_info=toolset_info,
+        toolset_key="test",
+        oauth_token_fetcher=AsyncMock(),
+        dial_settings=DialSettings(url="https://dial.test"),
+        timeout_resolver=noop_timeout_resolver(),
+        session_manager=MagicMock(),
+        bearer=SecretStr("request-token"),
+    )
+
+    headers = await conn_manager._MCPToolsetClient__build_headers(server_info)
+
+    assert "Authorization" not in headers
+
+
+@pytest.mark.asyncio
+async def test_toolset_client_does_not_forward_request_bearer_to_a_lookalike_host():
+    server_info = MCPServerInfo(
+        url="https://dial.test.attacker.io/mcp",
+        authorization=None,
+        protocol=MCPProtocol.streamable_http,
     )
     toolset_info = MCPToolSet(mcp_server_info=server_info, allowed_tools=None, name="set1")
 
@@ -676,6 +705,7 @@ async def test_initialize_surfaces_session_terminated_through_nested_exception_g
         None,  # accept_language
         _make_app_config_mock(),  # app_config
         make_access_filter(),  # access_filter
+        make_forwarded_headers_policy(),
     )
 
     await initializer.initialize()

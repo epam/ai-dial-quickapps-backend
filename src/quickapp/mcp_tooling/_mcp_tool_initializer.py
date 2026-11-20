@@ -36,6 +36,7 @@ from quickapp.dial_core_services.tool_config_service import ToolConfigCoreServic
 from quickapp.mcp_tooling._mcp_eager_resource import MCPEagerTextResource
 from quickapp.mcp_tooling._mcp_resource_meta import MCPResourceMeta
 from quickapp.mcp_tooling._mcp_server_capabilities import MCPServerCapabilities
+from quickapp.shared.forwarded_headers.forwarded_headers_policy import ForwardedHeadersPolicy
 from quickapp.shared.user_access import ToolAccessFilter
 
 from ._di_types import DialToolsetCacheService
@@ -138,6 +139,7 @@ class _MCPToolInitializer(CompletionInitializer):
         accept_language: ACCEPT_LANGUAGE,
         app_config: ApplicationConfig,
         access_filter: ToolAccessFilter,
+        forwarded_headers_policy: ForwardedHeadersPolicy,
     ):
         # Resolved lazily in initialize() because dial_app_tooling contributes
         # to this multibinder only after _DialAppResolver runs.
@@ -155,6 +157,7 @@ class _MCPToolInitializer(CompletionInitializer):
         self.__accept_language: ACCEPT_LANGUAGE = accept_language
         self.__app_config: ApplicationConfig = app_config
         self.__access_filter: ToolAccessFilter = access_filter
+        self.__forwarded_headers_policy: ForwardedHeadersPolicy = forwarded_headers_policy
 
     @staticmethod
     # todo add Title to config so that we could use it in stage name
@@ -521,6 +524,7 @@ class _MCPToolInitializer(CompletionInitializer):
                         ),
                     ),
                     resources=toolset_info.resources,
+                    forwarded_headers=toolset_info.forwarded_headers,
                 )
             else:
                 resolved_toolset = toolset_info
@@ -528,6 +532,7 @@ class _MCPToolInitializer(CompletionInitializer):
             toolset_client = self.__toolset_client_builder.build(
                 toolset_info=resolved_toolset,
                 toolset_key=_toolset_key(toolset_info),
+                forwarded_headers=self.__forwarded_headers_policy.for_toolset(resolved_toolset),
             )
 
             async with toolset_client.open_init_session() as (session, init_result):

@@ -54,7 +54,6 @@ def attachment_resolver():
 def completion_service(azure_client, attachment_resolver):
     return DialCompletionService(
         azure_client,
-        forwarded_headers=None,
         stream_handler=ChatCompletionStreamHandler.with_default_sinks(),
         timeout_resolver=noop_timeout_resolver(),
         attachment_resolver=attachment_resolver,
@@ -229,7 +228,6 @@ async def test_nested_propagation_still_streams_response_into_calling_stage(
 
     service = DialCompletionService(
         azure_client,
-        forwarded_headers=None,
         stream_handler=ChatCompletionStreamHandler.with_default_sinks(),
         timeout_resolver=noop_timeout_resolver(),
         attachment_resolver=attachment_resolver,
@@ -363,11 +361,10 @@ async def test_history_with_custom_content_passed_through(
 async def test_forwarded_x_headers_passed_to_chat_completion(
     azure_client, mock_stage_wrapper, attachment_resolver
 ):
-    """X-* headers from forwarded_headers (dict) are sent as extra_headers to chat completions."""
+    """X-* headers passed per call (dict) are sent as extra_headers to chat completions."""
     forwarded = {"X-Request-Id": "deploy-req-789", "X-Deployment-Custom": "deploy-val"}
     service = DialCompletionService(
         azure_client,
-        forwarded_headers=forwarded,
         stream_handler=ChatCompletionStreamHandler.with_default_sinks(),
         timeout_resolver=noop_timeout_resolver(),
         attachment_resolver=attachment_resolver,
@@ -380,6 +377,7 @@ async def test_forwarded_x_headers_passed_to_chat_completion(
         deployment_id="test-deployment",
         deployment_name="Test Deployment",
         stage_wrapper=mock_stage_wrapper,
+        forwarded_headers=forwarded,
     )
 
     call_args = azure_client.chat.completions.create.call_args[1]
@@ -440,7 +438,6 @@ async def test_annotations_from_custom_fields_land_on_tool_call_result(
     client.chat.completions.create = AsyncMock(return_value=mock_stream())
     service = DialCompletionService(
         client,
-        forwarded_headers=None,
         stream_handler=ChatCompletionStreamHandler.with_default_sinks(),
         timeout_resolver=noop_timeout_resolver(),
         attachment_resolver=attachment_resolver,
@@ -502,7 +499,6 @@ async def test_stream_options_requested_only_when_usage_statistics_shown(
 ):
     service = DialCompletionService(
         azure_client,
-        forwarded_headers=None,
         stream_handler=ChatCompletionStreamHandler.with_default_sinks(),
         timeout_resolver=noop_timeout_resolver(),
         attachment_resolver=attachment_resolver,
@@ -551,7 +547,6 @@ async def test_per_model_usage_supersedes_the_deployment_total(
     azure_client.chat.completions.create.return_value = stream()
     service = DialCompletionService(
         azure_client,
-        forwarded_headers=None,
         stream_handler=ChatCompletionStreamHandler.with_default_sinks(),
         timeout_resolver=noop_timeout_resolver(),
         attachment_resolver=attachment_resolver,
@@ -585,7 +580,6 @@ async def test_total_usage_is_used_when_there_is_no_breakdown(
     azure_client.chat.completions.create.return_value = stream()
     service = DialCompletionService(
         azure_client,
-        forwarded_headers=None,
         stream_handler=ChatCompletionStreamHandler.with_default_sinks(),
         timeout_resolver=noop_timeout_resolver(),
         attachment_resolver=attachment_resolver,

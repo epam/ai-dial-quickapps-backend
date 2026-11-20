@@ -4,7 +4,7 @@ from typing import Any
 from aidial_client.types.deployment import Features
 from injector import AssistedBuilder, ProviderOf, inject
 
-from quickapp.common import StagedBaseTool
+from quickapp.common import ForwardedHeaders, StagedBaseTool
 from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.deferred_tools_accumulator import is_toolset_deferred
 from quickapp.common.deployment_parameter_support import (
@@ -27,6 +27,7 @@ from quickapp.dial_deployment_tooling._deployment_deferred_tools_context import 
 )
 from quickapp.dial_deployment_tooling._deployment_tool_context import _DeploymentToolingContext
 from quickapp.dial_deployment_tooling.deployment_tool import DeploymentTool
+from quickapp.shared.forwarded_headers.forwarded_headers_policy import ForwardedHeadersPolicy
 from quickapp.shared.user_access import ToolAccessFilter
 
 logger = logging.getLogger(__name__)
@@ -45,7 +46,9 @@ class _DeploymentToolInitializer(CompletionInitializer):
         app_config: ApplicationConfig,
         access_filter: ToolAccessFilter,
         prompt_loader: DialPromptLoader,
+        forwarded_headers_policy: ForwardedHeadersPolicy,
     ):
+        self.__forwarded_headers_policy: ForwardedHeadersPolicy = forwarded_headers_policy
         self.__prompt_loader: DialPromptLoader = prompt_loader
         self.__deployment_context: _DeploymentToolingContext = context
         self.__deferred_context: _DeploymentDeferredToolsContext = deferred_context
@@ -79,12 +82,14 @@ class _DeploymentToolInitializer(CompletionInitializer):
         # A DialAppToolSet always resolves to exactly one deployment tool, so batching
         # never applies to these — they're extended unconditionally, without deferral.
         synthesized_tools = [
-            self.__build_deployment_tool(tool) for tool in self.__dial_tools_provider.get()
+            self.__build_deployment_tool(tool, tool.forwarded_headers)
+            for tool in self.__dial_tools_provider.get()
         ]
         self.__deployment_context.extend_tools(synthesized_tools)
 
     async def __build_toolset_tools(self, toolset: DeploymentToolSet) -> list[StagedBaseTool]:
         tools: list[StagedBaseTool] = []
+        forwarded_headers = self.__forwarded_headers_policy.for_toolset(toolset)
         for tool_config in toolset.tools:
             if isinstance(tool_config, DialDeploymentTool) and tool_config.enabled:
                 deployment_id = tool_config.deployment.deployment_id
@@ -95,7 +100,7 @@ class _DeploymentToolInitializer(CompletionInitializer):
                     continue
                 await self.__resolve_system_prompt(tool_config)
                 await self.__attach_deployment_features(tool_config)
-                tools.append(self.__build_deployment_tool(tool_config))
+                tools.append(self.__build_deployment_tool(tool_config, forwarded_headers))
             elif isinstance(tool_config, DialDeploymentSimpleTool) and tool_config.enabled:
                 # Checked before the metadata fetch, so inaccessible simple tools cost no round-trips.
                 if not await self.__access_filter.is_accessible(tool_config.deployment_id):
@@ -104,7 +109,9 @@ class _DeploymentToolInitializer(CompletionInitializer):
                         tool_config.deployment_id,
                     )
                     continue
-                built_simple_tool = await self.__build_simple_deployment_tool(tool_config)
+                built_simple_tool = await self.__build_simple_deployment_tool(
+                    tool_config, forwarded_headers
+                )
                 if built_simple_tool is not None:
                     tools.append(built_simple_tool)
         return tools
@@ -165,17 +172,20 @@ class _DeploymentToolInitializer(CompletionInitializer):
                 tool.deployment.deployment_id,
             )
 
-    def __build_deployment_tool(self, tool: DialDeploymentTool) -> StagedBaseTool:
+    def __build_deployment_tool(
+        self, tool: DialDeploymentTool, forwarded_headers: ForwardedHeaders
+    ) -> StagedBaseTool:
         return self.__builder.build(
             application_id=tool.deployment.deployment_id,
             application_name=tool.open_ai_tool.function.name,
             description=tool.open_ai_tool.function.description,
             content_propagation=tool.content_propagation,
             tool_config=tool,
+            forwarded_headers=forwarded_headers,
         )
 
     async def __build_simple_deployment_tool(
-        self, tool_info: DialDeploymentSimpleTool
+        self, tool_info: DialDeploymentSimpleTool, forwarded_headers: ForwardedHeaders
     ) -> StagedBaseTool | None:
         try:
             tool_config = await self.__deployment_cache.fetch_basic_tool_config(
@@ -195,7 +205,7 @@ class _DeploymentToolInitializer(CompletionInitializer):
             }
             if overrides:
                 tool_config = tool_config.model_copy(update=overrides)
-            return self.__build_deployment_tool(tool_config)
+            return self.__build_deployment_tool(tool_config, forwarded_headers)
 
         except ToolInitializationException as e:
             logger.error(e, exc_info=True)

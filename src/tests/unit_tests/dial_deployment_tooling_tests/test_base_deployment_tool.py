@@ -108,6 +108,7 @@ def _build_tool(
         messages_mixin=_make_messages_mixin(messages),
         perf_timer=MagicMock(),
         stage_wrapper_builder=MagicMock(),
+        forwarded_headers=None,
         stage_display_level=StageDisplayLevel.INFO,
     )
 
@@ -413,6 +414,7 @@ def _build_tool_with_config(
         messages_mixin=_make_messages_mixin(messages or []),
         perf_timer=MagicMock(),
         stage_wrapper_builder=MagicMock(),
+        forwarded_headers=None,
         stage_display_level=StageDisplayLevel.INFO,
     )
 
@@ -551,6 +553,7 @@ def _build_tool_with_propagation(
     dial_completion_service: Any = None,
     conversation_mode: ConversationMode | None = None,
     propagate_sub_stages: bool = True,
+    forwarded_headers: dict[str, str] | None = None,
 ) -> BaseDeploymentTool:
     """Build a BaseDeploymentTool with a real tool_config and configurable propagation/mode."""
     if dial_completion_service is None:
@@ -565,6 +568,7 @@ def _build_tool_with_propagation(
         messages_mixin=_make_messages_mixin(messages),
         perf_timer=MagicMock(),
         stage_wrapper_builder=MagicMock(),
+        forwarded_headers=forwarded_headers,
         stage_display_level=StageDisplayLevel.INFO,
         propagate_sub_stages=propagate_sub_stages,
     )
@@ -588,6 +592,19 @@ async def test_system_prompt_content_passed_to_service():
 
     _, kwargs = svc.complete_request_async.call_args
     assert kwargs["system_prompt"] == "Be brief"
+
+
+@pytest.mark.asyncio
+async def test_forwarded_headers_of_the_tool_are_passed_to_the_service():
+    svc = _make_mock_completion_service()
+    tool = _build_tool_with_propagation(
+        messages=[], dial_completion_service=svc, forwarded_headers={"X-Tenant-Id": "tenant-1"}
+    )
+
+    await tool._run_in_stage_async(stage_wrapper=None, query="hello")
+
+    _, kwargs = svc.complete_request_async.call_args
+    assert kwargs["forwarded_headers"] == {"X-Tenant-Id": "tenant-1"}
 
 
 @pytest.mark.asyncio
@@ -892,6 +909,7 @@ def _build_tool_with_content_propagation(
         messages_mixin=_make_messages_mixin([]),
         perf_timer=MagicMock(),
         stage_wrapper_builder=MagicMock(),
+        forwarded_headers=None,
         stage_display_level=StageDisplayLevel.INFO,
     )
 

@@ -12,12 +12,13 @@ from quickapp.config.tools.base import AttachmentConfig
 from quickapp.config.tools.tool_fallback import ToolFallbackConfig
 from quickapp.config.toolsets.allowed_tools import validate_listed_in_allowed_tools
 from quickapp.config.toolsets.base import BaseToolSet
+from quickapp.config.toolsets.forwarded_headers_config import ForwardedHeadersMixin
 from quickapp.config.toolsets.hidden_from_model import HIDDEN_FROM_MODEL_DESCRIPTION
 from quickapp.config.toolsets.mcp import MCPResourcesConfig
 from quickapp.config.toolsets.mcp_tools_config import TOOLS_CONFIG_DESCRIPTION, MCPToolConfig
 
 
-class DialMCPToolSet(BaseToolSet, LegacyAliasModel):
+class DialMCPToolSet(BaseToolSet, ForwardedHeadersMixin, LegacyAliasModel):
     type: Literal["dial-mcp"] = Field(default="dial-mcp", description="The type of the tool set.")
     # Override name of BaseToolSet. UI team doesn't send us this field.
     name: str = Field(default="untitled-mcp-toolset", description="default name of the toolset")

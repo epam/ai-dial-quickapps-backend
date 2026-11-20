@@ -12,6 +12,7 @@ from quickapp.config.toolsets.authorization import (
     ForwardAuthTokenAuthorization,
 )
 from quickapp.config.toolsets.base import BaseToolSet
+from quickapp.config.toolsets.forwarded_headers_config import ForwardedHeadersMixin
 
 Authorization = Annotated[
     BasicAuthorization
@@ -23,7 +24,7 @@ Authorization = Annotated[
 ]
 
 
-class RestApiToolSet(BaseToolSet):
+class RestApiToolSet(BaseToolSet, ForwardedHeadersMixin):
     type: Literal["rest-api"] = Field(default="rest-api", description="The type of the tool set.")
     authorization: Authorization | None = None
     response_as_attachment: ResponseAsAttachmentConfig | None = Field(
