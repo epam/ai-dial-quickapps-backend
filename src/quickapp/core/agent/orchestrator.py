@@ -115,6 +115,7 @@ class Orchestrator:
         )
         self.__propagated_attachment_urls: set[str] = set()
         self.__completion_hook_runners: list[CompletionHookRunner] = completion_hook_runners
+        self.__form_schema_sent = False
 
     @property
     def iteration_count(self) -> int:
@@ -310,6 +311,8 @@ class Orchestrator:
                         self.__suppressed_attachment_registry.suppress(attachment.url)
             if tool_call_result.annotations:
                 self._send_annotations(tool_call_result.annotations)
+            if tool_call_result.form_schema is not None:
+                self._send_form_schema(tool_call_result.form_schema)
             if tool_call_result.usage and self.__SHOW_USAGE_STATISTICS:
                 self.__usage_statistics_list.extend(tool_call_result.usage)
         self.__perf_timer.add_milestone(period, "tool_results_applied")
@@ -329,6 +332,20 @@ class Orchestrator:
                 }
             )
         )
+
+    def _send_form_schema(self, form_schema: dict[str, Any]) -> None:
+        """Send a tool's form schema to the choice. SDK allows set_form_schema only once.
+
+        The schema is also kept on the tool message's custom_content (via
+        ToolCallResult.to_tool_message), so the next request can identify the source
+        tool from history by tool_call_id — no state markers needed.
+        """
+        if self.__form_schema_sent:
+            logger.debug("Skipping form_schema: already sent for this choice")
+            return
+        self.__form_schema_sent = True
+        logger.debug("Propagating form_schema to choice")
+        self.__choice.set_form_schema(form_schema)
 
     def _surface_external_tool_calls(
         self, tool_calls: list[AccumulatedToolCall], period: str

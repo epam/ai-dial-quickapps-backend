@@ -172,6 +172,7 @@ class _DialAppResolver(CompletionInitializer):
                 "attachment": toolset.attachment,
                 "fallback_configuration": toolset.fallback_configuration,
                 "conversation_mode": toolset.conversation_mode,
+                "propagate_form_schema_to_choice": toolset.propagate_form_schema_to_choice,
             }
         )
         self.__context.append_deployment_tool(customised)

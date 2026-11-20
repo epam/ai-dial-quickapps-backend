@@ -877,6 +877,19 @@
           ],
           "default": null,
           "description": "Conversation session behavior for the DIAL deployment tool. Applies only on the chat-completion branch; ignored (with a warning) when the toolset resolves to MCP."
+        },
+        "propagate_form_schema_to_choice": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Propagate the form returned by the deployment onto the app's choice. The deployment's `custom_content.form_schema` is sent to the client (the last one received wins). Applies only on the chat-completion branch; ignored (with a warning) when the toolset resolves to MCP.",
+          "title": "Propagate Form Schema To Choice"
         }
       },
       "required": [
@@ -1107,6 +1120,19 @@
           "description": "Propagate citation annotations returned by the deployment (`choices[].delta.custom_fields.annotations`) onto the app's choice. Annotations are forwarded unchanged; the orchestrator is instructed to copy the matching `<cit data-id=\"...\"></cit>` anchors verbatim into its answer.",
           "title": "Propagate Annotations To Choice"
         },
+        "propagate_form_schema_to_choice": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Propagate the form returned by the deployment onto the app's choice. The deployment's `custom_content.form_schema` is sent to the client (the last one received wins).",
+          "title": "Propagate Form Schema To Choice"
+        },
         "type": {
           "const": "dial-deployment-simple",
           "default": "dial-deployment-simple",
@@ -1225,6 +1251,19 @@
           "default": null,
           "description": "Propagate citation annotations returned by the deployment (`choices[].delta.custom_fields.annotations`) onto the app's choice. Annotations are forwarded unchanged; the orchestrator is instructed to copy the matching `<cit data-id=\"...\"></cit>` anchors verbatim into its answer.",
           "title": "Propagate Annotations To Choice"
+        },
+        "propagate_form_schema_to_choice": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Propagate the form returned by the deployment onto the app's choice. The deployment's `custom_content.form_schema` is sent to the client (the last one received wins).",
+          "title": "Propagate Form Schema To Choice"
         },
         "supports_url_attachments": {
           "default": false,

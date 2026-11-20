@@ -97,3 +97,35 @@ class TestRoundTrip:
         restored = tool_call_result_from_tool_message(_result().to_tool_message())
 
         assert restored.is_error is False
+
+
+class TestFormSchemaRoundTrip:
+    def test_to_tool_message_carries_form_schema(self):
+        schema = {"type": "object", "properties": {"a": {"type": "string"}}}
+        msg = _result(form_schema=schema).to_tool_message()
+
+        assert msg.role == Role.TOOL
+        assert msg.tool_call_id == "call-1"
+        assert msg.custom_content is not None
+        assert msg.custom_content.form_schema == schema
+
+    def test_to_tool_message_without_form_schema(self):
+        msg = _result().to_tool_message()
+
+        assert msg.custom_content is not None
+        assert msg.custom_content.form_schema is None
+
+    def test_roundtrip_preserves_form_schema(self):
+        schema = {"type": "object"}
+        msg = _result(form_schema=schema).to_tool_message()
+
+        restored = tool_call_result_from_tool_message(msg)
+
+        assert restored.form_schema == schema
+
+    def test_from_tool_message_without_custom_content(self):
+        msg = Message(role=Role.TOOL, content="out", tool_call_id="call-1")
+
+        restored = tool_call_result_from_tool_message(msg)
+
+        assert restored.form_schema is None

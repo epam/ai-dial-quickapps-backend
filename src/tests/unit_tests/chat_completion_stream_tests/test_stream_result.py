@@ -98,3 +98,19 @@ def test_apply_usage_footprint_collects_usage_per_model():
 
     assert [m.model for m in accumulator.usage_per_model] == ["a", "b"]
     assert accumulator.usage is None
+
+
+def test_form_schema_replace_semantics():
+    acc = ChatStreamAccumulator()
+    assert acc.form_schema is None
+
+    acc.set_form_schema({"a": 1})
+    assert acc.form_schema == {"a": 1}
+
+    # last chunk wins
+    acc.set_form_schema({"b": 2})
+    assert acc.form_schema == {"b": 2}
+
+    # empty dict clears the form
+    acc.set_form_schema({})
+    assert acc.form_schema == {}

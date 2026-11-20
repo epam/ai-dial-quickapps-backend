@@ -72,6 +72,7 @@ class DialCompletionService:
         supports_url_attachments: bool = False,
         parent_stage: Stage | None = None,
         system_prompt: str | None = None,
+        form_value: Any | None = None,
     ) -> ToolCallResult:
         # Expect params to be pre-processed by BaseDeploymentTool._pre_process_params
         content = params.get(CONTENT_PARAM, "")
@@ -85,7 +86,12 @@ class DialCompletionService:
         timeout = self.__timeout_resolver.resolve()
         async with translate_timeout(deployment_name, timeout):
             messages = await self.__build_request_messages(
-                content, relative_attachment_urls, history, supports_url_attachments, system_prompt
+                content,
+                relative_attachment_urls,
+                history,
+                supports_url_attachments,
+                system_prompt,
+                form_value,
             )
             chat_params = self._build_chat_completion_params(
                 params, deployment_id, messages, self.__forwarded_headers, self.__include_usage
@@ -102,6 +108,7 @@ class DialCompletionService:
             # check if result.attachments: would return false for empty array
             attachments=result.attachments_or_none,
             annotations=result.annotations,
+            form_schema=result.form_schema,
             state=result.state,
             usage=self.__get_deployment_usage(result, deployment_id, deployment_name),
         )
@@ -202,6 +209,7 @@ class DialCompletionService:
         history: list[UserMessageParam | AssistantMessageParam] | None = None,
         supports_url_attachments: bool = False,
         system_prompt: str | None = None,
+        form_value: Any | None = None,
     ) -> list[SystemMessageParam | UserMessageParam | AssistantMessageParam]:
         messages: list[SystemMessageParam | UserMessageParam | AssistantMessageParam] = []
         if system_prompt:
@@ -210,7 +218,7 @@ class DialCompletionService:
             messages.extend(history)
         messages.append(
             await self.__user_message_from_content_and_attachments(
-                content, relative_attachment_urls, supports_url_attachments
+                content, relative_attachment_urls, supports_url_attachments, form_value
             )
         )
         return messages
@@ -220,12 +228,20 @@ class DialCompletionService:
         content,
         relative_attachment_urls: list[str] | None = None,
         supports_url_attachments: bool = False,
+        form_value: Any | None = None,
     ) -> UserMessageParam:
         message = UserMessageParam(role="user", content=content)
         attachments = await self.__attachment_resolver.resolve_attachment_urls(
             relative_attachment_urls,
             supports_url_attachments=supports_url_attachments,
         )
+        cc: CustomContentParam | None = None
         if attachments and len(attachments) > 0:
-            message["custom_content"] = CustomContentParam(attachments=attachments)
+            cc = CustomContentParam(attachments=attachments)
+        if form_value is not None:
+            if cc is None:
+                cc = CustomContentParam()
+            cc["form_value"] = form_value
+        if cc is not None:
+            message["custom_content"] = cc
         return message

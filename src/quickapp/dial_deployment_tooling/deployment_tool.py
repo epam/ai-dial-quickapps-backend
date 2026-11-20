@@ -1,6 +1,7 @@
 from injector import AssistedBuilder, inject
 from pydantic import BaseModel, Field
 
+from quickapp.common import REQUEST_MESSAGES
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
@@ -31,6 +32,7 @@ class DeploymentTool(BaseDeploymentTool):
         dial_completion_service: DialCompletionService,
         attachment_resolver: AttachmentResolver,
         messages_mixin: MessagesMixin,
+        request_messages: REQUEST_MESSAGES,
         stage_wrapper_builder: AssistedBuilder[DeploymentStageWrapper],
         perf_timer: PerformanceTimer,
         propagate_sub_stages: PROPAGATE_SUB_STAGES = True,
@@ -44,6 +46,7 @@ class DeploymentTool(BaseDeploymentTool):
             dial_completion_service=dial_completion_service,
             attachment_resolver=attachment_resolver,
             messages_mixin=messages_mixin,
+            request_messages=request_messages,
             tool_config=tool_config,
             stage_wrapper_builder=stage_wrapper_builder,
             description=description,

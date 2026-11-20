@@ -63,6 +63,16 @@ class DialAppToolSet(BaseToolSet):
             "to MCP."
         ),
     )
+    propagate_form_schema_to_choice: bool | None = Field(
+        default=None,
+        description=(
+            "Propagate the form returned by the deployment onto the app's choice. "
+            "The deployment's `custom_content.form_schema` is sent to the client "
+            "(the last one received wins). "
+            "Applies only on the chat-completion branch; ignored (with a warning) when "
+            "the toolset resolves to MCP."
+        ),
+    )
 
     @model_validator(mode="after")
     def _validate_against_allowed_tools(self) -> Self:
