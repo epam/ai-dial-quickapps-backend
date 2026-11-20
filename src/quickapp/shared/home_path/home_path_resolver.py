@@ -101,19 +101,17 @@ class HomePathResolver:
         if self.is_absolute(path):
             return path
         _validate_relative_path(path, parameter_name)
-        if self._project is not None:
-            # Canonicalizing decodes each segment, so check the decoded form first:
-            # `%2e%2e` or an encoded `/` would otherwise turn into a real `..` or `/`.
-            if has_unsafe_segments(path):
-                raise InvalidToolCallParameterException(
-                    parameter_name,
-                    f"{parameter_name} must not contain '.', '..' or empty segments, or an "
-                    "encoded '/'",
-                )
-            # Canonical, like the URLs Core lists, so prefix math against listings works.
-            return canonical_url(f"{await self.resolve_home_dir()}{path}")
-        home = await self.resolve_home_dir()
-        return f"{home}{path}"
+        if self._project is not None and has_unsafe_segments(path):
+            # The project storage and Core decode each segment: `%2e%2e` or an encoded `/`
+            # would turn into a real `..` or `/` there.
+            raise InvalidToolCallParameterException(
+                parameter_name,
+                f"{parameter_name} must not contain '.', '..' or empty segments, or an "
+                "encoded '/'",
+            )
+        # Spelled as given: Core accepts either spelling, and code that compares URLs
+        # compares them in canonical form.
+        return f"{await self.resolve_home_dir()}{path}"
 
     async def resolve_home_dir(self) -> str:
         if self._resolved_home is not None:
@@ -143,7 +141,7 @@ class HomePathResolver:
             return url
         if self._project is not None and self._project.contains(url):
             # The home is canonical; the model may spell the URL decoded (``My Project``).
-            # Shown decoded: the resolver canonicalizes it again when the model passes it back.
+            # Shown decoded: Core accepts that spelling when the model passes it back.
             url = canonical_url(url)
             return readable_url(url[len(home) :] if url.startswith(home) else url)
         if url.startswith(home):
