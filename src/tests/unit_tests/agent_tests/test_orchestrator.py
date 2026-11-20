@@ -1526,10 +1526,9 @@ async def test_invoke_skips_form_schema_when_tool_has_none():
 
 
 @pytest.mark.asyncio
-async def test_send_form_schema_records_source_tool_in_state():
-    """form_schema propagation records the producing tool name in state."""
-    from quickapp.core.agent.models import STATE_KEY_FORM_SCHEMA_SOURCE_TOOL
-
+async def test_send_form_schema_propagates_to_choice_and_tool_message():
+    """form_schema is sent via choice.set_form_schema and kept on the tool message's
+    custom_content, so the next request can recover the source tool from history."""
     presentation_settings = SimpleNamespace(show_usage_statistics=False)
     messages_list: list[Message] = [Message(role=Role.USER, content="hello")]
     messages_context = Mock()
@@ -1576,6 +1575,7 @@ async def test_send_form_schema_records_source_tool_in_state():
     tool_result.annotations = []
     tool_result.usage = None
     tool_result.form_schema = schema
+    tool_result.state = None
     tool_result.to_tool_message = Mock(return_value=tool_message)
 
     tool_executor = _mock_tool_executor()
@@ -1611,4 +1611,3 @@ async def test_send_form_schema_records_source_tool_in_state():
     await orchestrator.invoke()
 
     assert choice.set_form_schema_calls == [schema]
-    state_holder.add_state.assert_any_call(STATE_KEY_FORM_SCHEMA_SOURCE_TOOL, "form_tool")

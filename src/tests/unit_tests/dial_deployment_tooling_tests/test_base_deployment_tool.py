@@ -105,6 +105,7 @@ def _build_tool(
         dial_completion_service=dial_completion_service,
         attachment_resolver=attachment_resolver,
         messages_mixin=_make_messages_mixin(messages),
+        request_messages=messages,
         perf_timer=MagicMock(),
         stage_wrapper_builder=MagicMock(),
         stage_display_level=StageDisplayLevel.INFO,
@@ -408,6 +409,7 @@ def _build_tool_with_config(
         dial_completion_service=MagicMock(),
         attachment_resolver=MagicMock(),
         messages_mixin=_make_messages_mixin(messages or []),
+        request_messages=messages or [],
         perf_timer=MagicMock(),
         stage_wrapper_builder=MagicMock(),
         stage_display_level=StageDisplayLevel.INFO,
@@ -532,6 +534,7 @@ def _build_tool_with_propagation(
         dial_completion_service=dial_completion_service,
         attachment_resolver=MagicMock(),
         messages_mixin=_make_messages_mixin(messages),
+        request_messages=messages,
         perf_timer=MagicMock(),
         stage_wrapper_builder=MagicMock(),
         stage_display_level=StageDisplayLevel.INFO,
@@ -859,6 +862,7 @@ def _build_tool_with_content_propagation(
         dial_completion_service=MagicMock(),
         attachment_resolver=MagicMock(),
         messages_mixin=_make_messages_mixin([]),
+        request_messages=[],
         perf_timer=MagicMock(),
         stage_wrapper_builder=MagicMock(),
         stage_display_level=StageDisplayLevel.INFO,
@@ -1009,3 +1013,90 @@ async def test_extract_preserves_response_form_value():
     cc = history[1]["custom_content"]
     assert cc["form_value"] == {"field": "val"}
     assert cc["state"] == {"k": 1}
+
+
+def _history_with_form_schema(tool_name="test_tool", tool_call_id="tc-1", schema=None):
+    """assistant(tool_call) + tool(result with form_schema) pair."""
+    assistant = Message.model_validate(
+        {
+            "role": "assistant",
+            "content": "calling",
+            "tool_calls": [
+                {
+                    "id": tool_call_id,
+                    "type": "function",
+                    "function": {"name": tool_name, "arguments": "{}"},
+                }
+            ],
+        }
+    )
+    tool_msg = Message.model_validate(
+        {
+            "role": "tool",
+            "tool_call_id": tool_call_id,
+            "content": "result",
+            "custom_content": {"form_schema": schema or {"type": "object"}},
+        }
+    )
+    return [assistant, tool_msg]
+
+
+def _user_msg_with_form_value(form_value) -> Message:
+    return Message.model_validate(
+        {"role": "user", "content": "submitted", "custom_content": {"form_value": form_value}}
+    )
+
+
+class TestFormValueForThisTool:
+    def test_returns_form_value_when_this_tool_is_form_source_and_resumable(self):
+        messages = [*_history_with_form_schema(), _user_msg_with_form_value({"a": 1})]
+        tool = _build_tool_with_propagation(
+            messages, conversation_mode=ConversationMode(resumable=True)
+        )
+
+        assert tool._form_value_for_this_tool(tool.tool_config) == {"a": 1}
+
+    def test_none_when_tool_not_resumable(self):
+        messages = [*_history_with_form_schema(), _user_msg_with_form_value({"a": 1})]
+        tool = _build_tool_with_propagation(messages, conversation_mode=None)
+
+        assert tool._form_value_for_this_tool(tool.tool_config) is None
+
+    def test_none_when_form_source_is_another_tool(self):
+        messages = [
+            *_history_with_form_schema(tool_name="other_tool"),
+            _user_msg_with_form_value({"a": 1}),
+        ]
+        tool = _build_tool_with_propagation(
+            messages, conversation_mode=ConversationMode(resumable=True)
+        )
+
+        assert tool._form_value_for_this_tool(tool.tool_config) is None
+
+    def test_none_when_no_form_schema_in_history(self):
+        messages = [_user_msg_with_form_value({"a": 1})]
+        tool = _build_tool_with_propagation(
+            messages, conversation_mode=ConversationMode(resumable=True)
+        )
+
+        assert tool._form_value_for_this_tool(tool.tool_config) is None
+
+    def test_none_when_user_message_has_no_form_value(self):
+        messages = [*_history_with_form_schema(), Message(role=Role.USER, content="hi")]
+        tool = _build_tool_with_propagation(
+            messages, conversation_mode=ConversationMode(resumable=True)
+        )
+
+        assert tool._form_value_for_this_tool(tool.tool_config) is None
+
+    def test_uses_latest_form_schema_tool_call(self):
+        messages = [
+            *_history_with_form_schema(tool_name="other_tool", tool_call_id="tc-1"),
+            *_history_with_form_schema(tool_name="test_tool", tool_call_id="tc-2"),
+            _user_msg_with_form_value({"a": 1}),
+        ]
+        tool = _build_tool_with_propagation(
+            messages, conversation_mode=ConversationMode(resumable=True)
+        )
+
+        assert tool._form_value_for_this_tool(tool.tool_config) == {"a": 1}

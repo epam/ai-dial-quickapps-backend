@@ -603,3 +603,39 @@ async def test_total_usage_is_used_when_there_is_no_breakdown(
     assert [(u.deployment_id, u.model_name, u.prompt_tokens) for u in result.usage] == [
         ("dial-document", "dial-document", 11)
     ]
+
+
+@pytest.mark.asyncio
+async def test_form_value_lands_on_final_user_message(
+    completion_service, azure_client, mock_stage_wrapper
+):
+    """form_value passed to complete_request_async is set on the last user message's custom_content."""
+    await completion_service.complete_request_async(
+        params={"query": "submit"},
+        deployment_id="test-deployment",
+        deployment_name="Test Deployment",
+        stage_wrapper=mock_stage_wrapper,
+        form_value={"field": "val"},
+    )
+
+    msgs = azure_client.chat.completions.create.call_args[1]["messages"]
+    last = msgs[-1]
+    assert last["role"] == "user"
+    assert last["content"] == "submit"
+    assert last["custom_content"]["form_value"] == {"field": "val"}
+
+
+@pytest.mark.asyncio
+async def test_no_form_value_no_custom_content(
+    completion_service, azure_client, mock_stage_wrapper
+):
+    """Without form_value and without attachments, the final user message has no custom_content."""
+    await completion_service.complete_request_async(
+        params={"query": "hello"},
+        deployment_id="test-deployment",
+        deployment_name="Test Deployment",
+        stage_wrapper=mock_stage_wrapper,
+    )
+
+    msgs = azure_client.chat.completions.create.call_args[1]["messages"]
+    assert "custom_content" not in msgs[-1]

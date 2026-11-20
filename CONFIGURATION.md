@@ -1388,11 +1388,14 @@ A DIAL application used as a deployment tool can return a form schema under
 `choice.set_form_schema` — the client renders it as an interactive form. The SDK allows sending the
 schema only once per response, so when several tools return one, the first wins.
 
-The tool that produced the schema is recorded in the response state (`form_schema_source_tool`). On the
-next request, when the client submits the form (`custom_content.form_value`), QuickApps routes the value:
-if that tool has `conversation_mode.resumable: true`, the value is threaded into the tool's conversation
-history via `custom_content`; otherwise it is appended to the message content as a `<form_value>` block
-so the orchestrator model can use it (e.g. to call another tool with the submitted data).
+The schema is also kept on the tool message's `custom_content.form_schema` in the conversation
+history. On the next request, when the client submits the form (`custom_content.form_value` on a
+message), QuickApps recovers the form's source tool from the history before that message (tool
+message `form_schema` → `tool_call_id` → assistant tool call name) and routes the value by that
+tool: if it has `conversation_mode.resumable: true` and is the tool being called, the value is
+attached to the final user message of the deployment request as `custom_content.form_value`;
+otherwise it is appended to the message content as a `<form_value>` block so the orchestrator
+model can use it.
 
 ```json
 {

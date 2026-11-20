@@ -28,6 +28,7 @@ class ToolCallResult(BaseModel):
             custom_content=CustomContent(
                 attachments=self.attachments,
                 state=self.state,
+                form_schema=self.form_schema,
             ),
             tool_call_id=self.tool_call_id,
         )
@@ -46,13 +47,16 @@ def tool_call_result_from_tool_message(msg: Message) -> ToolCallResult:
     content = "" if raw is None else (raw if isinstance(raw, str) else str(raw))
     attachments_list: list[Attachment] | None = None
     state = None
+    form_schema = None
     if msg.custom_content is not None:
         attachments_list = msg.custom_content.attachments
         state = msg.custom_content.state
+        form_schema = msg.custom_content.form_schema
     attachments_out: list[Attachment] = [] if attachments_list is None else attachments_list
     return ToolCallResult(
         content=content,
         content_type=_infer_content_type_from_tool_body(content),
         attachments=attachments_out,
         state=state,
+        form_schema=form_schema if isinstance(form_schema, dict) else None,
     )
