@@ -3,6 +3,7 @@ from pydantic import ValidationError
 
 from quickapp.common.project_context import (
     ProjectContext,
+    current_project_url,
     extract_project_context,
     has_unsafe_segments,
 )
@@ -102,3 +103,27 @@ class TestExtractProjectContext:
     @pytest.mark.parametrize("headers", [None, {}, {"X-Other": "1"}, {"x-project-id": ""}])
     def test_no_header_means_no_project(self, headers) -> None:
         assert extract_project_context(headers) is None
+
+
+class TestCurrentProjectUrl:
+    _PROJECT = ProjectContext(url="projects/b/My Project")
+
+    @pytest.mark.parametrize(
+        "url",
+        ["projects/b/My Project/files/context/a.md", "projects/b/My%20Project/files/context/a.md"],
+    )
+    def test_current_project_url_is_canonical(self, url: str) -> None:
+        assert current_project_url(self._PROJECT, url) == (
+            "projects/b/My%20Project/files/context/a.md"
+        )
+
+    @pytest.mark.parametrize(
+        "url, project",
+        [
+            ("projects/b/Other/files/a.md", _PROJECT),
+            ("projects/b/My Project/files/../../Other/files/a.md", _PROJECT),
+            ("projects/b/My Project/files/context/a.md", None),
+        ],
+    )
+    def test_anything_else_is_none(self, url: str, project: ProjectContext | None) -> None:
+        assert current_project_url(project, url) is None

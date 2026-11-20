@@ -1,7 +1,8 @@
 """Lazy-load a single attachment by url for the current turn.
 
 External ``http(s)`` urls are promoted to a durable DIAL file via
-``_AttachmentMaterializer``; DIAL ``files/`` urls pass through; schemeless references
+``_AttachmentMaterializer``; DIAL ``files/`` urls (and, in a project chat, files of the
+request's project) pass through; schemeless references
 (the agent-home-relative convention spoken by the file tools, e.g.
 ``reports/img.png``) are resolved under the agent home via ``HomePathResolver``.
 Authorization of the underlying fetch is enforced upstream — DIAL Core gates
@@ -28,8 +29,14 @@ from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
+from quickapp.common.project_context import (
+    CURRENT_PROJECT_ONLY_MESSAGE,
+    PROJECT_CONTEXT,
+    current_project_url,
+)
 from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
-from quickapp.common.url_classification import UrlScheme
+from quickapp.common.url_classification import UrlScheme, is_dial_storage_path
+from quickapp.common.utils import canonical_url
 from quickapp.config.application import StageDisplayLevel
 from quickapp.config.tools.internal import InternalTool
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._attachment_acceptance import (
@@ -78,6 +85,7 @@ class _GetContentTool(StagedBaseTool):
         deferred_stage_close_registry: DeferredStageCloseRegistry,
         materializer: _AttachmentMaterializer,
         home_resolver: HomePathResolver,
+        project: PROJECT_CONTEXT,
         argument_transformers: list[ToolArgumentTransformer] | None = None,
         **kwargs: Any,
     ):
@@ -95,6 +103,7 @@ class _GetContentTool(StagedBaseTool):
         self.__stage_close_registry: DeferredStageCloseRegistry = deferred_stage_close_registry
         self.__materializer: _AttachmentMaterializer = materializer
         self.__home_resolver: HomePathResolver = home_resolver
+        self.__project = project
 
     def _error_result(self, message: str) -> ToolCallResult:
         response = GetContentToolResponse.fail(
@@ -145,23 +154,35 @@ class _GetContentTool(StagedBaseTool):
             except InvalidToolCallParameterException as exc:
                 logger.debug("get_content tool rejected: external promotion failed (%s)", exc)
                 raise
-        if scheme == UrlScheme.DIAL:
-            if not normalized_url.startswith("files/"):
-                logger.debug("get_content tool rejected: URL does not start with files/")
-                raise InvalidToolCallParameterException(
-                    "attachment_url", _UNSUPPORTED_REFERENCE_MESSAGE
-                )
-            return self._resolve_dial(normalized_url)
         if scheme == UrlScheme.DIAL_APPDIR_RELATIVE:
-            # Agent-home-relative reference (the convention spoken by the file
-            # tools); the attachment carries the resolved files/ url while
-            # the payload echoes the reference as passed.
+            # Agent-home-relative reference (the convention spoken by the file tools),
+            # then handled as the full URL it resolves to; the payload echoes the
+            # reference as passed.
             try:
-                home_url = await self.__home_resolver.resolve_appdata_url(normalized_url)
+                normalized_url = await self.__home_resolver.resolve_appdata_url(
+                    normalized_url, parameter_name="attachment_url"
+                )
             except InvalidToolCallParameterException as exc:
                 logger.info("get_content tool rejected: home-relative resolution failed (%s)", exc)
                 raise
-            return self._resolve_dial(home_url)
+            scheme = UrlScheme.DIAL
+        if scheme == UrlScheme.DIAL:
+            if not is_dial_storage_path(normalized_url):
+                logger.debug("get_content tool rejected: URL is not a relative storage path")
+                raise InvalidToolCallParameterException(
+                    "attachment_url", _UNSUPPORTED_REFERENCE_MESSAGE
+                )
+            if normalized_url.startswith("projects/"):
+                # Only the current project's files, as in the file tools and the attachment
+                # resolver: Core's grant covers all of the user's projects.
+                project_url = current_project_url(self.__project, normalized_url)
+                if project_url is None:
+                    logger.info("get_content tool rejected: not the current project's url")
+                    raise InvalidToolCallParameterException(
+                        "attachment_url", CURRENT_PROJECT_ONLY_MESSAGE
+                    )
+                return self._resolve_dial(project_url)
+            return self._resolve_dial(normalized_url)
         logger.debug("get_content tool rejected: unsupported url scheme")
         raise InvalidToolCallParameterException("attachment_url", _UNSUPPORTED_REFERENCE_MESSAGE)
 
@@ -190,16 +211,18 @@ class _GetContentTool(StagedBaseTool):
         return _ResolvedAttachment(url=attachment_file_url, mime=mime, title=title)
 
     def _resolve_dial(self, normalized_url: str) -> _ResolvedAttachment:
-        """Resolve display metadata for a DIAL ``files/`` url. Honors an explicit
+        """Resolve display metadata for a DIAL storage url. Honors an explicit
         type/title when the url matches a user attachment; otherwise infers from the
         filename. (A matching admin context carries no explicit type/title, so it
         yields the same inference as the fallback.)
         """
+        canonical = canonical_url(normalized_url)
         matched = next(
             (
                 att
                 for att in user_attachments_from_messages(self.__messages_mixin.messages)
-                if att.url and normalize_attachment_url_argument(str(att.url)) == normalized_url
+                if att.url
+                and canonical_url(normalize_attachment_url_argument(str(att.url))) == canonical
             ),
             None,
         )

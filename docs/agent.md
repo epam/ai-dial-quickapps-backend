@@ -641,6 +641,7 @@ The module is always registered; it is a no-op unless the app sets
 the `internal_file_*` tools speak). The relative form is resolved under the agent home to a `files/` URL
 via the shared `HomePathResolver` (see the Dependency Injection section) and then follows the DIAL
 passthrough path, so the model can hand a file-tool path straight to `internal_attachments_get_content`.
+DIAL deployment tools resolve relative `attachment_urls` the same way (`AttachmentResolver`).
 
 The orchestrator deployment metadata feed (`_OrchestratorDeploymentInitializer`, `OrchestratorCapabilities`,
 `OrchestratorDeploymentCacheService`) lives in `src/quickapp/core/agent/` as a shared facility for any future

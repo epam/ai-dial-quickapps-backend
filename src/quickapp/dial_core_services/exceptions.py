@@ -55,10 +55,10 @@ class FileTooLargeError(ValueError):
 
 
 class ProjectFileOperationException(DialException):
-    """A project file copy/move the service refuses; the message is meant for the agent."""
+    """A project file operation the storage refuses; the message is meant for the agent."""
 
-    def __init__(self, message: str):
-        super().__init__(message=message, status_code=400)
+    def __init__(self, message: str, status_code: int = 400):
+        super().__init__(message=message, status_code=status_code)
 
 
 class SameSourceAndDestinationException(ProjectFileOperationException):
