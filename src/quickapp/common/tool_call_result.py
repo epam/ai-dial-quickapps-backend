@@ -5,6 +5,8 @@ from pydantic import BaseModel, Field
 
 from quickapp.common.deployment_usage import DeploymentUsage
 
+IS_ERROR_STATE_KEY = "is_error"
+
 
 class ToolCallResult(BaseModel):
     tool_call_id: str | None = None
@@ -16,17 +18,23 @@ class ToolCallResult(BaseModel):
 
     propagate_to_choice: list[Attachment] = Field(default_factory=list)
     annotations: list[dict[str, Any]] = Field(default_factory=list)
+    is_error: bool = False
 
     def to_tool_message(self):
         if not self.tool_call_id:
             raise RuntimeError("Tool call result doesn't contain tool_call id")
+
+        state = self.state
+        if self.is_error:
+            # Persisted in tool_execution_history so failed calls can be told apart reliably.
+            state = {**(state or {}), IS_ERROR_STATE_KEY: True}
 
         return Message(
             role=Role.TOOL,
             content=self.content,
             custom_content=CustomContent(
                 attachments=self.attachments,
-                state=self.state,
+                state=state,
             ),
             tool_call_id=self.tool_call_id,
         )
@@ -48,10 +56,12 @@ def tool_call_result_from_tool_message(msg: Message) -> ToolCallResult:
     if msg.custom_content is not None:
         attachments_list = msg.custom_content.attachments
         state = msg.custom_content.state
+    is_error = bool(state and state.get(IS_ERROR_STATE_KEY) is True)
     attachments_out: list[Attachment] = [] if attachments_list is None else attachments_list
     return ToolCallResult(
         content=content,
         content_type=_infer_content_type_from_tool_body(content),
         attachments=attachments_out,
         state=state,
+        is_error=is_error,
     )
