@@ -4,6 +4,7 @@ from aidial_client import AsyncDial, DialException, ResourceNotFoundError
 from aidial_client.types.metadata import FileItem, FileMetadata
 from injector import inject
 
+from quickapp.dial_core_services.exceptions import FileAccessDeniedError
 from quickapp.dial_core_services.storage.file_storage import (
     FileStorage,
     FolderEntry,
@@ -17,7 +18,7 @@ from quickapp.shared.config_resolvers.file_loading_size_limit_resolver import (
 
 @inject
 class V1FileStorage(FileStorage):
-    """``files/...`` through the v1 files API."""
+    """``files/...`` through the v1 files API; a grant of any other URL is refused."""
 
     def __init__(
         self, dial_client: AsyncDial, size_limit_resolver: FileLoadingSizeLimitResolver
@@ -100,3 +101,8 @@ class V1FileStorage(FileStorage):
             destination=destination_url,
             overwrite=overwrite,
         )
+
+    async def grant_read(self, urls: list[str], receiver: str) -> None:
+        if not all(url.startswith("files/") for url in urls):
+            raise FileAccessDeniedError("not a files/... URL")
+        await self.__dial_client.resource_permissions.grant(resources=urls, receiver=receiver)

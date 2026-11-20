@@ -30,6 +30,7 @@ from quickapp.dial_core_services._interactive_login_service import InteractiveLo
 from quickapp.dial_core_services._login_result import LoginResult
 from quickapp.dial_core_services.attachment_service import AttachmentService
 from quickapp.dial_core_services.dial_file_service import DialFileService
+from quickapp.dial_core_services.exceptions import FileAccessDeniedError
 from quickapp.mcp_tooling._mcp_stage_wrapper import _MCPStageWrapper
 from quickapp.mcp_tooling._mcp_tool_error_exception import MCPToolErrorException
 from quickapp.mcp_tooling._mcp_toolset_client import _MCPToolsetClient
@@ -92,8 +93,8 @@ class _MCPTool(StagedBaseTool):
         kwargs = await super()._pre_process_params(**{**kwargs, **self.__fixed_arguments})
 
         # Grant permissions for dial_url-flagged parameters (MCP-specific)
-        files_to_share = self._collect_dial_url_files(kwargs)
-        if files_to_share:
+        files_by_parameter = self._collect_dial_url_files(kwargs)
+        if files_by_parameter:
             if not self.__dial_toolset_id:
                 logger.error(
                     "Files with dial_url flag detected but dial_toolset_id is not set.",
@@ -102,24 +103,33 @@ class _MCPTool(StagedBaseTool):
                     parameter_name="file_url",
                     message="Files cannot be shared because dial_toolset_id is not configured.",
                 )
-            await self.__file_service.grant_permissions_to_files(
-                files_to_share, self.__dial_toolset_id
-            )
+            # One grant per parameter, so a refusal names the parameter it came from.
+            for key, files_to_share in files_by_parameter.items():
+                try:
+                    await self.__file_service.grant_permissions_to_files(
+                        files_to_share, self.__dial_toolset_id
+                    )
+                except FileAccessDeniedError as e:
+                    raise InvalidToolCallParameterException(
+                        parameter_name=key,
+                        message=f"Parameter `{key}` cannot be shared: {e.message}.",
+                    ) from e
 
         return kwargs
 
     def _stage_parameters(self, params: dict[str, Any]) -> dict[str, Any]:
         return {k: v for k, v in params.items() if k not in self.__fixed_arguments}
 
-    def _collect_dial_url_files(self, kwargs: dict[str, Any]) -> list[str]:
-        """Collect the values of ``dial_url``-flagged parameters as DIAL file paths.
+    def _collect_dial_url_files(self, kwargs: dict[str, Any]) -> dict[str, list[str]]:
+        """Collect the values of ``dial_url``-flagged parameters as DIAL file paths, by
+        parameter name.
 
         External or unsupported URLs are rejected with a parameter-aware
         ``InvalidToolCallParameterException`` — ``dial_url`` parameters require a
         DIAL file because permission-grant has no meaning for external resources.
         """
         properties = self.__tool.inputSchema.get("properties", {})
-        files_to_share: list[str] = []
+        files_by_parameter: dict[str, list[str]] = {}
         for key, value in kwargs.items():
             if not properties.get(key, {}).get("dial_url"):
                 continue
@@ -150,8 +160,9 @@ class _MCPTool(StagedBaseTool):
                             f"unsupported URL: {sanitize_url(candidate)}."
                         ),
                     )
-            files_to_share.extend(candidates)
-        return files_to_share
+            if candidates:
+                files_by_parameter[key] = candidates
+        return files_by_parameter
 
     def _resource_title(self, resource: Any) -> str:
         """Use the filename the MCP server put in ``resource.uri``, when it has one."""

@@ -75,3 +75,10 @@ class RoutedFileStorage(FileStorage):
             destination_url,
             overwrite=overwrite,
         )
+
+    async def grant_read(self, urls: list[str], receiver: str) -> None:
+        by_storage: dict[FileStorage, list[str]] = {}
+        for url in urls:
+            by_storage.setdefault(self._storage_for(url), []).append(url)
+        for storage, storage_urls in by_storage.items():
+            await storage.grant_read(storage_urls, receiver)

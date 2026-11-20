@@ -137,8 +137,10 @@ class HomePathResolver:
         if self._project is not None and self._project.contains(url):
             # The home is canonical; the model may spell the URL decoded (``My Project``).
             # Shown decoded: the resolver canonicalizes it again when the model passes it back.
+            # The home itself keeps its URL, so the project folder's listing names it.
             url = canonical_url(url)
-            return readable_url(url[len(home) :] if url.startswith(home) else url)
+            in_home = url.startswith(home) and url != home
+            return readable_url(url[len(home) :] if in_home else url)
         if url.startswith(home):
             return url[len(home) :]
         return url

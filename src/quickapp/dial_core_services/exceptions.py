@@ -61,6 +61,15 @@ class ProjectFileOperationException(DialException):
         super().__init__(message=message, status_code=400)
 
 
+class FileAccessDeniedError(DialException):
+    """A ``FileStorage`` refused a URL itself, before any Core call. A 403, so generic handlers
+    treat it as access denied; ``reason`` is meant for the agent and names what it may use
+    instead."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(message=reason, status_code=403)
+
+
 class SameSourceAndDestinationException(ProjectFileOperationException):
     def __init__(self, url: str):
         super().__init__(f"Source and destination are the same: {url}")

@@ -14,8 +14,12 @@ from quickapp.dial_core_services.dial_file_service import DialFileService
 from quickapp.dial_core_services.storage._project_file_storage import ProjectFileStorage
 from quickapp.dial_core_services.storage._routed_file_storage import RoutedFileStorage
 from quickapp.dial_core_services.storage._v1_file_storage import V1FileStorage
+from quickapp.dial_files_tooling._find_files_tool import _FindFilesTool
+from quickapp.dial_files_tooling._list_files_tool import _ListFilesTool
 from quickapp.dial_files_tooling._read_file_lines_tool import _ReadFileLinesTool
 from quickapp.dial_files_tooling._tool_configs import (
+    FIND_FILES_TOOL_CONFIG,
+    LIST_FILES_TOOL_CONFIG,
     READ_FILE_LINES_TOOL_CONFIG,
     WRITE_FILE_TOOL_CONFIG,
 )
@@ -36,7 +40,7 @@ def _service() -> DialFileService:
     size_limit.resolve.return_value = 1024 * 1024
     storage = RoutedFileStorage(
         V1FileStorage(dial, size_limit),
-        ProjectFileStorage(ProjectFilesClient(dial), size_limit),
+        ProjectFileStorage(dial, ProjectFilesClient(dial), size_limit, PROJECT),
         PROJECT,
     )
     return DialFileService(dial_client=dial, storage=storage, state_holder=StateHolder())
@@ -78,3 +82,83 @@ async def test_write_then_read_a_relative_path_lands_in_artifacts(httpx_mock):
     assert b"line 1\nline 2\n" in put.content
     # Nothing went to the v1 files API or the appdata lookup.
     assert all("/v1/" not in str(request.url) for request in httpx_mock.get_requests())
+
+
+@pytest.mark.asyncio
+async def test_a_conversation_is_not_read_and_core_is_not_called(httpx_mock):
+    read = make_tool(
+        _ReadFileLinesTool, READ_FILE_LINES_TOOL_CONFIG, service=_service(), project=PROJECT
+    )
+
+    result = await read.arun(
+        "call-1",
+        stage_level=StageDisplayLevel.NONE,
+        path="projects/b/My Project/files/conversations/chat.json",
+        start_line=0,
+        end_line=10,
+    )
+
+    assert "access denied" in result.content
+    # The real reason, not "the app has no permission": another path may work.
+    assert "only the current project's context/ and artifacts/ folders are readable" in (
+        result.content
+    )
+    assert httpx_mock.get_requests() == []
+
+
+@pytest.mark.asyncio
+async def test_listing_the_project_folder_shows_only_context_and_artifacts(httpx_mock):
+    list_files = make_tool(
+        _ListFilesTool, LIST_FILES_TOOL_CONFIG, service=_service(), project=PROJECT
+    )
+
+    result = await list_files.arun(
+        "call-1", stage_level=StageDisplayLevel.NONE, path="projects/b/My Project/files/"
+    )
+
+    # Both by their full URL: the home (artifacts/) too, though other paths are home-relative.
+    assert "projects/b/My Project/files/context/" in result.content
+    assert "projects/b/My Project/files/artifacts/" in result.content
+    assert "conversations" not in result.content
+    assert "PROJECT.md" not in result.content
+    # The layout is fixed, so the listing needs no request.
+    assert httpx_mock.get_requests() == []
+
+
+@pytest.mark.asyncio
+async def test_a_recursive_search_from_the_project_folder_never_lists_conversations(httpx_mock):
+    root = "projects/b/My%20Project/files/"
+    listings = {
+        "context": [
+            {"url": f"{root}context/tickets.csv", "nodeType": "ITEM"},
+            {"url": f"{root}context/sub", "nodeType": "FOLDER"},
+        ],
+        "context/sub": [{"url": f"{root}context/sub/a.md", "nodeType": "ITEM"}],
+        "artifacts": [{"url": f"{root}artifacts/notes.md", "nodeType": "ITEM"}],
+    }
+    for folder, items in listings.items():
+        httpx_mock.add_response(
+            method="GET", url=f"{BASE_URL}/v2/metadata/{root}{folder}", json={"items": items}
+        )
+    find_files = make_tool(
+        _FindFilesTool, FIND_FILES_TOOL_CONFIG, service=_service(), project=PROJECT
+    )
+
+    result = await find_files.arun(
+        "call-1",
+        stage_level=StageDisplayLevel.NONE,
+        pattern="**",
+        path="projects/b/My Project/files/",
+        max_depth=3,
+    )
+
+    assert "projects/b/My Project/files/context/tickets.csv" in result.content
+    assert "projects/b/My Project/files/context/sub/a.md" in result.content
+    assert "notes.md" in result.content
+    assert "conversations" not in result.content
+    assert "PROJECT.md" not in result.content
+    # One request per level of context/ and artifacts/: none for the project folder itself
+    # (its two entries are fixed), none for conversations/.
+    assert sorted(str(request.url) for request in httpx_mock.get_requests()) == sorted(
+        f"{BASE_URL}/v2/metadata/{root}{folder}" for folder in listings
+    )

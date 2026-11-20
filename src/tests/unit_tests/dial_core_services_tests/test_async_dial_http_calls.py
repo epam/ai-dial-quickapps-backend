@@ -444,7 +444,7 @@ class TestAttachmentServiceHttpCalls:
         size_limit_resolver = _file_loading_size_limit_resolver()
         storage = RoutedFileStorage(
             V1FileStorage(client, size_limit_resolver),
-            ProjectFileStorage(ProjectFilesClient(client), size_limit_resolver),
+            ProjectFileStorage(client, ProjectFilesClient(client), size_limit_resolver, project),
             project,
         )
         file_service = DialFileService(
