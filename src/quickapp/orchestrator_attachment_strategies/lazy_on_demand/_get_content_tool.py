@@ -35,7 +35,8 @@ from quickapp.common.project_context import (
     current_project_url,
 )
 from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
-from quickapp.common.url_classification import UrlScheme
+from quickapp.common.url_classification import UrlScheme, is_dial_storage_path
+from quickapp.common.utils import canonical_url
 from quickapp.config.application import StageDisplayLevel
 from quickapp.config.tools.internal import InternalTool
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._attachment_acceptance import (
@@ -153,8 +154,20 @@ class _GetContentTool(StagedBaseTool):
             except InvalidToolCallParameterException as exc:
                 logger.debug("get_content tool rejected: external promotion failed (%s)", exc)
                 raise
+        if scheme == UrlScheme.DIAL_APPDIR_RELATIVE:
+            # Agent-home-relative reference (the convention spoken by the file tools),
+            # then handled as the full URL it resolves to; the payload echoes the
+            # reference as passed.
+            try:
+                normalized_url = await self.__home_resolver.resolve_appdata_url(
+                    normalized_url, parameter_name="attachment_url"
+                )
+            except InvalidToolCallParameterException as exc:
+                logger.info("get_content tool rejected: home-relative resolution failed (%s)", exc)
+                raise
+            scheme = UrlScheme.DIAL
         if scheme == UrlScheme.DIAL:
-            if not self.__materializer.is_storage_path(normalized_url):
+            if not is_dial_storage_path(normalized_url):
                 logger.debug("get_content tool rejected: URL is not a relative storage path")
                 raise InvalidToolCallParameterException(
                     "attachment_url", _UNSUPPORTED_REFERENCE_MESSAGE
@@ -170,16 +183,6 @@ class _GetContentTool(StagedBaseTool):
                     )
                 return self._resolve_dial(project_url)
             return self._resolve_dial(normalized_url)
-        if scheme == UrlScheme.DIAL_APPDIR_RELATIVE:
-            # Agent-home-relative reference (the convention spoken by the file
-            # tools); the attachment carries the resolved files/ url while
-            # the payload echoes the reference as passed.
-            try:
-                home_url = await self.__home_resolver.resolve_appdata_url(normalized_url)
-            except InvalidToolCallParameterException as exc:
-                logger.info("get_content tool rejected: home-relative resolution failed (%s)", exc)
-                raise
-            return self._resolve_dial(home_url)
         logger.debug("get_content tool rejected: unsupported url scheme")
         raise InvalidToolCallParameterException("attachment_url", _UNSUPPORTED_REFERENCE_MESSAGE)
 
@@ -213,11 +216,13 @@ class _GetContentTool(StagedBaseTool):
         filename. (A matching admin context carries no explicit type/title, so it
         yields the same inference as the fallback.)
         """
+        canonical = canonical_url(normalized_url)
         matched = next(
             (
                 att
                 for att in user_attachments_from_messages(self.__messages_mixin.messages)
-                if att.url and normalize_attachment_url_argument(str(att.url)) == normalized_url
+                if att.url
+                and canonical_url(normalize_attachment_url_argument(str(att.url))) == canonical
             ),
             None,
         )

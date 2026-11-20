@@ -309,8 +309,13 @@ Paths in a project `projects/{b}/My%20Project`:
 | `projects/{b}/Other/files/x.md` (another project) | rejected: "only files of the current project" |
 | `files/{bucket}/appdata/…/x.md` (app context) | unchanged, v1 |
 
-The model sees project paths decoded (`My Project`): the prompt's folders, `list_files` output and stage titles. Both
-spellings resolve to the same canonical URL; a name that wouldn't decode back (a literal `%41`) stays encoded.
+The model sees project paths decoded (`My Project`): the prompt's folders, `list_files` output and stage titles. A
+name that wouldn't decode back (a literal `%41`) stays encoded.
+
+Spelling: Core decodes any spelling of a URL, so paths resolve as typed; only `x-project-id` (decoded, from Chat) and
+the model's own names differ from Core's encoded URLs. Code that compares URLs compares them in canonical form: the
+current-project rule, the `find` / `search` root, the per-request file cache, `get_content`'s attachment match, and the
+copy/move same-file check. URLs sent to Core in a request body (project attachments) are canonical.
 
 ---
 

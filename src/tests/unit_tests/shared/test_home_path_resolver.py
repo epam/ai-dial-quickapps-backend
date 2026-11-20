@@ -126,9 +126,9 @@ class TestProjectHome:
         service.my_appdata_home.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_relative_path_resolves_under_artifacts(self):
+    async def test_relative_path_resolves_under_artifacts_as_typed(self):
         url = await _resolver(project=_PROJECT).resolve_appdata_url("my notes/a.md")
-        assert url == f"{_ARTIFACTS}my%20notes/a.md"
+        assert url == f"{_ARTIFACTS}my notes/a.md"
 
     @pytest.mark.parametrize(
         "path",

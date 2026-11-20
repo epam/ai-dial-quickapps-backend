@@ -53,7 +53,9 @@ def _user_msg_with(attachment: Attachment) -> Message:
 
 def _make_home_resolver(home: str = "files/bucket/appdata/app/home/") -> MagicMock:
     resolver = MagicMock(spec=HomePathResolver)
-    resolver.resolve_appdata_url = AsyncMock(side_effect=lambda path: f"{home}{path}")
+    resolver.resolve_appdata_url = AsyncMock(
+        side_effect=lambda path, parameter_name="path": f"{home}{path}"
+    )
     return resolver
 
 
@@ -234,7 +236,9 @@ class TestGetContentTool:
         )
 
         promoter.promote.assert_not_awaited()
-        home_resolver.resolve_appdata_url.assert_awaited_once_with("reports/img.png")
+        home_resolver.resolve_appdata_url.assert_awaited_once_with(
+            "reports/img.png", parameter_name="attachment_url"
+        )
         assert result.attachments is not None
         assert result.attachments[0].url == "files/bucket/appdata/app/home/reports/img.png"
         assert result.attachments[0].type == "image/png"
@@ -312,3 +316,31 @@ class TestProjectUrls:
             )
 
         assert "current project" in excinfo.value.error_message
+
+    @pytest.mark.asyncio
+    async def test_home_relative_path_resolves_to_the_canonical_project_url(self):
+        home_resolver = _make_home_resolver("projects/b/My%20P/files/artifacts/")
+        tool = _make_tool(["application/pdf"], home_resolver=home_resolver, project=_PROJECT)
+
+        result = await tool._run_in_stage_async(stage_wrapper=None, attachment_url="my notes/a.pdf")
+
+        assert result.attachments is not None
+        assert result.attachments[0].url == "projects/b/My%20P/files/artifacts/my%20notes/a.pdf"
+
+    @pytest.mark.asyncio
+    async def test_user_attachment_matched_in_either_spelling(self):
+        attachment = Attachment(
+            title="Q1 report",
+            url="projects/b/My%20P/files/context/Q1%20(draft).pdf",
+            type="application/pdf",
+        )
+        tool = _make_tool(
+            ["application/pdf"], messages=[_user_msg_with(attachment)], project=_PROJECT
+        )
+
+        result = await tool._run_in_stage_async(
+            stage_wrapper=None, attachment_url="projects/b/My P/files/context/Q1 (draft).pdf"
+        )
+
+        assert result.attachments is not None
+        assert result.attachments[0].title == "Q1 report"
