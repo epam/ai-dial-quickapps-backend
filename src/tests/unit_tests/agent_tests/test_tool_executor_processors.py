@@ -6,6 +6,7 @@ from quickapp.common.abstract.tool_call_result_processor import (
     ProcessingContext,
     ToolCallResultProcessor,
 )
+from quickapp.common.tool_allowlist import ToolAllowlist
 from quickapp.common.tool_call_result import ToolCallResult
 from quickapp.common.tool_names import INTERNAL_TOOL_SEARCH_TOOL_NAME
 from quickapp.core.agent.lazy_loaded_tools_holder import LazyLoadedToolsHolder
@@ -79,6 +80,7 @@ class TestToolExecutorProcessors:
             processors=[_AppendProcessor("!")],
             deferred_tool_names=[],
             lazy_loaded_tools_holder=make_tools_holder(),
+            allowlist=ToolAllowlist(),
         )
 
         results = await executor.execute([_make_tool_call("my_tool")])
@@ -100,6 +102,7 @@ class TestToolExecutorProcessors:
             processors=[_AppendProcessor("!"), _DoubleProcessor()],
             deferred_tool_names=[],
             lazy_loaded_tools_holder=make_tools_holder(),
+            allowlist=ToolAllowlist(),
         )
 
         results = await executor.execute([_make_tool_call("my_tool")])
@@ -118,6 +121,7 @@ class TestToolExecutorProcessors:
             processors=[],
             deferred_tool_names=[],
             lazy_loaded_tools_holder=make_tools_holder(),
+            allowlist=ToolAllowlist(),
         )
 
         results = await executor.execute([_make_tool_call("my_tool")])
@@ -145,6 +149,7 @@ class TestToolExecutorProcessors:
             processors=[_CaptureProcessor()],
             deferred_tool_names=[],
             lazy_loaded_tools_holder=make_tools_holder(),
+            allowlist=ToolAllowlist(),
         )
 
         await executor.execute([_make_tool_call("specific_tool", tc_id="call_abc")])
@@ -162,6 +167,7 @@ class TestToolExecutorProcessors:
             processors=[],
             deferred_tool_names=[],
             lazy_loaded_tools_holder=make_tools_holder(),
+            allowlist=ToolAllowlist(),
         )
 
         results = await executor.execute(
@@ -185,6 +191,7 @@ class TestToolExecutorProcessors:
             processors=[],
             deferred_tool_names=[],
             lazy_loaded_tools_holder=make_tools_holder(),
+            allowlist=ToolAllowlist(),
         )
 
         results = await executor.execute(
@@ -213,6 +220,7 @@ class TestToolExecutorModelHiddenTools:
             processors=[],
             deferred_tool_names=[],
             lazy_loaded_tools_holder=make_tools_holder(),
+            allowlist=ToolAllowlist(),
         )
 
     @pytest.mark.asyncio
@@ -266,6 +274,7 @@ class TestToolExecutorDeferredToolGuard:
             processors=[],
             deferred_tool_names=["deferred_tool"],
             lazy_loaded_tools_holder=holder,
+            allowlist=ToolAllowlist(),
         )
 
     @pytest.mark.asyncio
@@ -289,3 +298,28 @@ class TestToolExecutorDeferredToolGuard:
 
         tool.arun.assert_called_once()
         assert results[0].content == "ran"
+
+
+class TestToolExecutorAllowlist:
+    @pytest.mark.asyncio
+    async def test_tool_outside_the_allowlist_is_unknown_and_does_not_run(self):
+        allowed = _make_tool("search", ToolCallResult(content="found", content_type="text/plain"))
+        blocked = _make_tool("delete", ToolCallResult(content="x", content_type="text/plain"))
+        executor = ToolExecutor(
+            tools=[allowed, blocked],
+            model_hidden_tools=[],
+            enrichers=[],
+            perf_timer=MagicMock(),
+            processors=[],
+            deferred_tool_names=[],
+            lazy_loaded_tools_holder=make_tools_holder(),
+            allowlist=ToolAllowlist(names=frozenset({"search"})),
+        )
+
+        results = await executor.execute(
+            [_make_tool_call("search", tc_id="a"), _make_tool_call("delete", tc_id="b")]
+        )
+
+        blocked.arun.assert_not_called()
+        assert results[0].content == "found"
+        assert "does not exist" in results[1].content

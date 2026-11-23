@@ -7,6 +7,7 @@ from pydantic.fields import FieldInfo
 
 from quickapp.common.base_config import (
     BaseApplicationTypeConfig,
+    PreviewField,
     has_preview_marker,
     is_preview_model,
 )
@@ -18,6 +19,7 @@ from quickapp.config.dial_files import DialFilesConfig
 from quickapp.config.hooks import HookConfig
 from quickapp.config.orchestrator_attachment_strategy import LazyOnDemandAttachmentStrategy
 from quickapp.config.prompt import AgentSystemPromptConfig, CustomSystemPromptConfig
+from quickapp.config.run_task import RunTaskConfig
 from quickapp.config.skill import SkillConfig
 from quickapp.config.starters import ConversationStartersConfig
 from quickapp.config.timestamp import TimestampConfig, ToolCallTimestampConfig
@@ -240,6 +242,14 @@ class Features(BaseModel):
             "Omit or set to null to disable the whole section. "
             "Set to {} to enable with defaults, or set individual sub-fields to false to "
             "disable specific tools while keeping the section enabled."
+        ),
+    )
+    run_task: RunTaskConfig | None = PreviewField(  # type: ignore[assignment]
+        default=None,
+        description=(
+            "Built-in internal_run_task tool: run a self-contained task in an isolated "
+            "child run that returns only its final answer. Omit or set to null to disable; "
+            "set `enabled` to true to turn it on."
         ),
     )
 

@@ -13,6 +13,7 @@ from quickapp.common import (
 )
 from quickapp.common.messages_mixin import MessagesMixin, RequestMessagesMixin
 from quickapp.common.project_context import PROJECT_CONTEXT
+from quickapp.common.tool_allowlist import ToolAllowlist
 from quickapp.config.application import ApplicationConfig
 
 # The _RequestContext class serves as a temporary storage for data extracted from a request.
@@ -61,6 +62,7 @@ class _RequestContext(MessagesMixin, RequestMessagesMixin):
     _accept_language: ACCEPT_LANGUAGE = None
     _timezone_header_value: TIMEZONE_HEADER_VALUE = None
     _project_context: PROJECT_CONTEXT = None
+    _tool_allowlist: ToolAllowlist | None = None
 
     @property
     def bearer(self) -> DIAL_BEARER:
@@ -162,6 +164,16 @@ class _RequestContext(MessagesMixin, RequestMessagesMixin):
         if self._extra_tools is not None:
             raise RuntimeError("Extra tools are already set")
         self._extra_tools = value
+
+    @property
+    def tool_allowlist(self) -> ToolAllowlist:
+        return self._tool_allowlist if self._tool_allowlist is not None else ToolAllowlist()
+
+    @tool_allowlist.setter
+    def tool_allowlist(self, value: ToolAllowlist) -> None:
+        if self._tool_allowlist is not None:
+            raise RuntimeError("Tool allowlist is already set")
+        self._tool_allowlist = value
 
     @property
     def accept_language(self) -> ACCEPT_LANGUAGE:
