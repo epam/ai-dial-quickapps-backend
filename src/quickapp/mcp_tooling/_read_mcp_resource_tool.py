@@ -7,6 +7,7 @@ from mcp.types import TextResourceContents
 from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
+from quickapp.common.exceptions import InvalidToolCallParameterException, ToolErrorException
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.tool_names import INTERNAL_MCP_READ_RESOURCE_TOOL_NAME
 from quickapp.config.application import StageDisplayLevel
@@ -89,13 +90,10 @@ class _ReadMcpResourceTool(StagedBaseTool):
         *args: Any,
         **kwargs: Any,
     ) -> ToolCallResult:
+        # Failures are raised, not returned: ``StagedBaseTool`` owns the failure log,
+        # the stage error and the conversion to an ``is_error`` result.
         if not uri:
-            result = ToolCallResult(
-                content="Missing required parameter: uri", content_type="text/plain"
-            )
-            if stage_wrapper:
-                stage_wrapper.add_result(result)
-            return result
+            raise InvalidToolCallParameterException("uri", "uri is required")
 
         # Find matching resource meta(s) by URI (+ optional toolset filter)
         candidates = [m for m in self._context.resource_metas if m.resource_uri == uri]
@@ -103,40 +101,32 @@ class _ReadMcpResourceTool(StagedBaseTool):
             candidates = [m for m in candidates if m.toolset_name == toolset]
 
         if not candidates:
-            msg = f"No resource registered with URI '{uri}'"
-            result = ToolCallResult(content=msg, content_type="text/plain")
-            if stage_wrapper:
-                stage_wrapper.add_result(result)
-            return result
+            raise InvalidToolCallParameterException(
+                "uri", f"No resource registered with URI '{uri}'"
+            )
 
         if len(candidates) > 1 and not toolset:
             names = ", ".join(m.toolset_name for m in candidates)
-            msg = f"Multiple toolsets expose URI '{uri}': {names}. Specify the 'toolset' parameter."
-            result = ToolCallResult(content=msg, content_type="text/plain")
-            if stage_wrapper:
-                stage_wrapper.add_result(result)
-            return result
+            raise InvalidToolCallParameterException(
+                "toolset",
+                f"Multiple toolsets expose URI '{uri}': {names}. Specify the 'toolset' parameter.",
+            )
 
         meta = candidates[0]
         client: _MCPToolsetClient | None = self._context.clients.get(meta.toolset_name)
         if client is None:
-            msg = f"No client registered for toolset '{meta.toolset_name}'"
-            result = ToolCallResult(content=msg, content_type="text/plain")
-            if stage_wrapper:
-                stage_wrapper.add_result(result)
-            return result
+            raise ToolErrorException(
+                self._resolve_tool_name(), f"No client registered for toolset '{meta.toolset_name}'"
+            )
 
         try:
             contents = await client.read_mcp_resource(uri)
         except MCPUnauthorizedException:
             raise
         except Exception as e:
-            logger.error("Failed to read resource '%s': %s", uri, e, exc_info=True)
-            msg = f"Error reading resource '{uri}': {e}"
-            result = ToolCallResult(content=msg, content_type="text/plain")
-            if stage_wrapper:
-                stage_wrapper.add_result(result)
-            return result
+            raise ToolErrorException(
+                self._resolve_tool_name(), f"Error reading resource '{uri}': {e}"
+            ) from e
 
         text_parts: list[str] = []
         for content in contents:

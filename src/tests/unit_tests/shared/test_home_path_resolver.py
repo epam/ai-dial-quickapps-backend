@@ -2,6 +2,7 @@ import pytest
 
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.project_context import ProjectContext
+from quickapp.common.utils import canonical_url
 from quickapp.shared.home_path.home_path_resolver import HomePathResolver
 from tests.unit_tests.dial_files_tooling._helpers import make_config, make_service
 
@@ -125,33 +126,31 @@ class TestProjectHome:
         service.my_appdata_home.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_relative_path_resolves_under_artifacts(self):
+    async def test_relative_path_resolves_under_artifacts_as_typed(self):
         url = await _resolver(project=_PROJECT).resolve_appdata_url("my notes/a.md")
-        assert url == f"{_ARTIFACTS}my%20notes/a.md"
-
-    @pytest.mark.asyncio
-    async def test_current_project_url_is_absolute(self):
-        url = "projects/user-bucket/My Project/files/context/tickets.csv"
-        assert await _resolver(project=_PROJECT).resolve_appdata_url(url) == _CONTEXT_FILE
+        assert url == f"{_ARTIFACTS}my notes/a.md"
 
     @pytest.mark.parametrize(
         "path",
         [
+            "projects/user-bucket/My Project/files/context/tickets.csv",
             "projects/user-bucket/Other/files/x.md",
-            "projects/user-bucket/",
-            "projects/user-bucket/My Project/x.md",
         ],
     )
+    @pytest.mark.parametrize("project", [_PROJECT, None])
     @pytest.mark.asyncio
-    async def test_other_projects_url_is_rejected(self, path):
-        with pytest.raises(InvalidToolCallParameterException) as excinfo:
-            await _resolver(project=_PROJECT).resolve_appdata_url(path)
-        assert "current project" in excinfo.value.message
+    async def test_projects_url_comes_back_unchanged(self, path, project):
+        """Which project URLs a caller may use is decided by the caller or the storage."""
+        assert await _resolver(project=project).resolve_appdata_url(path) == path
 
+    @pytest.mark.parametrize("path", ["../escape.md", "/abs.md"])
     @pytest.mark.asyncio
-    async def test_projects_url_is_rejected_without_project(self):
-        with pytest.raises(InvalidToolCallParameterException):
-            await _resolver().resolve_appdata_url("projects/user-bucket/My Project/files/x.md")
+    async def test_errors_name_the_callers_parameter(self, path):
+        with pytest.raises(InvalidToolCallParameterException) as excinfo:
+            await _resolver(project=_PROJECT).resolve_appdata_url(
+                path, parameter_name="attachment_url"
+            )
+        assert excinfo.value.parameter_name == "attachment_url"
 
     @pytest.mark.asyncio
     async def test_files_url_still_absolute_in_project(self):
@@ -180,9 +179,10 @@ class TestProjectHome:
 
     @pytest.mark.asyncio
     async def test_decoded_display_path_resolves_back(self):
+        """The storage canonicalizes it (see ``RoutedFileStorage``)."""
         resolver = _resolver(project=_PROJECT)
         display = await resolver.to_display_path(_CONTEXT_FILE)
-        assert await resolver.resolve_appdata_url(display) == _CONTEXT_FILE
+        assert canonical_url(await resolver.resolve_appdata_url(display)) == _CONTEXT_FILE
 
     @pytest.mark.parametrize("path", ["%2e%2e/PROJECT.md", ".%2e/x", "a%2F..%2Fb", "a//b"])
     @pytest.mark.asyncio

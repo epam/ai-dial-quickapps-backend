@@ -14,7 +14,7 @@ class DialDownloader:
     """Fetches bytes for a DIAL-hosted file URL (the storage enforces the size limit).
 
     Extracted from the previous ``DialFileService.download_file``; consumed by
-    :class:`quickapp.file_transfer._file_loader_service.FileLoaderService`,
+    :class:`quickapp.shared.file_transfer._file_loader_service.FileLoaderService`,
     which owns the per-request bytes cache.
 
     Returns the ``FileMetadata`` alongside the bytes so callers can cache it

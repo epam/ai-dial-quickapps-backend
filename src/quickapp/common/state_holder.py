@@ -7,6 +7,7 @@ from aidial_sdk.chat_completion import Attachment, ToolCall
 from pydantic import BaseModel, Field, PrivateAttr
 
 from quickapp.common.payload_logging import log_payload
+from quickapp.common.utils import canonical_url
 
 logger = logging.getLogger(__name__)
 
@@ -73,4 +74,6 @@ class StateHolder(BaseModel):
 
     @staticmethod
     def _get_file_key_by_url(url: str) -> str:
-        return sha256(url.encode('utf-8')).hexdigest()
+        # Canonical, so a decoded (`My Project`) and an encoded (`My%20Project`) spelling of
+        # the same file share one entry, and a write through either one invalidates it.
+        return sha256(canonical_url(url).encode('utf-8')).hexdigest()

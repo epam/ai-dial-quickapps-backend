@@ -12,7 +12,6 @@ from quickapp.dial_app_tooling import DialAppToolingModule
 from quickapp.dial_core_services.dial_core_services_module import DialCoreServicesModule
 from quickapp.dial_deployment_tooling import DialDeploymentToolingModule
 from quickapp.dial_files_tooling.dial_files_tooling_module import DialFilesToolingModule
-from quickapp.file_transfer import FileTransferModule
 from quickapp.internal_tooling.internal_tooling_module import InternalToolModule
 from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_client import (
     _PyInterpreterClient,
@@ -28,6 +27,7 @@ from quickapp.orchestrator_attachment_strategies.lazy_on_demand.lazy_on_demand_s
 from quickapp.predefined_tooling import PredefinedToolingModule
 from quickapp.rest_api_tooling import RestApiToolingModule
 from quickapp.shared import shared_module
+from quickapp.shared.file_transfer import FileTransferModule
 from quickapp.skills.dial_prompt.dial_prompt_skills_module import DialPromptSkillsModule
 from quickapp.skills.registry.skills_module import SkillsModule
 from quickapp.starters.starters_module import StartersModule

@@ -131,6 +131,11 @@ prefix.
 
 File loading is handled by `FileLoaderService`, a request-scoped service that:
 
+- **Consults file sources first.** A feature can contribute a `FileSource` (`handles(url)` / `load(url,
+  parameter_name)`) to `list[FileSource]`, which resolves to an empty list when nothing contributes. A URL a source
+  handles is served by it before scheme classification. The skills feature contributes one for
+  `skill://<skill_name>/<path>` references, so `file:text::`, `file:base64::` and `file:data::` accept a skill's
+  bundled file; without it a `skill://` value is rejected like any unsupported scheme.
 - **Classifies** every URL via `classify_url`: bare DIAL paths and absolute URLs whose host matches the configured
   DIAL endpoint route to `DialDownloader` (DIAL Core download API); other `http(s)://` URLs route to
   `ExternalUrlFetcher`; everything else (`file:`, `ftp:`, `data:`, malformed) is rejected with a clear error.
@@ -216,6 +221,21 @@ preprocessor grants DIAL Core file permissions to the MCP server's toolset, allo
 directly. The preprocessor classifies each value before granting; if the value is an external URL or any
 non-`http(s)` scheme, the tool call is rejected with a clear retry message instructing the agent to fall back to
 `file:data::` / `file:base64::` / `file:text::`.
+
+A value that is a skill file URL (`skills/<bucket>/<path>/files/<file_path>`, produced from a
+`file:url::skill://<skill_name>/<path>` reference) is granted on the **skill root** `skills/<bucket>/<path>`,
+not on the file: DIAL Core treats a skill as one resource and rejects a grant on a single file in it. Grant
+resources are de-duplicated, so several files of one skill cost one grant.
+
+**Contract for an MCP server that accepts a skill file** (for example a code interpreter):
+
+| Item | Requirement |
+|------|-------------|
+| Toolset in DIAL Core | Registered as a toolset with `forwardPerRequestKey` enabled; the QuickApp config references it as a `dial-mcp` toolset (`deployment_id: toolsets/<name>`). |
+| Tool schema | The parameter that takes the file has `"dial_url": true` in its JSON schema. |
+| Credential | The call carries the per-request key in the `api-key` header (no `Authorization` header). |
+| Download | `GET {DIAL_URL}/v2/<value of the parameter>` with that header. The value is `skills/<bucket>/<path>/files/<file_path>`. |
+| Execution | Entirely the server's concern: environment, runtime, run arguments. |
 
 This only applies to MCP tools connected to DIAL (`DialMCPToolSet` with a configured `dial_id`). For non-DIAL MCP
 tools and all other tool types, the `url` prefix simply passes the URL through without any permission management.

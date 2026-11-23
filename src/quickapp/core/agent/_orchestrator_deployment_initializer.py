@@ -5,7 +5,7 @@ import logging
 from injector import inject
 
 from quickapp.common.base_initializer import CompletionInitializer
-from quickapp.common.exceptions import InitializationException, UnsupportedReasoningEffortException
+from quickapp.common.deployment_parameter_support import unsupported_parameters
 from quickapp.config.application import ApplicationConfig
 from quickapp.core.agent._orchestrator_static_tools_context import _OrchestratorStaticToolsContext
 from quickapp.core.agent.orchestrator_capabilities import OrchestratorCapabilities
@@ -33,7 +33,6 @@ class _OrchestratorDeploymentInitializer(CompletionInitializer):
         )
         self._capabilities: OrchestratorCapabilities | None = None
         self._static_tools_context: _OrchestratorStaticToolsContext = static_tools_context
-        self._initialization_exceptions: list[InitializationException] = []
 
     async def initialize(self) -> None:
         deployment = self.__app_config.orchestrator.deployment.deployment_id
@@ -42,37 +41,27 @@ class _OrchestratorDeploymentInitializer(CompletionInitializer):
             deployment,
         )
         self._capabilities = OrchestratorCapabilities(deployment=model)
-        self._validate_reasoning_effort()
+        self._validate_parameters()
         self._static_tools_context.extend_static_tools(
             ToolConfigCoreService.parse_static_tools_from_info(model)
         )
 
-    def _validate_reasoning_effort(self) -> None:
-        """Record an issue when the configured reasoning effort is not advertised.
+    def _validate_parameters(self) -> None:
+        """Log each configured parameter the deployment does not support.
 
-        `_ChatCompletionConfigBuilder` drops the parameter on the same condition; the issue
-        exists so the drop is visible to the app builder rather than silent.
+        `_ChatCompletionConfigBuilder` drops them on the same condition on every model call; the
+        log is written here so it appears once per request rather than once per iteration.
         """
         capabilities = self.capabilities
-        reasoning_effort = self.__app_config.orchestrator.deployment.parameters.reasoning_effort
-        if reasoning_effort is None or capabilities.supports_reasoning_effort(reasoning_effort):
-            return
-        logger.warning(
-            "Configured reasoning_effort is not advertised by deployment %s; dropping it "
-            "(advertised values: %d)",
-            capabilities.deployment_id,
-            len(capabilities.reasoning_efforts),
+        parameters = self.__app_config.orchestrator.deployment.parameters.model_dump(
+            exclude_none=True
         )
-        self._initialization_exceptions.append(
-            UnsupportedReasoningEffortException(
-                requested=reasoning_effort,
-                supported=capabilities.reasoning_efforts,
+        for name in unsupported_parameters(parameters, capabilities.features):
+            logger.warning(
+                "Configured %s is not supported by deployment %s; dropping it",
+                name,
+                capabilities.deployment_id,
             )
-        )
-
-    @property
-    def initialization_exceptions(self) -> list[InitializationException]:
-        return self._initialization_exceptions
 
     @property
     def capabilities(self) -> OrchestratorCapabilities:

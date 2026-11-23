@@ -1,4 +1,4 @@
-"""DI wiring for ``FileStorage``: plain v1 storage without a project, the router with one."""
+"""DI wiring for ``FileStorage``: the router, with or without a project."""
 
 from unittest.mock import MagicMock
 
@@ -43,9 +43,7 @@ def _storage_type(project: ProjectContext | None) -> str:
     return response.json()
 
 
-@pytest.mark.parametrize(
-    "project, expected",
-    [(None, "V1FileStorage"), (ProjectContext(url="projects/b/p"), "RoutedFileStorage")],
-)
-def test_file_storage_routes_only_when_the_request_has_a_project(project, expected):
-    assert _storage_type(project) == expected
+@pytest.mark.parametrize("project", [None, ProjectContext(url="projects/b/p")])
+def test_file_storage_always_routes(project):
+    """Without a project too, so a projects/... URL is refused rather than sent to v1."""
+    assert _storage_type(project) == "RoutedFileStorage"

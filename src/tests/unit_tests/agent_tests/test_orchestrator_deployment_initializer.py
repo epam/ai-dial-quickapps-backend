@@ -1,12 +1,12 @@
+import logging
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from aidial_client.types.deployment import Features
 
-from quickapp.common.exceptions import (
-    OrchestratorInitializationException,
-    UnsupportedReasoningEffortException,
-)
+from quickapp.common.exceptions import OrchestratorInitializationException
+from quickapp.config.dial_deployment import DialDeploymentParameters
 from quickapp.core.agent import OrchestratorCapabilities
 from quickapp.core.agent._orchestrator_deployment_initializer import (
     _OrchestratorDeploymentInitializer,
@@ -18,12 +18,13 @@ def _make_deployment(
     input_attachment_types: list[str] | None = None,
     defaults: dict | None = None,
     reasoning_efforts: list[str] | None = None,
+    temperature: bool | None = None,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         id=deployment_id,
         input_attachment_types=input_attachment_types,
         defaults=defaults,
-        features=SimpleNamespace(reasoning_efforts=reasoning_efforts or []),
+        features=Features(reasoning_efforts=reasoning_efforts or [], temperature=temperature),
     )
 
 
@@ -32,10 +33,13 @@ def _make_initializer(
     deployment_id: str = "gpt-4",
     fetch_metadata: AsyncMock | None = None,
     reasoning_effort: str | None = None,
+    temperature: float | None = None,
 ) -> tuple[_OrchestratorDeploymentInitializer, AsyncMock, AsyncMock]:
     app_config = MagicMock()
     app_config.orchestrator.deployment.deployment_id = deployment_id
-    app_config.orchestrator.deployment.parameters.reasoning_effort = reasoning_effort
+    app_config.orchestrator.deployment.parameters = DialDeploymentParameters(
+        reasoning_effort=reasoning_effort, temperature=temperature
+    )
 
     resolver = AsyncMock()
     tool_config_service = MagicMock()
@@ -106,60 +110,66 @@ async def test_resolver_and_deployment_id_passed_to_fetch_metadata():
     fetch_metadata.assert_awaited_once_with(resolver, "my-app")
 
 
-@pytest.mark.asyncio
-async def test_no_issue_when_reasoning_effort_is_advertised():
-    initializer, _resolver, _fetch = _make_initializer(
-        fetch_metadata=AsyncMock(return_value=_make_deployment(reasoning_efforts=["low", "high"])),
-        reasoning_effort="high",
-    )
-
-    await initializer.initialize()
-
-    assert initializer.initialization_exceptions == []
+_LOGGER = "quickapp.core.agent._orchestrator_deployment_initializer"
 
 
 @pytest.mark.asyncio
-async def test_no_issue_when_no_reasoning_effort_is_configured():
+@pytest.mark.parametrize(
+    ("deployment", "reasoning_effort", "temperature"),
+    [
+        (_make_deployment(reasoning_efforts=["low", "high"]), "high", None),
+        (_make_deployment(reasoning_efforts=[]), None, None),
+        (_make_deployment(temperature=True), None, 0.2),
+    ],
+    ids=["reasoning_effort_advertised", "nothing_configured", "temperature_supported"],
+)
+async def test_no_warning_when_configured_parameters_are_supported(
+    caplog: pytest.LogCaptureFixture,
+    deployment: SimpleNamespace,
+    reasoning_effort: str | None,
+    temperature: float | None,
+):
     initializer, _resolver, _fetch = _make_initializer(
-        fetch_metadata=AsyncMock(return_value=_make_deployment(reasoning_efforts=[])),
-        reasoning_effort=None,
+        fetch_metadata=AsyncMock(return_value=deployment),
+        reasoning_effort=reasoning_effort,
+        temperature=temperature,
     )
 
-    await initializer.initialize()
+    with caplog.at_level(logging.WARNING, logger=_LOGGER):
+        await initializer.initialize()
 
-    assert initializer.initialization_exceptions == []
+    assert [r for r in caplog.records if r.name == _LOGGER] == []
 
 
 @pytest.mark.asyncio
-async def test_unadvertised_reasoning_effort_is_reported_as_a_soft_issue():
+@pytest.mark.parametrize(
+    ("deployment", "reasoning_effort", "temperature", "parameter"),
+    [
+        (_make_deployment(reasoning_efforts=["low"]), "high", None, "reasoning_effort"),
+        (_make_deployment(reasoning_efforts=[]), "low", None, "reasoning_effort"),
+        (_make_deployment(temperature=False), None, 0.2, "temperature"),
+    ],
+    ids=["reasoning_effort_unadvertised", "reasoning_efforts_empty", "temperature_unsupported"],
+)
+async def test_unsupported_parameter_is_logged_once_per_request(
+    caplog: pytest.LogCaptureFixture,
+    deployment: SimpleNamespace,
+    reasoning_effort: str | None,
+    temperature: float | None,
+    parameter: str,
+):
     initializer, _resolver, _fetch = _make_initializer(
-        deployment_id="gpt-4",
-        fetch_metadata=AsyncMock(return_value=_make_deployment(reasoning_efforts=["low"])),
-        reasoning_effort="high",
+        fetch_metadata=AsyncMock(return_value=deployment),
+        reasoning_effort=reasoning_effort,
+        temperature=temperature,
     )
 
-    await initializer.initialize()
+    with caplog.at_level(logging.WARNING, logger=_LOGGER):
+        await initializer.initialize()
 
-    assert len(initializer.initialization_exceptions) == 1
-    issue = initializer.initialization_exceptions[0]
-    assert isinstance(issue, UnsupportedReasoningEffortException)
-    assert issue.is_hard is False
-    assert issue.requested == "high"
-    assert issue.supported == ["low"]
-    assert "`low`" in str(issue)
-    # The orchestrator deployment is never named in user-facing text.
-    assert "gpt-4" not in str(issue)
-
-
-@pytest.mark.asyncio
-async def test_reasoning_effort_is_reported_when_deployment_advertises_none():
-    """A deployment that advertises no reasoning efforts supports none of them."""
-    initializer, _resolver, _fetch = _make_initializer(
-        fetch_metadata=AsyncMock(return_value=_make_deployment(reasoning_efforts=[])),
-        reasoning_effort="low",
-    )
-
-    await initializer.initialize()
-
-    assert len(initializer.initialization_exceptions) == 1
-    assert "does not advertise" in str(initializer.initialization_exceptions[0])
+    records = [r for r in caplog.records if r.name == _LOGGER]
+    assert len(records) == 1
+    message = records[0].getMessage()
+    assert f"Configured {parameter} is not supported by deployment gpt-4" in message
+    # Logs carry structure, not content: the configured value is never logged.
+    assert str(reasoning_effort or temperature) not in message
