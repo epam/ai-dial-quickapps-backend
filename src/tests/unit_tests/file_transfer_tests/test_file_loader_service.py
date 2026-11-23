@@ -8,7 +8,6 @@ from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.state_holder import StateHolder
 from quickapp.dial_core_services.dial_downloader import DialDownloader
-from quickapp.file_transfer._file_loader_service import FileLoaderService
 from quickapp.shared.external_fetch.external_url_fetcher import (
     ExternalFetchDisabledError,
     ExternalFetchError,
