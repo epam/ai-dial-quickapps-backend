@@ -6,8 +6,9 @@
   - [Hook Context, Parameter Templating, and Lifecycle Events](hook_context_and_lifecycle_events.md) — this is its
     "Phase 2: background execution"
 
-> **Review note.** Every open concern below lists its options and a **Proposed decision**. Decisions are
-> proposals for the team to confirm or change. Concerns marked **needs confirmation** have no agreed answer yet.
+> **Review note.** This is the detailed design of Phase 2 of the parent design. It follows the parent's rules
+> (enum config, seam-level scheduling, stage-less call, application-scoped registry). Decisions are proposals
+> for the team to confirm or change.
 
 ## Problem Statement
 
@@ -31,13 +32,13 @@ problem to every tool author and does not help with third-party MCP or REST tool
   (which itself calls tools).
 - Failures and timeouts never reach the user.
 - Background work is bounded: concurrency, lifetime, and behaviour on shutdown are defined.
-- Default behaviour (`async` omitted) is unchanged.
+- Default behaviour (`execution` omitted) is unchanged.
 
 ## Use Cases
 
 ### UC-1: Memory save after the answer
 
-**Trigger:** An `on_completion` hook with `async: true` calls the memory `save` tool.
+**Trigger:** An `on_completion` hook with `execution: background` calls the memory `save` tool.
 **Behavior:** The call is started and accepted by DIAL Core before the response closes; the response then closes
 without waiting for the save to finish.
 **Outcome:** The user sees the stream end right after the answer. The save completes in the background; a failure
@@ -59,7 +60,7 @@ extend key lifetime, so it is not a solution here. There is no public endpoint t
 
 The risk was that detached work would fail with 401 once the user's request ended. The experiment below tested this.
 
-### Experiment (prototype on branch `feat/616-async-hooks`)
+### Experiment (prototype)
 
 Local Core, a slow MCP server (`slow_save`: sleeps 20 s, then calls Core with the forwarded `Api-Key` and writes a
 file to `appdata`), and a prototype that starts the hook as a detached task and keeps the MCP session open.
@@ -70,6 +71,7 @@ file to `appdata`), and a prototype that starts the hook as a detached task and 
 | Hook call reaches Core **before** the response closes | `slow_save` runs; 18–20 s after the close `GET /v1/bucket` and the file `PUT` return **200** |
 | Test app → async hook → Agent application → MCP `slow_save` (two hops) | The agent app made its own model call and its own MCP call after the outer response closed; both succeeded |
 | Result return of the detached MCP call | Core sometimes answers **401** when the result is returned, although the work finished |
+| Response headers of a slow MCP `tools/call` through Core (8 s tool) | Arrive at 9.2 s together with the body; straight to the MCP server they arrive at 0 s. Core buffers them, so they cannot serve as an "accepted" signal |
 
 Conclusions:
 
@@ -77,116 +79,139 @@ Conclusions:
    user's request.
 2. The call must be **accepted by Core before the response closes**.
 3. A 401 on the result return can happen and must not be treated as a failure of the work.
-4. Detached work writes into the already-closed choice (`Trying to create stage to a closed choice`); this is
-   addressed in [Secondary Fixes](#secondary-fixes).
+4. Detached work that creates stages writes into the already-closed choice (`Trying to create stage to a
+   closed choice`); a background hook therefore runs [without any stage](#6-no-ui-no-interaction-a-stage-less-call).
 
 ## Proposed Design
 
 ### 1. Configuration shape
 
-**Options**
+`execution: blocking | background`, a `StrEnum` (`HookExecution`) on the hook, default `blocking`, valid only for
+`on_completion`. This is the shape the parent design prescribes ([Schema evolution
+rule 1](hook_context_and_lifecycle_events.md#schema-evolution-rules): a closed set of values is an enum, never a
+`bool`); a later mode (for example a durable queue) becomes a new member instead of a breaking change.
+
+The manifest validator rejects `execution: background` on `on_request_start`, because a background hook cannot
+inject its result into the current request. `execution: blocking` is accepted on every event: it is the default,
+and a dumped config always carries it, so rejecting it would break dump → validate round trips. (The parent
+design says explicitly setting the field on `on_request_start` is an error; that is relaxed for `blocking`
+only.) The validator lives on the base hook config, so a future hook `kind` inherits it.
+
+### 2. Keeping the response open until Core has the call
+
+The response must not close before every background hook's call has reached Core (conclusion 2). Core exposes no
+"accepted" signal, so this has to be inferred.
 
 | Option | Notes |
 |---|---|
-| `async: bool` on the hook, `on_completion` only | Smallest surface; matches the motivating case |
-| `async: bool` on both events, injecting nothing for `on_request_start` | Allows side-effect-only request-start hooks; adds a second mode with little value |
-| Execution mode enum (`inline` / `background`) | Room for future modes; premature today |
+| Response headers as the signal | Rejected for MCP: **measured** — through Core the headers of a slow `tools/call` arrive only when the tool finishes (9.2 s for an 8 s tool), although the MCP server itself sends them immediately. Core buffers them, so the signal arrives too late to be useful. Deployment tools (first streamed chunk) may behave differently; not verified |
+| Capped wait | After starting the background hooks, wait until they all finish **or** a grace period expires (3 s), whichever comes first. A fast hook adds no delay; a slow one adds at most the grace period; the hooks are not cancelled |
+| Fixed delay | Always wait the full period. Rejected: adds delay even for fast hooks |
+| Change in Core | Flush headers immediately on proxied calls, or expose an accepted indicator. Rejected for now: needs a Core change this feature does not otherwise need |
 
-**Proposed decision:** `async: bool` (default `false`), accepted only for `on_completion`. The manifest validator
-rejects `async: true` on `on_request_start`, because a background hook cannot inject its result into the current
-request. Relaxing this later is backward compatible. The field is declared with the JSON alias `async` because
-`async` is a Python keyword.
+**Decision:** capped wait. All background hooks are started first and awaited together, so with several hooks
+the delay is at most one grace period, not one per hook. The period is a constant (3 s) next to the scheduling
+code, and it is measured from the moment the hooks start, so blocking hooks that run meanwhile eat into it
+rather than adding to it. It is still a timing assumption: on a Core slower than the grace period the call can
+reach Core after the response closed and fail with 401 (logged, never shown to the user). A signal for deployment
+tools can be added later as an early exit without changing the manifest.
 
-### 2. Knowing that Core accepted the call
+### 3. Where it lives: the seam schedules, the dispatcher stays mode-agnostic
 
-The response must not close before every async hook's call has reached Core (conclusion 2). **Needs confirmation.**
+Follows the parent design's Phasing rule 4. `HookDispatcher` knows nothing about execution modes: `run_hook`
+(timeout and failure isolation) applies to any mode, and `run_all` runs a list of hooks in order.
+`_CompletionHookRunner`, the `on_completion` seam, splits the event's hooks:
 
-| Option | Notes |
-|---|---|
-| Real signal | The HTTP client sets an event when the first response headers arrive from Core (httpx response event hook for MCP; first chunk for deployment tools). The response closes after all signals, with a capped maximum wait. Exact, but touches the MCP transport and the deployment client |
-| Fixed grace delay | A configurable wait (e.g. 2–3 s) after starting async hooks, as in the prototype. Simple, but always adds delay and can be too short on a slow Core |
-| Both | Use the signal where the transport provides it, fall back to a short capped wait otherwise |
+1. For each `background` hook, `dispatcher.prepare(hook)` resolves its handler and tools **now**, while the
+   request is alive. A hook that cannot be prepared is logged and skipped.
+2. The prepared hooks go to the `BackgroundHookRegistry` (§4), which starts them.
+3. The `blocking` hooks run in manifest order through `run_all`.
+4. The runner waits for the background hooks for what is left of the grace period (§2).
 
-**Proposed decision:** both — signal first, capped fallback. If the cap expires the hook is left running and a
-warning is logged.
+Background hooks therefore start before blocking ones and overlap with them, so their calls reach Core while the
+per-request key is certainly valid.
 
-### 3. Lifetime of the session and request-scoped objects
+**Request-scoped objects.** `fastapi_injector` drops the request-scope cache when the response ends, so any
+request-scoped lookup made after that raises `KeyError`. Hence step 1: everything a hook's tool is built from is
+resolved before the hand-off, and the tool holds what it needs from then on. Tools must not resolve
+request-scoped dependencies lazily inside `arun`; a tool that did would work inside the grace window and fail
+afterwards.
 
-The hook's tool uses request-scoped objects (MCP session, forwarded headers). **Needs confirmation.**
+### 4. Ownership of the work and of the request's teardown
 
-| Option | Notes |
-|---|---|
-| Defer request teardown | `RequestAsyncCloseRegistry` tracks detached tasks; `aclose_all` no longer blocks the request and runs the closers after the tasks finish. Small change; reuses session and the forwarded key |
-| Separate session per hook | The hook opens its own session independent of the request. Better isolation, but tools and clients are request-scoped today, so it needs a refactor |
+`BackgroundHookRegistry` is application-scoped (singleton). Per request it receives the prepared hooks and the
+request's `RequestAsyncCloseRegistry`:
 
-**Proposed decision:** defer teardown. The extra lifetime of request-scoped objects is bounded by the hook's
-`timeout_seconds`. A separate-session design can replace this later without changing the manifest.
+- **Bounded concurrency.** At most `BACKGROUND_HOOKS_MAX_CONCURRENT` (default 50) hooks run per process. A hook
+  that does not fit is skipped with a warning (best-effort; dropping protects the process, and the loss is
+  visible in logs). If nothing is accepted, the teardown stays with the request.
+- **Hand-off of teardown.** `RequestAsyncCloseRegistry.hand_off()` makes the orchestrator's `aclose_all()` a no-op
+  and returns the callable that runs the closers. The registry calls it when *all* of the request's hooks have
+  finished (or failed, or were cancelled), so per-request MCP sessions stay open exactly as long as a hook uses
+  them. Their extra lifetime is bounded by the hook's `timeout_seconds`.
+- **Strong references.** The registry keeps the tasks, so they are not garbage-collected.
+- **Timeout.** The per-hook timeout comes from `run_hook`, the same for every mode.
 
-### 4. Concurrency limit
-
-**Needs confirmation.**
-
-| Option | Notes |
-|---|---|
-| Global env limit, drop when full | e.g. `ASYNC_HOOKS_MAX_CONCURRENT` (default 50), semaphore; the hook is skipped with a warning when full. Saves are best-effort |
-| Global env limit, run inline when full | Nothing is lost, but the response is delayed under load |
-| Per-app manifest limit | More flexible; one noisy app can still exhaust the process, so it still needs a global limit |
-
-**Proposed decision:** global env limit, drop with a warning. Dropping is visible in logs and protects the process.
+Alternative considered: a separate MCP session per hook, independent of the request. Better isolation, but tools
+and clients are request-scoped today, so it needs a refactor. It can replace this later without changing the
+manifest.
 
 ### 5. Shutdown
 
-**Needs confirmation.**
+A `shutdown` initializer (the counterpart of the existing `startup` ones, run from the application lifespan)
+calls `BackgroundHookRegistry.shutdown()`: wait up to `BACKGROUND_HOOKS_SHUTDOWN_GRACE_SECONDS` (default 30) for
+running hooks, then cancel the rest and log how many. The teardown of each request still runs after a
+cancellation, so MCP sessions are closed. A hard kill (SIGKILL, crash) still loses pending hooks: saves are
+best-effort, and a durable queue is out of scope.
 
-| Option | Notes |
-|---|---|
-| Drain with a grace period, then cancel | e.g. wait up to 30 s for running hooks, cancel the rest and log how many |
-| Cancel immediately | Simplest; every in-flight save is lost on deploy |
+### 6. No UI, no interaction: a stage-less call
 
-**Proposed decision:** drain with a grace period, then cancel and log.
+The parent design's single change point is `ToolCallHookHandler`. For a `background` hook it calls
+`tool.arun(..., background=True)` instead of the hidden DEBUG-stage call. `background=True`:
 
-### 6. Ordering against synchronous hooks
+- builds **no stage**, not even an error stage, so nothing touches the response choice (which may be closed). A
+  DIAL deployment tool called without a stage has no parent stage, so its nested-application stage deltas have no
+  destination on the outer choice either;
+- sets a context flag (`is_background_execution()`) for the duration of the call. `InteractiveLoginService`
+  returns `NO_CHANNEL` while it is set, so a 401 or an external-service sign-in challenge never opens an
+  interactive prompt on a request that has ended, and never retries the tool call (which would run a save twice).
 
-| Option | Notes |
-|---|---|
-| Start async hooks first, then run sync hooks | Async calls reach Core while the key is certainly valid and overlap with sync hooks |
-| Run in manifest order | Predictable, but an async hook listed last starts closest to the response close |
-
-**Proposed decision:** start all async hooks first (in manifest order), wait for their accepted signals, then run
-the sync hooks in manifest order.
+Hook usage is not reported: nothing in the hook path adds to the usage statistics, which are written inside the
+request.
 
 ### 7. Failure handling
 
-A background hook never fails the request and its result is discarded. Failures and timeouts are logged. A 401 on
-the result return after the work was accepted is logged at info, since the work may have completed (conclusion 3).
-Logs carry metadata only (hook name, event, elapsed, outcome), per the logging policy.
+A background hook never fails the request and its result is discarded. Failures and timeouts are logged by the
+same two places as for a blocking hook: the tool layer's single `Tool call failed` warning (type and duration, no
+body or arguments) and `run_hook`'s timeout/exception lines. A 401 on the result return after the work was
+accepted (conclusion 3) is therefore logged at warning level with the rest of the failures; the work may have
+completed, so the line is not proof of loss. Logs carry metadata only (hook name, event, elapsed, outcome), per
+the logging policy.
 
 ### 8. Hooks that call DIAL applications
 
-**Proposed decision:** allowed. The experiment shows the nested application keeps working (UC-2). Documented as
-best-effort: no result, no error reaches the user.
+Allowed. The experiment shows the nested application keeps working (UC-2). Documented as best-effort: no result,
+no error reaches the user.
 
 ### 9. Changes to DIAL Core
 
-**Proposed decision:** none. If a Core release ever cancels detached downstream calls, the fallback is a request
-to Core for a bounded grace period on per-request keys for detached work.
+None. If a Core release ever cancels detached downstream calls, the fallback is a request to Core for a bounded
+grace period on per-request keys for detached work.
 
-## Secondary Fixes
+## Not needed: guards on a closed choice
 
-### Stages created on a closed choice
-
-Detached work (and a nested application's stage deltas propagated onto the outer choice) tries to create stages
-after the choice is closed. The SDK logs an error and raises. **Decision:** check `Choice.closed` before creating
-a stage; if closed, log a warning and skip. Never raise. Applied to the two `create_stage` calls in
-`ChoiceUiSink`, to `UsageStatisticsService`, and to the execution-time stage in `_quick_app_completion`. This is
-independent of the async feature and safe to ship on its own.
+The prototype wrote into the closed choice (`Trying to create stage to a closed choice`) and patched the four
+`create_stage` sites with a `Choice.closed` check. With the stage-less call (§6) no hook code touches the choice
+after the request, and the orchestrator's own writes (usage statistics, execution-time stage) run inside the
+choice's `with` block, so the guards cannot fire and are not part of this change.
 
 ## Out of Scope
 
-- **Async `on_request_start` hooks.** Needs a rule for injecting a late result; deferred.
+- **Background `on_request_start` hooks.** Needs a rule for injecting a late result; deferred.
 - **Retries and persistence of background hooks** (a durable queue). Saves are best-effort; a queue is a
   separate system.
-- **Separate session per hook.** See concern 3.
+- **Separate session per hook.** See §4.
+- **Per-app concurrency limit.** One global limit protects the process; per-app limits can be added.
 
 ## Configuration / Usage Examples
 
@@ -194,7 +219,7 @@ independent of the async feature and safe to ship on its own.
 {
   "kind": "tool_call",
   "event": "on_completion",
-  "async": true,
+  "execution": "background",
   "timeout_seconds": 120,
   "toolset_name": "dial-llm-wiki-memory",
   "tool_name": "save",
@@ -211,19 +236,23 @@ independent of the async feature and safe to ship on its own.
 
 ### Breaking changes
 
-None. `async` defaults to `false`.
+None. `execution` defaults to `blocking`.
 
 ### Non-breaking changes
 
-Manifests that set `async: true` on `on_request_start` are rejected when loaded. The field is new, so no existing
-manifest is affected.
+Manifests that set `execution: background` on `on_request_start` are rejected when loaded. The field is new, so
+no existing manifest is affected.
 
 ## Summary of Changes
 
-- **Config:** `async` on `ToolCallHookConfig` (`on_completion` only).
-- **`HookDispatcher`:** start async hooks as tracked background tasks; accepted-signal wait; concurrency limit.
-- **`RequestAsyncCloseRegistry`:** track detached tasks; defer teardown until they finish.
-- **MCP / deployment clients:** emit the "accepted" signal on first response headers.
-- **Settings:** concurrency limit and shutdown grace period (env).
-- **Stage creation sites:** `Choice.closed` guard.
+- **Config:** `HookExecution` enum and `execution` on the hook config; validator on the base config
+  (`background` only for `on_completion`).
+- **`_CompletionHookRunner`:** split blocking / background, prepare and hand off background hooks, grace wait.
+- **`HookDispatcher`:** mode-agnostic; gains `hooks_for`, `run_all`, `prepare`.
+- **`ToolCallHookHandler` / `StagedBaseTool.arun`:** stage-less `background=True` call.
+- **`InteractiveLoginService`:** no prompt while the background flag is set.
+- **`BackgroundHookRegistry` (new, singleton):** bounded concurrency, hand-off of teardown, drain on shutdown.
+- **`RequestAsyncCloseRegistry`:** `hand_off()`.
+- **Settings (env):** `BACKGROUND_HOOKS_MAX_CONCURRENT`, `BACKGROUND_HOOKS_SHUTDOWN_GRACE_SECONDS`.
+- **Lifespan:** `shutdown` initializer type.
 - **Docs:** `docs/hooks.md`, `CONFIGURATION.md`, JSON schema (`make dump_app_schema`).

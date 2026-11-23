@@ -1,7 +1,7 @@
 from enum import StrEnum
 from typing import Any, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 from quickapp.common.hook_context.context import (
     CompletionHookContext,
@@ -38,16 +38,19 @@ class TTLRefreshCondition(BaseModel):
 RefreshConditionConfig = TTLRefreshCondition
 
 
-class _BaseHookConfig(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
+class HookExecution(StrEnum):
+    BLOCKING = "blocking"
+    BACKGROUND = "background"
 
+
+class _BaseHookConfig(BaseModel):
     event: HookEvent
-    async_: bool = Field(
-        default=False,
-        alias="async",
+    execution: HookExecution = Field(
+        default=HookExecution.BLOCKING,
         description=(
-            "Run the hook in the background without delaying the response. Its result is "
-            "discarded and failures are only logged. Only supported for 'on_completion'."
+            "'blocking' (default) awaits the hook before the response closes. 'background' runs "
+            "it without delaying the response: its result is discarded, it shows no stage and "
+            "failures are only logged. Only supported for 'on_completion'."
         ),
     )
     name: str | None = None
@@ -60,6 +63,14 @@ class _BaseHookConfig(BaseModel):
             "30 for 'on_completion'."
         ),
     )
+
+    @model_validator(mode="after")
+    def _reject_execution_outside_completion(self) -> Self:
+        # Only 'background' is rejected: 'blocking' is the default and a dumped config always
+        # carries it, so rejecting it would break dump -> validate round trips.
+        if self.execution is HookExecution.BACKGROUND and self.event is not HookEvent.ON_COMPLETION:
+            raise ValueError("'execution: background' is only supported for event 'on_completion'")
+        return self
 
 
 class ToolCallHookConfig(_BaseHookConfig):
@@ -89,12 +100,6 @@ class ToolCallHookConfig(_BaseHookConfig):
                     raise ValueError(
                         f"'{field_name}' is only supported for event 'on_request_start'"
                     )
-        return self
-
-    @model_validator(mode="after")
-    def _reject_async_request_start(self) -> Self:
-        if self.async_ and self.event is not HookEvent.ON_COMPLETION:
-            raise ValueError("'async' is only supported for event 'on_completion'")
         return self
 
     @model_validator(mode="after")

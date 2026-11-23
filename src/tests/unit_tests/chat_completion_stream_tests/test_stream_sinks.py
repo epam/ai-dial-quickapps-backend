@@ -76,17 +76,6 @@ def test_choice_ui_opens_tool_stage_stage_wrapper_does_not():
     wrap.stage_mock.create_stage.assert_not_called()
 
 
-def test_choice_ui_sink_skips_tool_stage_when_choice_is_closed(caplog):
-    choice = SpyChoice()
-    choice.close()
-
-    with caplog.at_level("WARNING"):
-        ChoiceUiSink(ChatStreamAccumulator(), destination=choice).on_delta(_tool_delta())
-
-    assert choice.created_stages == []
-    assert "already closed" in caplog.text
-
-
 def test_accumulation_sink_records_annotations():
     acc = ChatStreamAccumulator()
     annotation = {"target": {"selector": "cit#e37335"}}

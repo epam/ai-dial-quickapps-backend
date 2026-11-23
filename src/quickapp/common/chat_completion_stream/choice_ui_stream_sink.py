@@ -178,12 +178,6 @@ class ChoiceUiSink(ChatStreamSink):
         stage_name = None
         if function_name is not None:
             stage_name = self._display_name(function_name)
-        if destination.closed:
-            logger.warning(
-                "Skipping streaming tool stage (index %s): the response choice is already closed",
-                index,
-            )
-            return None
         try:
             stage = destination.create_stage(stage_name)
             stage.open()
@@ -359,12 +353,6 @@ class ChoiceUiSink(ChatStreamSink):
                     idx,
                 )
                 log_payload(logger, "Stage delta with missing name: %s", delta)
-                return
-            if destination.closed:
-                logger.warning(
-                    "Skipping orchestrator stage (index %s): the response choice is already closed",
-                    idx,
-                )
                 return
             parent = self._resolve_parent(delta)
             try:

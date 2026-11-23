@@ -32,7 +32,10 @@ class _QuickAppApplication(DIALApp):
         async def lifespan(app: FastAPI):  # noqa: ARG001
             await invoke_initializers(injector, InitializerType.startup)
             logger.info("All modules successfully configured")
-            yield
+            try:
+                yield
+            finally:
+                await invoke_initializers(injector, InitializerType.shutdown)
 
         super().__init__(
             dial_url=dial_settings.url,

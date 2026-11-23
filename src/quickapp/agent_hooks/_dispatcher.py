@@ -6,7 +6,6 @@ from injector import ProviderOf, inject
 
 from quickapp.agent_hooks._handlers import HookHandlerRegistry, hook_display_name
 from quickapp.common.hook_context.context import HookContext, HookResult
-from quickapp.common.request_async_close_registry import RequestAsyncCloseRegistry
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.hooks import HookConfig, HookEvent
 
@@ -32,9 +31,7 @@ class HookDispatcher:
         self,
         app_config_provider: ProviderOf[ApplicationConfig],
         registry: HookHandlerRegistry,
-        close_registry: RequestAsyncCloseRegistry,
     ) -> None:
-        self._close_registry = close_registry
         self._app_config_provider = app_config_provider
         self._registry = registry
 
@@ -65,19 +62,12 @@ class HookDispatcher:
             logger.exception("Hook %r failed (event=%s) - skipping", name, hook.event.value)
             return None
 
-    async def dispatch(self, event: HookEvent, context: HookContext) -> list[HookResult]:
+    def hooks_for(self, event: HookEvent) -> list[HookConfig]:
+        return [h for h in self._app_config_provider.get().hooks or [] if h.event == event]
+
+    async def run_all(self, hooks: list[HookConfig], context: HookContext) -> list[HookResult]:
         results: list[HookResult] = []
-        for hook in self._app_config_provider.get().hooks or []:
-            if hook.event != event:
-                continue
-            if hook.async_:
-                # Start now and do not await; the request teardown waits for it in the background.
-                self._close_registry.track_detached(
-                    asyncio.create_task(self.run_hook(hook, context), name="async-hook")
-                )
-                # Let the call reach Core while the per-request key is still valid.
-                await asyncio.sleep(3)
-                continue
+        for hook in hooks:
             result = await self.run_hook(hook, context)
             if result is not None:
                 results.append(result)

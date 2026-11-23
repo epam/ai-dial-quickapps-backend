@@ -9,6 +9,7 @@ from injector import AssistedBuilder
 from pydantic import BaseModel, Field
 
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
+from quickapp.common.background_execution import background_execution
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.chat_completion_stream.adopted_tool_stage import AdoptedToolStage
 from quickapp.common.chat_completion_stream.argument_stream_presentation import (
@@ -136,8 +137,18 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
         *args: Any,
         stage_level: StageDisplayLevel = StageDisplayLevel.INFO,
         adopted_stage: AdoptedToolStage | None = None,
+        background: bool = False,
         **kwargs: Any,
     ) -> ToolCallResult:
+        if background:
+            self._discard_adopted_stage(adopted_stage)
+            # Runs after the response may have closed: no stage (not even an error stage) and
+            # no interactive prompts, so nothing touches the closed choice or client channel.
+            with background_execution():
+                return await self.__run_tool_body(
+                    tool_call_id, None, *args, report_errors_to_stage=False, **kwargs
+                )
+
         if self.__should_suppress(stage_level):
             self._discard_adopted_stage(adopted_stage)
             # Stage is suppressed, but we still route through __run_tool_body so that
@@ -215,6 +226,7 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
         stage_wrapper: BaseStageWrapper | None,
         *args: Any,
         skip_parameters: bool = False,
+        report_errors_to_stage: bool = True,
         **kwargs: Any,
     ) -> ToolCallResult:
         # The failure WARNING is written by _run_in_stage_report_success; here we only
@@ -230,7 +242,8 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
                 **kwargs,
             )
         except InvalidToolCallParameterException as e:
-            self._report_error_to_stage(stage_wrapper, e, error_reference)
+            if report_errors_to_stage:
+                self._report_error_to_stage(stage_wrapper, e, error_reference)
             return self.__process_fallback(
                 [
                     RetryStrategyModel(
@@ -247,7 +260,8 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
                 error_to_show = e
             else:
                 error_to_show = Exception("An error occurred while executing the tool.")
-            self._report_error_to_stage(stage_wrapper, error_to_show, error_reference)
+            if report_errors_to_stage:
+                self._report_error_to_stage(stage_wrapper, error_to_show, error_reference)
             return self.__process_fallback(fallback.strategies, tool_call_id, e, error_reference)
 
     @staticmethod

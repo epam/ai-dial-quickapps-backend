@@ -1,9 +1,11 @@
 import logging
 
 from fastapi_injector import request_scope
-from injector import Binder, Module, ProviderOf, multiprovider
+from injector import Binder, Module, ProviderOf, multiprovider, singleton
 
 from quickapp.agent_hooks._agent_hooks_context import _AgentHooksContext
+from quickapp.agent_hooks._background_hook_settings import BackgroundHookSettings
+from quickapp.agent_hooks._background_registry import BackgroundHookRegistry, BackgroundHookShutdown
 from quickapp.agent_hooks._completion_runner import _CompletionHookRunner
 from quickapp.agent_hooks._config_driven_hooks import _ConfigDrivenToolCallHook
 from quickapp.agent_hooks._context_factory import HookContextFactory
@@ -13,6 +15,7 @@ from quickapp.agent_hooks._hook_tool_registry import HookToolRegistry
 from quickapp.common.abstract.base_transformer import MessagesTransformer
 from quickapp.common.abstract.completion_hook_runner import CompletionHookRunner
 from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher
+from quickapp.common.base_initializer import ShutdownInitializer
 from quickapp.common.exceptions import InitializationException
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.hooks import HookEvent, ToolCallHookConfig
@@ -29,6 +32,8 @@ class AgentHooksModule(Module):
         binder.bind(HookHandlerRegistry, to=HookHandlerRegistry, scope=request_scope)
         binder.bind(HookDispatcher, to=HookDispatcher, scope=request_scope)
         binder.bind(_CompletionHookRunner, to=_CompletionHookRunner, scope=request_scope)
+        binder.bind(BackgroundHookSettings, to=BackgroundHookSettings, scope=singleton)
+        binder.bind(BackgroundHookRegistry, to=BackgroundHookRegistry, scope=singleton)
 
     @multiprovider
     def _provide_messages_transformers(
@@ -51,6 +56,12 @@ class AgentHooksModule(Module):
         self, runner: _CompletionHookRunner
     ) -> list[CompletionHookRunner]:
         return [runner]
+
+    @multiprovider
+    def _provide_shutdown_initializers(
+        self, shutdown: BackgroundHookShutdown
+    ) -> list[ShutdownInitializer]:
+        return [shutdown]
 
     @multiprovider
     def __provide_initialization_exceptions(

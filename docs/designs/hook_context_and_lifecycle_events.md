@@ -647,8 +647,9 @@ class HookExecution(StrEnum):
     BACKGROUND = "background"
 ```
 
-`execution` is valid only on `on_completion` (explicitly setting it on `on_request_start` is a validation
-error, same mechanism as `frequency` on `on_completion`). Existing manifests are unaffected.
+`execution: background` is valid only on `on_completion` (on `on_request_start` it is a validation error).
+`blocking`, the default, is accepted everywhere so that a dumped config validates again. Existing manifests
+are unaffected. Detailed design: [Async (non-blocking) hooks](async_hooks.md).
 
 **Semantics.**
 

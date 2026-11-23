@@ -1,11 +1,7 @@
-import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 
 logger = logging.getLogger(__name__)
-
-# Strong references to teardown tasks that outlive their request (otherwise they can be GC'd).
-_DEFERRED_CLOSE_TASKS: set[asyncio.Task[None]] = set()
 
 
 class RequestAsyncCloseRegistry:
@@ -20,43 +16,48 @@ class RequestAsyncCloseRegistry:
     misbehaving resource cannot break teardown of the others or mask the original
     error being re-raised.
 
-    Detached work (async hooks) is tracked with ``track_detached``. While any is still running,
-    ``aclose_all`` does not block the request: the teardown is deferred to a background task that
-    runs the closers once the detached work has finished.
+    Background work that outlives the request shares the teardown with ``hand_off``. The
+    registry counts shares: the request holds one (released by ``aclose_all``) and every hand-off
+    adds one. The closers run when the last share is released, whichever owner that is.
     """
 
     def __init__(self) -> None:
         self._closers: list[tuple[str, Callable[[], Awaitable[None]]]] = []
-        self._detached: set[asyncio.Task] = set()
+        self._shares = 1
+        self._request_share_released = False
 
     def register(self, name: str, aclose: Callable[[], Awaitable[None]]) -> None:
         self._closers.append((name, aclose))
 
-    def track_detached(self, task: asyncio.Task) -> None:
-        self._detached.add(task)
-        task.add_done_callback(self._detached.discard)
+    def hand_off(self) -> Callable[[], Awaitable[None]]:
+        """Take a share of the teardown and return the callable that releases it (once)."""
+        self._shares += 1
+        released = False
+
+        async def _release() -> None:
+            nonlocal released
+            if released:
+                return
+            released = True
+            await self._release_share()
+
+        return _release
 
     async def aclose_all(self) -> None:
+        """Release the request's own share; the closers run if no hand-off still holds one."""
+        if self._request_share_released:
+            return
+        self._request_share_released = True
+        await self._release_share()
+
+    async def _release_share(self) -> None:
+        self._shares -= 1
+        if self._shares == 0:
+            await self._run_closers()
+
+    async def _run_closers(self) -> None:
         closers = self._closers
         self._closers = []
-        pending = {task for task in self._detached if not task.done()}
-        if pending:
-            logger.info("Deferring request teardown until %d detached task(s) finish", len(pending))
-            task = asyncio.create_task(self._close_after(pending, closers))
-            _DEFERRED_CLOSE_TASKS.add(task)
-            task.add_done_callback(_DEFERRED_CLOSE_TASKS.discard)
-            return
-        await self._run_closers(closers)
-
-    async def _close_after(
-        self, pending: set[asyncio.Task], closers: list[tuple[str, Callable[[], Awaitable[None]]]]
-    ) -> None:
-        await asyncio.gather(*pending, return_exceptions=True)
-        await self._run_closers(closers)
-        logger.info("Deferred request teardown completed")
-
-    @staticmethod
-    async def _run_closers(closers: list[tuple[str, Callable[[], Awaitable[None]]]]) -> None:
         for name, aclose in closers:
             try:
                 await aclose()

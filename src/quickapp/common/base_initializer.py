@@ -9,6 +9,7 @@ class InitializerType(str, Enum):
     completion = "completion"
     configuration = "configuration"
     startup = "startup"
+    shutdown = "shutdown"
 
 
 # The BaseInitializer class is an interface for components that handle asynchronous initialization
@@ -30,6 +31,7 @@ class BaseInitializer(ABC):
 CompletionInitializer = Annotated[BaseInitializer, InitializerType.completion]
 ConfigurationInitializer = Annotated[BaseInitializer, InitializerType.configuration]
 StartupInitializer = Annotated[BaseInitializer, InitializerType.startup]
+ShutdownInitializer = Annotated[BaseInitializer, InitializerType.shutdown]
 
 
 async def invoke_initializers(injector: Injector, initializer_type: InitializerType) -> None:

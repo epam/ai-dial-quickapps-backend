@@ -153,3 +153,27 @@ class TestHookHandlerRegistry:
     def test_distinct_hooks_get_distinct_handlers(self) -> None:
         registry = HookHandlerRegistry(_registry([_tool("search")]))
         assert registry.handler_for(_config()) is not registry.handler_for(_config())
+
+
+class TestBackgroundExecution:
+    @pytest.mark.asyncio
+    async def test_background_hook_calls_the_tool_without_a_stage(self) -> None:
+        tool = _tool("search")
+        config = _config(event="on_completion", execution="background", arguments={"query": "q"})
+
+        result = await ToolCallHookHandler(config, [tool]).run(_USER_CONTEXT)
+
+        tool.arun.assert_awaited_once_with("synthetic_injection_probe", background=True, query="q")
+        assert result is not None
+        assert result.content == "tool-output"
+
+    @pytest.mark.asyncio
+    async def test_blocking_hook_keeps_the_hidden_debug_stage(self) -> None:
+        tool = _tool("search")
+        config = _config(event="on_completion", execution="blocking")
+
+        await ToolCallHookHandler(config, [tool]).run(_USER_CONTEXT)
+
+        tool.arun.assert_awaited_once_with(
+            "synthetic_injection_probe", stage_level=StageDisplayLevel.DEBUG
+        )

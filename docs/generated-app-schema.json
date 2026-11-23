@@ -2147,6 +2147,14 @@
       "title": "HookEvent",
       "type": "string"
     },
+    "HookExecution": {
+      "enum": [
+        "blocking",
+        "background"
+      ],
+      "title": "HookExecution",
+      "type": "string"
+    },
     "InjectionFrequency": {
       "enum": [
         "always",
@@ -3895,11 +3903,10 @@
         "event": {
           "$ref": "#/$defs/HookEvent"
         },
-        "async": {
-          "default": false,
-          "description": "Run the hook in the background without delaying the response. Its result is discarded and failures are only logged. Only supported for 'on_completion'.",
-          "title": "Async",
-          "type": "boolean"
+        "execution": {
+          "$ref": "#/$defs/HookExecution",
+          "default": "blocking",
+          "description": "'blocking' (default) awaits the hook before the response closes. 'background' runs it without delaying the response: its result is discarded, it shows no stage and failures are only logged. Only supported for 'on_completion'."
         },
         "name": {
           "anyOf": [
