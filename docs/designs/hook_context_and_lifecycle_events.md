@@ -3,8 +3,9 @@
 - **Status:** Implemented
 - **Graduated:** out of preview, stable since [PR#693](https://github.com/epam/ai-dial-quickapps-backend/pull/693)
 - **User-facing:** [CONFIGURATION - Hooks](../../CONFIGURATION.md#hooks-configuration) / [Hooks guide](../hooks.md)
-- **Phases:** Phase 1 (this iteration, specified in detail) and Phase 2 (background execution, a
-  hook-level `condition` and role-filtered message lists, conditional) — see [Phasing](#phasing)
+- **Phases:** Phase 1 (this iteration, specified in detail) and Phase 2 (background execution —
+  implemented, see [Background hooks](background_hooks.md); a hook-level `condition` and role-filtered message
+  lists, conditional) — see [Phasing](#phasing)
 - **Dependencies:**
   - [Config-Driven Synthetic Tool Call Injection](config_driven_hooks.md) — supersedes its runtime once implemented
   - [Generic Synthetic Tool-Call Injector](generic_synthetic_toolcall_injector.md)
@@ -59,7 +60,7 @@ HTTP call), has nowhere to plug in.
 | Phase | Scope | Status |
 |---|---|---|
 | **1** | `on_completion` (blocking), hook context, JSON-e argument templating with best-effort config validation, handler / dispatcher / seam-adapter split | Specified in this document |
-| **2** | `execution: background` for `on_completion`; hook-level `condition`; role-filtered message lists in the context | Conditional — see [Phase 2](#phase-2-background-execution-conditional) |
+| **2** | `execution: background` for `on_completion`; hook-level `condition`; role-filtered message lists in the context | Background execution implemented ([Background hooks](background_hooks.md)); the rest conditional — see [Phase 2](#phase-2-background-execution-implemented) |
 
 Phase 2 holds three independent items. Background execution starts only if Phase 1 proves the hook model
 worthwhile **and** the memory PoC shows that blocking `on_completion` latency is a real problem; it may
@@ -144,7 +145,7 @@ flowchart TD
 | Layer | Responsibility | Knows about |
 |---|---|---|
 | `HookHandler` | Execute one hook against a context, return a `HookResult` | The context, its own config |
-| `HookDispatcher` | Run handlers with timeout and error isolation. `dispatch(event, …)` selects hooks for an event (used by `on_completion`). For `on_request_start`, selection stays in `AgentHooksModule` and the adapter calls `run_hook` for its own hook (see Component 5) | Handlers, hook configs |
+| `HookDispatcher` | Run handlers with timeout and error isolation. `hooks_for(event)` selects hooks for an event and `run_all(hooks, context)` runs them (used by `on_completion`). For `on_request_start`, selection stays in `AgentHooksModule` and the adapter calls `run_hook` for its own hook (see Component 5) | Handlers, hook configs |
 | Seam adapter | Build the context at its checkpoint, call the dispatcher, apply results by event rules | Its own seam only |
 
 **Comparison with Claude Code.** In Claude Code every handler type (`command`, `http`, `mcp_tool`,
@@ -401,7 +402,7 @@ class HookHandler(ABC):               # agent_hooks/_handlers.py
   the single owner that turns omitted `timeout_seconds` into the event default before `wait_for`.
   Without that step an omitted value would leave the open response bounded only by the tool's own
   timeout.
-- `dispatch(event, context)` — `run_hook` for every configured hook of `event`, **sequentially in
+- `hooks_for(event)` / `run_all(hooks, context)` — `run_all` calls `run_hook` for every given hook, **sequentially in
   manifest order**, returning the non-`None` results. Sequential (unlike Claude Code's parallel
   execution) keeps ordering deterministic; parallel execution can be an opt-in later. Used by
   `on_completion`. For `on_request_start`, selection stays in `AgentHooksModule` (one transformer per
@@ -430,7 +431,7 @@ It **remains a `MessagesTransformer`**, one instance per hook, for a single reas
 chain's order is the order of modules in `app_factory`, and today's position of `AgentHooksModule` in
 that chain must be preserved. Hook selection for this event stays in
 `AgentHooksModule._build_on_request_message_transformers` — one transformer per hook — not in
-`dispatch()`. The adapter calls `dispatcher.run_hook` for its own config only. It keeps all
+`hooks_for()`. The adapter calls `dispatcher.run_hook` for its own config only. It keeps all
 injection-policy logic it has today (`frequency`, `refresh_condition`/TTL, `should_inject`,
 `make_call_id`); it no longer calls the tool itself:
 
@@ -501,7 +502,7 @@ class CompletionHookRunner(ABC):
 - `AgentModule` provides an empty `@multiprovider list[CompletionHookRunner]` — the established pattern
   for extension lists (`MessagesTransformer`, `ToolCallResultEnricher`).
 - `AgentHooksModule` (preview) contributes one runner that builds `CompletionHookContext` via the
-  factory and calls `dispatcher.dispatch(ON_COMPLETION, context)`, discarding results.
+  factory and splits the `on_completion` hooks (`hooks_for`) by `execution`, runs blocking ones via `run_all` and hands background ones to `BackgroundHookRegistry`, discarding results.
 - `Orchestrator.invoke()` calls the runners **after the loop, inside `_persisting_state()`**, with
   per-runner isolation at the seam:
 
@@ -518,7 +519,7 @@ async def invoke(self):
                     logger.warning("Completion hook runner failed", exc_info=True)
 ```
 
-The failure boundary is the seam, not only the dispatcher. Context build and `dispatch` both sit inside
+The failure boundary is the seam, not only the dispatcher. Context build and `run_all` both sit inside
 `runner.run`; a factory failure would otherwise escape `HookDispatcher`'s `try`, land in
 `_persisting_state`'s exception path ("Orchestrator interrupted"), re-raise, and deliver a protocol
 error on a choice that has already streamed the final answer. Isolating each runner at the call site
@@ -546,7 +547,7 @@ default of 30s (Component 4). Hooks run sequentially, so the open response is bo
 their effective timeouts. Errors and timeouts are logged and never fail the request.
 
 Blocking is the only execution mode in Phase 1. Whether this latency is acceptable for the memory PoC is
-measured during Phase 1 and is the input to the decision on [Phase 2](#phase-2-background-execution-conditional).
+measured during Phase 1 and was the input to the decision on [Phase 2](#phase-2-background-execution-implemented).
 
 **Change:** New `common/abstract/completion_hook_runner.py`; `AgentModule` empty multiprovider;
 `Orchestrator` injects `list[CompletionHookRunner]` and calls it in `invoke()`.
@@ -562,13 +563,13 @@ measured during Phase 1 and is the input to the decision on [Phase 2](#phase-2-b
 | Field | On | Type | Default | Description |
 |---|---|---|---|---|
 | `event` | base | `HookEvent` | required | Adds `on_completion` |
-| `timeout_seconds` | base | `float \| None` | `None` | Per-hook timeout. `None` = event default, resolved by `HookDispatcher.run_hook` (Component 4): 30 for `on_completion`, 15 for `on_request_start` (both block the response; the tool's own timeout still applies if shorter) |
+| `timeout_seconds` | base | `float \| None` | `None` | Per-hook timeout. `None` = event default, resolved by `HookDispatcher.run_hook` (Component 4): 30 for `on_completion`, 15 for `on_request_start` (blocking hooks hold the response; background hooks do not; the tool's own timeout still applies if shorter) |
 | `arguments` | `tool_call` | `dict[str, Any]` | `{}` | Now a JSON-e template (`${expr}`, `{"$eval": "expr"}`, operators) rendered against the hook context |
 | `frequency` | `tool_call` | `InjectionFrequency` | `append_if_changed` | `on_request_start` only (unchanged) |
 | `refresh_condition` | `tool_call` | `RefreshConditionConfig \| None` | `None` | `on_request_start` only (unchanged); not allowed together with a template in `arguments` |
 
 No field is added "for the future": Phase 1 adds only `timeout_seconds` and the templated `arguments`.
-The `execution` field belongs to [Phase 2](#phase-2-background-execution-conditional); adding a new
+The `execution` field belongs to [Phase 2](#phase-2-background-execution-implemented); adding a new
 optional field with a default is a non-breaking schema change.
 
 **Cross-field validation** is enforced by `model_validator`s on the hook config:
@@ -613,7 +614,7 @@ that cannot grow without breaking old manifests is a defect. Rules for every fie
 - **Decision protocol.** `HookResult` fields for `decision` (allow/deny), `updated_input`, and
   `additional_context`, with Claude Code merge semantics (most restrictive decision wins). Only needed by
   tool-call seams.
-- **`background` execution** for `on_completion` — deferred to [Phase 2](#phase-2-background-execution-conditional).
+- **`background` execution** for `on_completion` — deferred to [Phase 2](#phase-2-background-execution-implemented).
 - **Deciding whether a hook runs.** JSON-e conditionals (`$if`, `$switch`) shape argument *values*; they
   cannot skip the tool call (`$if` without `else` only drops that argument key). A hook-level `condition`
   is deferred to [Phase 2](#hook-level-condition).
@@ -632,11 +633,11 @@ that cannot grow without breaking old manifests is a defect. Rules for every fie
 
 ---
 
-## Phase 2: Background execution (conditional)
+## Phase 2: Background execution (implemented)
 
-**Start condition.** Phase 1 is shipped and used by the memory PoC, and measured blocking latency of
-`on_completion` hooks is a problem. Nothing below is built in Phase 1; the [Phasing](#phasing) rules keep
-it additive.
+**Start condition.** Phase 1 shipped and was used by the memory PoC, and blocking latency of
+`on_completion` hooks was a problem. Background execution was built on top of Phase 1 as planned; the
+[Phasing](#phasing) rules kept it additive.
 
 **Configuration.** One new optional field on `tool_call` hooks, an enum from the start (see
 [Schema evolution rules](#schema-evolution-rules)):
@@ -649,7 +650,7 @@ class HookExecution(StrEnum):
 
 `execution: background` is valid only on `on_completion` (on `on_request_start` it is a validation error).
 `blocking`, the default, is accepted everywhere so that a dumped config validates again. Existing manifests
-are unaffected. Detailed design: [Async (non-blocking) hooks](async_hooks.md).
+are unaffected. Detailed design: [Async (non-blocking) hooks](background_hooks.md).
 
 **Semantics.**
 
@@ -660,11 +661,13 @@ are unaffected. Detailed design: [Async (non-blocking) hooks](async_hooks.md).
   Hooks that need it stay `blocking` — which is why `blocking` remains the default.
 
 **Mechanism — ownership handoff.** `_persisting_state`'s `finally` calls
-`request_async_close_registry.aclose_all()`, which closes per-request MCP sessions. For background hooks
-the orchestrator does not close them; it hands the registry and the hook tasks to an application-scoped
-`BackgroundHookRegistry`, which bounds concurrency, applies the same per-hook timeout as `run_hook`, calls
-`aclose_all()` after the tasks finish, and drains pending tasks on shutdown. All tools a hook needs are
-resolved before the hand-off, so no request-scoped DI lookup happens after the request ends.
+`request_async_close_registry.aclose_all()`, which closes per-request MCP sessions. The registry counts
+shares of that teardown: for background hooks the application-scoped `BackgroundHookRegistry` takes a share
+(`hand_off()`), so the closers run when the last share is released, either by the request or by the registry
+after the hook tasks finish. The registry also bounds concurrency and drains pending tasks on shutdown; the per-hook timeout is applied
+by `run_hook`, not by the registry. A hook's handler and tools are looked up on the task's first step, which
+runs inside the request because the seam waits out the hold period, so no request-scoped DI lookup happens
+after the request ends.
 `ToolCallHookHandler` gains a stage-less tool call — the single change point promised by the Phasing
 rules.
 
@@ -677,15 +680,14 @@ the `background` mode of any event, not only `on_completion`:
 | Live MCP sessions (`_MCPSessionManager`) | Closed by `aclose_all()` — kept alive by the hand-off |
 | Static authorization from the manifest (API key, Basic, OAuth client secret) | Independent of the request, remains valid |
 | `DIAL_BEARER` (user token) | Valid for the token's own TTL, normally outlives the response |
-| `DIAL_API_KEY` (per-request key) | **Open question** — lifetime is decided by DIAL Core and must be confirmed before Phase 2 |
+| `DIAL_API_KEY` (per-request key) | A call accepted by Core before the response closes keeps working on its own child key; a call that reaches Core later gets 401 — see [the experiment](background_hooks.md#experiment-prototype) |
 | `choice`, stages, usage statistics | Tied to the response — unavailable, hence log-only |
 | Interactive MCP login (`MCPUnauthorizedException`) | Needs the user — the hook ends silently with a log line |
 
 **Open questions.**
 
-- Does `DIAL_API_KEY` survive the response? If not, `background` must be restricted to tools that do not
-  use it (MCP and REST with manifest-level authorization), rejected at config validation for DIAL
-  deployment tools.
+- ~~Does `DIAL_API_KEY` survive the response?~~ Answered by the experiment in [Background hooks](background_hooks.md):
+  accepted calls keep working, so no restriction is needed; the response is held open for a short hold period.
 - Is per-replica best-effort delivery acceptable, or does the memory PoC need a durable queue?
 
 ### Hook-level `condition`

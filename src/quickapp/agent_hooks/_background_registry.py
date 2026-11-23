@@ -34,16 +34,7 @@ class BackgroundHookRegistry:
         Jobs beyond the concurrency limit are dropped with a warning. When none is accepted,
         the teardown stays with the request.
         """
-        free = max(self._settings.max_concurrent - len(self._hook_tasks), 0)
-        accepted, dropped = list(jobs[:free]), list(jobs[free:])
-        for name, coroutine in dropped:
-            coroutine.close()
-            logger.warning(
-                "Background hook %r dropped: %d already running (limit %d)",
-                name,
-                len(self._hook_tasks),
-                self._settings.max_concurrent,
-            )
+        accepted = self._admit(jobs)
         if not accepted:
             return []
 
@@ -59,6 +50,20 @@ class BackgroundHookRegistry:
         self._supervisors.add(supervisor)
         supervisor.add_done_callback(self._supervisors.discard)
         return tasks
+
+    def _admit(self, jobs: Sequence[HookJob]) -> list[HookJob]:
+        """Keep the jobs that fit under the concurrency limit; close and log the rest."""
+        free = max(self._settings.max_concurrent - len(self._hook_tasks), 0)
+        accepted, dropped = list(jobs[:free]), list(jobs[free:])
+        for name, coroutine in dropped:
+            coroutine.close()
+            logger.warning(
+                "Background hook %r dropped: %d already running (limit %d)",
+                name,
+                len(self._hook_tasks),
+                self._settings.max_concurrent,
+            )
+        return accepted
 
     @staticmethod
     async def _supervise(
@@ -86,10 +91,10 @@ class BackgroundHookRegistry:
             await asyncio.gather(*unfinished, return_exceptions=True)
 
 
-class BackgroundHookShutdown(ShutdownInitializer):
+@inject
+class _BackgroundHookShutdown(ShutdownInitializer):
     """Drains background hooks when the application stops."""
 
-    @inject
     def __init__(self, registry: BackgroundHookRegistry) -> None:
         self._registry = registry
 

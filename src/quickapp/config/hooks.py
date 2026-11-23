@@ -65,7 +65,7 @@ class _BaseHookConfig(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _reject_execution_outside_completion(self) -> Self:
+    def _reject_background_outside_completion(self) -> Self:
         # Only 'background' is rejected: 'blocking' is the default and a dumped config always
         # carries it, so rejecting it would break dump -> validate round trips.
         if self.execution is HookExecution.BACKGROUND and self.event is not HookEvent.ON_COMPLETION:

@@ -24,6 +24,7 @@ def _tool(function_name: str, content: str = "tool-output") -> MagicMock:
         open_ai_tool=SimpleNamespace(function=SimpleNamespace(name=function_name))
     )
     tool.arun = AsyncMock(return_value=SimpleNamespace(content=content))
+    tool.arun_in_background = AsyncMock(return_value=SimpleNamespace(content=content))
     return tool
 
 
@@ -163,7 +164,7 @@ class TestBackgroundExecution:
 
         result = await ToolCallHookHandler(config, [tool]).run(_USER_CONTEXT)
 
-        tool.arun.assert_awaited_once_with("synthetic_injection_probe", background=True, query="q")
+        tool.arun_in_background.assert_awaited_once_with("synthetic_injection_probe", query="q")
         assert result is not None
         assert result.content == "tool-output"
 

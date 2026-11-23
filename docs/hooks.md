@@ -11,7 +11,7 @@ This guide describes how that works at runtime. Fields and examples are in
 flowchart LR
     A[Request] --> B["on_request_start hooks<br/>(result injected into history)"]
     B --> C[Orchestrator loop<br/>LLM calls and tools]
-    C -->|finished normally| D["on_completion hooks<br/>(result discarded)"]
+    C -->|finished normally| D["on_completion hooks<br/>(result discarded;<br/>blocking awaited, background not)"]
     C -->|external tool calls| E[Response closed]
     D --> E
 ```
@@ -19,7 +19,7 @@ flowchart LR
 | Event | When | Result |
 |-------|------|--------|
 | `on_request_start` | Before the first LLM call of the request | Injected into the conversation as a synthetic tool-call pair |
-| `on_completion` | After the orchestrator loop ended normally, before the response is closed | Discarded; the hook exists for its side effect |
+| `on_completion` | After the orchestrator loop ended normally. `blocking` hooks finish before the response is closed; `background` hooks do not hold it open (beyond a short hold period) | Discarded; the hook exists for its side effect |
 
 `on_completion` does not fire when the turn ends with external tool calls handed back to the client.
 
@@ -42,10 +42,10 @@ flowchart LR
 
 ## `on_completion`
 
-- Runs inside the request, after the final answer is streamed and before the response is closed, so
-  per-request MCP sessions are still open and the hook can reuse them.
-- Hooks run **sequentially in manifest order**. The response stays open until they finish, so the delay is
-  bounded by the sum of their timeouts.
+- Runs after the final answer is streamed. `blocking` hooks (the default) run before the response is closed,
+  so per-request MCP sessions are still open and the hook can reuse them.
+- `blocking` hooks run **sequentially in manifest order**. The response stays open until they finish, so the
+  delay is bounded by the sum of their timeouts.
 - The result is not added to the conversation and not stored, so the next turn does not see it.
 - A hook with `"execution": "background"` does not delay the response; see [Background hooks](#background-hooks).
 
@@ -55,7 +55,7 @@ flowchart LR
 nobody waits for, such as saving memory.
 
 - **Not delayed:** the response closes without waiting for the hook to finish. It stays open for at most
-  3 seconds so the hook's call can reach DIAL Core first (a call that starts after the response closed is
+  3 seconds (`BACKGROUND_HOOKS_RESPONSE_HOLD_SECONDS`) so the hook's call can reach DIAL Core first (a call that starts after the response closed is
   rejected with 401). A fast hook adds no delay.
 - **Output:** none. No stage is shown (not even for an error), nothing is added to the conversation, and
   usage statistics do not include the hook. Failures and timeouts are only logged.
@@ -214,5 +214,5 @@ The platform delivers the result correctly and the model can quote it when asked
 - [CONFIGURATION — Hooks](../CONFIGURATION.md#hooks-configuration) — fields, templates, examples
 - [Design: hook context and lifecycle events](./designs/hook_context_and_lifecycle_events.md) — rationale and
   hook-level `condition` and role-filtered message lists (Phase 2)
-- [Design: background hooks](./designs/async_hooks.md) — `execution: background`
+- [Design: background hooks](./designs/background_hooks.md) — `execution: background`
 - [Design: tools hidden from the model](./designs/tools_hidden_from_model.md)

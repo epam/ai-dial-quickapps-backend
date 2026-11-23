@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from quickapp.agent_hooks import _completion_runner as runner_module
+from quickapp.agent_hooks._background_hook_settings import BackgroundHookSettings
 from quickapp.agent_hooks._background_registry import BackgroundHookRegistry
 from quickapp.agent_hooks._completion_runner import _CompletionHookRunner
 from quickapp.agent_hooks._context_factory import HookContextFactory
@@ -14,7 +14,7 @@ from quickapp.config.hooks import HookEvent, ToolCallHookConfig
 
 
 class _Harness:
-    def __init__(self, hooks: list[ToolCallHookConfig] | None) -> None:
+    def __init__(self, hooks: list[ToolCallHookConfig] | None, hold: float = 3.0) -> None:
         self.factory = MagicMock(spec=HookContextFactory)
         self.dispatcher = MagicMock(spec=HookDispatcher)
         self.dispatcher.hooks_for.side_effect = lambda event: [
@@ -26,7 +26,11 @@ class _Harness:
         self.registry.start.return_value = []
         self.close_registry = RequestAsyncCloseRegistry()
         self.runner = _CompletionHookRunner(
-            self.factory, self.dispatcher, self.registry, self.close_registry
+            self.factory,
+            self.dispatcher,
+            self.registry,
+            self.close_registry,
+            BackgroundHookSettings(response_hold_seconds=hold),
         )
 
 
@@ -114,11 +118,8 @@ class TestCompletionHookRunner:
         assert order == ["start", "run_all"]
 
     @pytest.mark.asyncio
-    async def test_response_waits_at_most_the_grace_period_for_background_hooks(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(runner_module, "_BACKGROUND_HOOK_GRACE_SECONDS", 0.05)
-        h = _Harness([_completion("bg", "background")])
+    async def test_response_waits_at_most_the_hold_period_for_background_hooks(self) -> None:
+        h = _Harness([_completion("bg", "background")], hold=0.05)
         stuck = asyncio.create_task(asyncio.sleep(10))
         h.registry.start.return_value = [stuck]
         started = asyncio.get_running_loop().time()
@@ -131,11 +132,8 @@ class TestCompletionHookRunner:
             stuck.cancel()
 
     @pytest.mark.asyncio
-    async def test_fast_background_hook_does_not_hold_the_response(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(runner_module, "_BACKGROUND_HOOK_GRACE_SECONDS", 5.0)
-        h = _Harness([_completion("bg", "background")])
+    async def test_fast_background_hook_does_not_hold_the_response(self) -> None:
+        h = _Harness([_completion("bg", "background")], hold=5.0)
         h.registry.start.return_value = [asyncio.create_task(asyncio.sleep(0))]
         started = asyncio.get_running_loop().time()
 
@@ -144,16 +142,13 @@ class TestCompletionHookRunner:
         assert asyncio.get_running_loop().time() - started < 1
 
     @pytest.mark.asyncio
-    async def test_grace_period_is_measured_from_the_start_not_after_blocking_hooks(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(runner_module, "_BACKGROUND_HOOK_GRACE_SECONDS", 0.1)
-        h = _Harness([_completion("bg", "background"), _completion("inline")])
+    async def test_hold_period_is_measured_from_the_start_not_after_blocking_hooks(self) -> None:
+        h = _Harness([_completion("bg", "background"), _completion("inline")], hold=0.3)
         stuck = asyncio.create_task(asyncio.sleep(10))
         h.registry.start.return_value = [stuck]
 
         async def _slow_blocking(hooks, context):
-            await asyncio.sleep(0.2)
+            await asyncio.sleep(0.6)
             return []
 
         h.dispatcher.run_all.side_effect = _slow_blocking
@@ -161,6 +156,8 @@ class TestCompletionHookRunner:
 
         try:
             await h.runner.run(iteration_count=1, total_tool_calls=0)
-            assert asyncio.get_running_loop().time() - started < 0.3
+            # Waited for the blocking hook (0.6s) only; the 0.3s hold had already elapsed,
+            # so nothing is added (it would be ~0.9s if measured after the blocking hooks).
+            assert asyncio.get_running_loop().time() - started < 0.75
         finally:
             stuck.cancel()

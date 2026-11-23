@@ -1,14 +1,11 @@
-# Design: Async (Non-Blocking) Hooks
+# Design: Background (Non-Blocking) Hooks
 
-- **Status:** Draft
+- **Status:** Implemented
 - **Issue:** [#616](https://github.com/epam/ai-dial-quickapps-backend/issues/616)
+- **User-facing:** [CONFIGURATION - Hooks](../../CONFIGURATION.md#hooks-configuration) / [Hooks guide: background hooks](../hooks.md#background-hooks)
 - **Dependencies:**
   - [Hook Context, Parameter Templating, and Lifecycle Events](hook_context_and_lifecycle_events.md) — this is its
     "Phase 2: background execution"
-
-> **Review note.** This is the detailed design of Phase 2 of the parent design. It follows the parent's rules
-> (enum config, seam-level scheduling, stage-less call, application-scoped registry). Decisions are proposals
-> for the team to confirm or change.
 
 ## Problem Statement
 
@@ -105,14 +102,14 @@ The response must not close before every background hook's call has reached Core
 | Option | Notes |
 |---|---|
 | Response headers as the signal | Rejected for MCP: **measured** — through Core the headers of a slow `tools/call` arrive only when the tool finishes (9.2 s for an 8 s tool), although the MCP server itself sends them immediately. Core buffers them, so the signal arrives too late to be useful. Deployment tools (first streamed chunk) may behave differently; not verified |
-| Capped wait | After starting the background hooks, wait until they all finish **or** a grace period expires (3 s), whichever comes first. A fast hook adds no delay; a slow one adds at most the grace period; the hooks are not cancelled |
+| Capped wait | After starting the background hooks, wait until they all finish **or** a hold period expires (3 s by default), whichever comes first. A fast hook adds no delay; a slow one adds at most the hold period; the hooks are not cancelled |
 | Fixed delay | Always wait the full period. Rejected: adds delay even for fast hooks |
 | Change in Core | Flush headers immediately on proxied calls, or expose an accepted indicator. Rejected for now: needs a Core change this feature does not otherwise need |
 
 **Decision:** capped wait. All background hooks are started first and awaited together, so with several hooks
-the delay is at most one grace period, not one per hook. The period is a constant (3 s) next to the scheduling
-code, and it is measured from the moment the hooks start, so blocking hooks that run meanwhile eat into it
-rather than adding to it. It is still a timing assumption: on a Core slower than the grace period the call can
+the delay is at most one hold period, not one per hook. The period is the `BACKGROUND_HOOKS_RESPONSE_HOLD_SECONDS` setting
+(default 3 s), and it is measured from the moment the hooks start, so blocking hooks that run meanwhile eat into it
+rather than adding to it. It is still a timing assumption: on a Core slower than the hold period the call can
 reach Core after the response closed and fail with 401 (logged, never shown to the user). A signal for deployment
 tools can be added later as an early exit without changing the manifest.
 
@@ -122,33 +119,38 @@ Follows the parent design's Phasing rule 4. `HookDispatcher` knows nothing about
 (timeout and failure isolation) applies to any mode, and `run_all` runs a list of hooks in order.
 `_CompletionHookRunner`, the `on_completion` seam, splits the event's hooks:
 
-1. For each `background` hook, `dispatcher.prepare(hook)` resolves its handler and tools **now**, while the
-   request is alive. A hook that cannot be prepared is logged and skipped.
-2. The prepared hooks go to the `BackgroundHookRegistry` (§4), which starts them.
+1. For each `background` hook, `dispatcher.run_hook(hook, context)` is created as a coroutine (nothing runs yet).
+2. The coroutines go to the `BackgroundHookRegistry` (§4), which starts them as tasks.
 3. The `blocking` hooks run in manifest order through `run_all`.
-4. The runner waits for the background hooks for what is left of the grace period (§2).
+4. The runner waits for the background hooks for what is left of the hold period (§2).
 
 Background hooks therefore start before blocking ones and overlap with them, so their calls reach Core while the
 per-request key is certainly valid.
 
+**Lookup timing.** `run_hook` resolves the hook's handler and tools on the task's first step, not at scheduling
+time. This is safe because the runner never returns before that step has run: it awaits the blocking hooks and then
+waits up to the hold period for the background tasks, all inside the request. The design relies on this
+assumption; a seam that returned right after starting the tasks would have to resolve the handler first.
+
 **Request-scoped objects.** `fastapi_injector` drops the request-scope cache when the response ends, so any
-request-scoped lookup made after that raises `KeyError`. Hence step 1: everything a hook's tool is built from is
-resolved before the hand-off, and the tool holds what it needs from then on. Tools must not resolve
-request-scoped dependencies lazily inside `arun`; a tool that did would work inside the grace window and fail
+request-scoped lookup made after that raises `KeyError`. The handler and its tools are looked up on the task's first step (see "Lookup timing"), which is
+guaranteed to run inside the request; from then on the tool holds what it needs. Tools must not resolve
+request-scoped dependencies lazily inside `arun`; a tool that did would work inside the hold window and fail
 afterwards.
 
 ### 4. Ownership of the work and of the request's teardown
 
-`BackgroundHookRegistry` is application-scoped (singleton). Per request it receives the prepared hooks and the
+`BackgroundHookRegistry` is application-scoped (singleton). Per request it receives the hook coroutines and the
 request's `RequestAsyncCloseRegistry`:
 
 - **Bounded concurrency.** At most `BACKGROUND_HOOKS_MAX_CONCURRENT` (default 50) hooks run per process. A hook
   that does not fit is skipped with a warning (best-effort; dropping protects the process, and the loss is
   visible in logs). If nothing is accepted, the teardown stays with the request.
-- **Hand-off of teardown.** `RequestAsyncCloseRegistry.hand_off()` makes the orchestrator's `aclose_all()` a no-op
-  and returns the callable that runs the closers. The registry calls it when *all* of the request's hooks have
-  finished (or failed, or were cancelled), so per-request MCP sessions stay open exactly as long as a hook uses
-  them. Their extra lifetime is bounded by the hook's `timeout_seconds`.
+- **Hand-off of teardown.** `RequestAsyncCloseRegistry` counts shares of the teardown. The request holds one;
+  `hand_off()` takes one more and returns a callable that releases it (once). The closers run when the *last* share
+  is released, whether that is the request's `aclose_all()` or the background registry's release after the request's
+  hooks finished (or failed, or were cancelled), so per-request MCP sessions stay open exactly as long as a hook
+  uses them. Their extra lifetime is bounded by the hook's `timeout_seconds`.
 - **Strong references.** The registry keeps the tasks, so they are not garbage-collected.
 - **Timeout.** The per-hook timeout comes from `run_hook`, the same for every mode.
 
@@ -167,7 +169,8 @@ best-effort, and a durable queue is out of scope.
 ### 6. No UI, no interaction: a stage-less call
 
 The parent design's single change point is `ToolCallHookHandler`. For a `background` hook it calls
-`tool.arun(..., background=True)` instead of the hidden DEBUG-stage call. `background=True`:
+`tool.arun_in_background(...)` instead of the hidden DEBUG-stage call. This is a separate method rather than a
+flag on `arun`, so a tool argument can never collide with a control parameter. `arun_in_background`:
 
 - builds **no stage**, not even an error stage, so nothing touches the response choice (which may be closed). A
   DIAL deployment tool called without a stage has no parent stage, so its nested-application stage deltas have no
@@ -196,7 +199,7 @@ no error reaches the user.
 ### 9. Changes to DIAL Core
 
 None. If a Core release ever cancels detached downstream calls, the fallback is a request to Core for a bounded
-grace period on per-request keys for detached work.
+bounded lifetime on per-request keys for detached work.
 
 ## Not needed: guards on a closed choice
 
@@ -247,12 +250,13 @@ no existing manifest is affected.
 
 - **Config:** `HookExecution` enum and `execution` on the hook config; validator on the base config
   (`background` only for `on_completion`).
-- **`_CompletionHookRunner`:** split blocking / background, prepare and hand off background hooks, grace wait.
-- **`HookDispatcher`:** mode-agnostic; gains `hooks_for`, `run_all`, `prepare`.
-- **`ToolCallHookHandler` / `StagedBaseTool.arun`:** stage-less `background=True` call.
+- **`_CompletionHookRunner`:** split blocking / background, start background hooks via the registry, hold-period wait.
+- **`HookDispatcher`:** mode-agnostic; gains `hooks_for`, `run_all`.
+- **`ToolCallHookHandler` / `StagedBaseTool.arun`:** stage-less `arun_in_background` call.
 - **`InteractiveLoginService`:** no prompt while the background flag is set.
 - **`BackgroundHookRegistry` (new, singleton):** bounded concurrency, hand-off of teardown, drain on shutdown.
-- **`RequestAsyncCloseRegistry`:** `hand_off()`.
-- **Settings (env):** `BACKGROUND_HOOKS_MAX_CONCURRENT`, `BACKGROUND_HOOKS_SHUTDOWN_GRACE_SECONDS`.
+- **`RequestAsyncCloseRegistry`:** share-counted teardown, `hand_off()`.
+- **Settings (env):** `BACKGROUND_HOOKS_MAX_CONCURRENT`, `BACKGROUND_HOOKS_RESPONSE_HOLD_SECONDS`,
+  `BACKGROUND_HOOKS_SHUTDOWN_GRACE_SECONDS`.
 - **Lifespan:** `shutdown` initializer type.
 - **Docs:** `docs/hooks.md`, `CONFIGURATION.md`, JSON schema (`make dump_app_schema`).

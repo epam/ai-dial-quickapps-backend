@@ -574,6 +574,29 @@ async def test_tool_parameter_named_error_reference_reaches_the_tool(
 
 
 @pytest.mark.asyncio
+async def test_tool_parameter_named_background_reaches_the_tool(
+    mock_stage_wrapper_factory, mock_tool_config
+):
+    tool = CustomTestStagedBaseTool(
+        stage_wrapper_builder=mock_stage_wrapper_factory,
+        tool_config=mock_tool_config,
+        perf_timer=Mock(),
+    )
+
+    with patch.object(
+        CustomTestStagedBaseTool,
+        "_run_in_stage_async",
+        new_callable=AsyncMock,
+        return_value=ToolCallResult(content="ok", content_type="text/plain"),
+    ) as run:
+        await tool.arun("call-id", background="transparent")
+        await tool.arun_in_background("call-id", background="transparent")
+
+    assert [c.kwargs["background"] for c in run.call_args_list] == ["transparent"] * 2
+    assert not is_background_execution()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("display_level", [StageDisplayLevel.DEBUG, StageDisplayLevel.INFO])
 async def test_background_call_never_builds_a_stage(mock_stage_wrapper_factory, display_level):
     tool = CustomTestStagedBaseTool(
@@ -583,7 +606,7 @@ async def test_background_call_never_builds_a_stage(mock_stage_wrapper_factory, 
         stage_display_level=display_level,
     )
 
-    result = await tool.arun("call-id", background=True)
+    result = await tool.arun_in_background("call-id")
 
     mock_stage_wrapper_factory.build.assert_not_called()
     assert result.content == "response content"
@@ -601,7 +624,7 @@ async def test_background_call_failure_gets_no_error_stage_and_returns_fallback(
         stage_display_level=StageDisplayLevel.DEBUG,
     )
 
-    result = await tool.arun("call-id", background=True)
+    result = await tool.arun_in_background("call-id")
 
     mock_stage_wrapper_factory.build.assert_not_called()
     assert result.tool_call_id == "call-id"
@@ -622,7 +645,7 @@ async def test_background_call_marks_the_context_only_while_it_runs(mock_stage_w
         perf_timer=Mock(),
     )
 
-    await tool.arun("call-id", background=True)
+    await tool.arun_in_background("call-id")
     await tool.arun("call-id")
 
     assert seen == [True, False]

@@ -3,6 +3,7 @@ import logging
 
 from injector import inject
 
+from quickapp.agent_hooks._background_hook_settings import BackgroundHookSettings
 from quickapp.agent_hooks._background_registry import BackgroundHookRegistry
 from quickapp.agent_hooks._context_factory import HookContextFactory
 from quickapp.agent_hooks._dispatcher import HookDispatcher
@@ -13,10 +14,6 @@ from quickapp.common.request_async_close_registry import RequestAsyncCloseRegist
 from quickapp.config.hooks import HookConfig, HookEvent, HookExecution
 
 logger = logging.getLogger(__name__)
-
-# Core exposes no "call accepted" signal, so the response stays open this long (at most) for the
-# background hooks' calls to reach it; a call that arrives after the response closed gets a 401.
-_BACKGROUND_HOOK_GRACE_SECONDS = 3.0
 
 
 class _CompletionHookRunner(CompletionHookRunner):
@@ -33,7 +30,9 @@ class _CompletionHookRunner(CompletionHookRunner):
         dispatcher: HookDispatcher,
         background_registry: BackgroundHookRegistry,
         close_registry: RequestAsyncCloseRegistry,
+        settings: BackgroundHookSettings,
     ) -> None:
+        self._settings = settings
         self._context_factory = context_factory
         self._dispatcher = dispatcher
         self._background_registry = background_registry
@@ -47,7 +46,7 @@ class _CompletionHookRunner(CompletionHookRunner):
             iteration_count=iteration_count, total_tool_calls=total_tool_calls
         )
         loop = asyncio.get_running_loop()
-        deadline = loop.time() + _BACKGROUND_HOOK_GRACE_SECONDS
+        deadline = loop.time() + self._settings.response_hold_seconds
 
         background = [h for h in hooks if h.execution is HookExecution.BACKGROUND]
         started = self._start_background(background, context)

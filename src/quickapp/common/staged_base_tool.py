@@ -137,18 +137,8 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
         *args: Any,
         stage_level: StageDisplayLevel = StageDisplayLevel.INFO,
         adopted_stage: AdoptedToolStage | None = None,
-        background: bool = False,
         **kwargs: Any,
     ) -> ToolCallResult:
-        if background:
-            self._discard_adopted_stage(adopted_stage)
-            # Runs after the response may have closed: no stage (not even an error stage) and
-            # no interactive prompts, so nothing touches the closed choice or client channel.
-            with background_execution():
-                return await self.__run_tool_body(
-                    tool_call_id, None, *args, report_errors_to_stage=False, **kwargs
-                )
-
         if self.__should_suppress(stage_level):
             self._discard_adopted_stage(adopted_stage)
             # Stage is suppressed, but we still route through __run_tool_body so that
@@ -199,6 +189,25 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
                     skip_parameters=skip_parameters,
                     **kwargs,
                 )
+
+    async def arun_in_background(
+        self,
+        # Positional-only: tool arguments share **kwargs and may use any name.
+        tool_call_id: str,
+        /,
+        *args: Any,
+        **kwargs: Any,
+    ) -> ToolCallResult:
+        """Run the tool for a ``background`` hook, which may outlive the response.
+
+        No stage (not even an error stage) and no interactive prompts, so nothing touches the
+        closed choice or client channel. A separate method rather than an ``arun`` flag, so no
+        tool argument name can collide with it.
+        """
+        with background_execution():
+            return await self.__run_tool_body(
+                tool_call_id, None, *args, report_errors_to_stage=False, **kwargs
+            )
 
     def _discard_adopted_stage(self, adopted_stage: AdoptedToolStage | None) -> None:
         """Close a stage the stream sink opened for a call whose stage is suppressed.

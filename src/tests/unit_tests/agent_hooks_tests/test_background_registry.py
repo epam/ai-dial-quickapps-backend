@@ -7,8 +7,12 @@ import pytest
 from injector import Injector
 
 from quickapp.agent_hooks._background_hook_settings import BackgroundHookSettings
-from quickapp.agent_hooks._background_registry import BackgroundHookRegistry, BackgroundHookShutdown
+from quickapp.agent_hooks._background_registry import (
+    BackgroundHookRegistry,
+    _BackgroundHookShutdown,
+)
 from quickapp.agent_hooks.agent_hooks_module import AgentHooksModule
+from quickapp.common.base_initializer import ShutdownInitializer
 from quickapp.common.request_async_close_registry import RequestAsyncCloseRegistry
 
 
@@ -223,7 +227,7 @@ class TestShutdown:
         registry.start([("stuck", _wait_for(asyncio.Event()))], close_registry)
         await close_registry.aclose_all()
 
-        await BackgroundHookShutdown(registry).initialize()
+        await _BackgroundHookShutdown(registry).initialize()
 
         assert calls == ["closed"]
 
@@ -233,3 +237,20 @@ class TestWiring:
         injector = Injector([AgentHooksModule()])
 
         assert injector.get(BackgroundHookRegistry) is injector.get(BackgroundHookRegistry)
+
+    @pytest.mark.asyncio
+    async def test_shutdown_initializers_resolve_through_di_and_drain_the_registry(self) -> None:
+        injector = Injector([AgentHooksModule()])
+        registry = injector.get(BackgroundHookRegistry)
+        calls: list[str] = []
+        close_registry = _close_registry(calls)
+        registry.start([("a", _wait_for(asyncio.Event()))], close_registry)
+        await close_registry.aclose_all()
+        registry._settings.shutdown_grace_seconds = 0.05
+
+        initializers = injector.get(list[ShutdownInitializer])
+        for initializer in initializers:
+            await initializer.initialize()
+
+        assert any(isinstance(i, _BackgroundHookShutdown) for i in initializers)
+        assert calls == ["closed"]

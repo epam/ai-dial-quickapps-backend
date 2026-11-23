@@ -5,7 +5,10 @@ from injector import Binder, Module, ProviderOf, multiprovider, singleton
 
 from quickapp.agent_hooks._agent_hooks_context import _AgentHooksContext
 from quickapp.agent_hooks._background_hook_settings import BackgroundHookSettings
-from quickapp.agent_hooks._background_registry import BackgroundHookRegistry, BackgroundHookShutdown
+from quickapp.agent_hooks._background_registry import (
+    BackgroundHookRegistry,
+    _BackgroundHookShutdown,
+)
 from quickapp.agent_hooks._completion_runner import _CompletionHookRunner
 from quickapp.agent_hooks._config_driven_hooks import _ConfigDrivenToolCallHook
 from quickapp.agent_hooks._context_factory import HookContextFactory
@@ -59,7 +62,7 @@ class AgentHooksModule(Module):
 
     @multiprovider
     def _provide_shutdown_initializers(
-        self, shutdown: BackgroundHookShutdown
+        self, shutdown: _BackgroundHookShutdown
     ) -> list[ShutdownInitializer]:
         return [shutdown]
 

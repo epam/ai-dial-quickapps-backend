@@ -57,7 +57,7 @@ class ToolCallHookHandler(HookHandler):
 
         if self._config.execution is HookExecution.BACKGROUND:
             # The single stage-less call: it may run after the response closed.
-            result = await tool.arun(_PROBE_CALL_ID, background=True, **rendered)
+            result = await tool.arun_in_background(_PROBE_CALL_ID, **rendered)
         else:
             result = await tool.arun(
                 _PROBE_CALL_ID, stage_level=StageDisplayLevel.DEBUG, **rendered
