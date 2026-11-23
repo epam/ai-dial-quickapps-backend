@@ -4,8 +4,11 @@ import pytest
 from mcp.types import BlobResourceContents, TextResourceContents
 from pydantic import AnyUrl
 
+from quickapp.common.exceptions import InvalidToolCallParameterException, ToolErrorException
+from quickapp.config.application import StageDisplayLevel
 from quickapp.mcp_tooling._mcp_resource_meta import MCPResourceMeta
 from quickapp.mcp_tooling._mcp_tooling_context import _MCPToolingContext
+from quickapp.mcp_tooling._mcp_unauthorized_exception import MCPUnauthorizedException
 from quickapp.mcp_tooling._read_mcp_resource_tool import (
     READ_MCP_RESOURCE_TOOL_CONFIG,
     _ReadMcpResourceTool,
@@ -55,15 +58,17 @@ def _blob_content(uri: str = "urn://x") -> BlobResourceContents:
 @pytest.mark.asyncio
 async def test_missing_uri_returns_error():
     tool = _make_tool(_context([]))
-    result = await tool._run_in_stage_async(uri=None)
-    assert "Missing required parameter: uri" in result.content
+    with pytest.raises(InvalidToolCallParameterException) as excinfo:
+        await tool._run_in_stage_async(uri=None)
+    assert excinfo.value.parameter_name == "uri"
 
 
 @pytest.mark.asyncio
 async def test_empty_uri_returns_error():
     tool = _make_tool(_context([]))
-    result = await tool._run_in_stage_async(uri="")
-    assert "Missing required parameter: uri" in result.content
+    with pytest.raises(InvalidToolCallParameterException) as excinfo:
+        await tool._run_in_stage_async(uri="")
+    assert excinfo.value.parameter_name == "uri"
 
 
 # --- Resource not found ---
@@ -72,17 +77,18 @@ async def test_empty_uri_returns_error():
 @pytest.mark.asyncio
 async def test_unknown_uri_returns_error():
     tool = _make_tool(_context([_meta("urn://known")]))
-    result = await tool._run_in_stage_async(uri="urn://unknown")
-    assert "No resource registered" in result.content
-    assert "urn://unknown" in result.content
+    with pytest.raises(InvalidToolCallParameterException) as excinfo:
+        await tool._run_in_stage_async(uri="urn://unknown")
+    assert "No resource registered" in excinfo.value.message
+    assert "urn://unknown" in excinfo.value.message
 
 
 @pytest.mark.asyncio
 async def test_toolset_filter_no_match_returns_error():
     ctx = _context([_meta("urn://x", toolset="ts1")])
     tool = _make_tool(ctx)
-    result = await tool._run_in_stage_async(uri="urn://x", toolset="ts_other")
-    assert "No resource registered" in result.content
+    with pytest.raises(InvalidToolCallParameterException, match="No resource registered"):
+        await tool._run_in_stage_async(uri="urn://x", toolset="ts_other")
 
 
 # --- Ambiguity ---
@@ -92,11 +98,13 @@ async def test_toolset_filter_no_match_returns_error():
 async def test_multiple_toolsets_same_uri_without_toolset_arg_returns_disambiguation_error():
     ctx = _context([_meta("urn://x", "ts1"), _meta("urn://x", "ts2")])
     tool = _make_tool(ctx)
-    result = await tool._run_in_stage_async(uri="urn://x")
-    assert "Multiple toolsets" in result.content
-    assert "ts1" in result.content
-    assert "ts2" in result.content
-    assert "toolset" in result.content.lower()
+    with pytest.raises(InvalidToolCallParameterException) as excinfo:
+        await tool._run_in_stage_async(uri="urn://x")
+    message = excinfo.value.message
+    assert "Multiple toolsets" in message
+    assert "ts1" in message
+    assert "ts2" in message
+    assert excinfo.value.parameter_name == "toolset"
 
 
 @pytest.mark.asyncio
@@ -119,9 +127,10 @@ async def test_multiple_toolsets_same_uri_with_toolset_arg_resolves_correctly():
 async def test_no_client_for_toolset_returns_error():
     ctx = _context([_meta("urn://x", "ts")], clients={})
     tool = _make_tool(ctx)
-    result = await tool._run_in_stage_async(uri="urn://x")
-    assert "No client registered" in result.content
-    assert "ts" in result.content
+    with pytest.raises(ToolErrorException) as excinfo:
+        await tool._run_in_stage_async(uri="urn://x")
+    assert "No client registered" in excinfo.value.error_message
+    assert "ts" in excinfo.value.error_message
 
 
 # --- Read failures ---
@@ -133,9 +142,20 @@ async def test_client_read_exception_returns_error():
     client.read_mcp_resource = AsyncMock(side_effect=RuntimeError("network down"))
     ctx = _context([_meta("urn://x", "ts")], clients={"ts": client})
     tool = _make_tool(ctx)
-    result = await tool._run_in_stage_async(uri="urn://x")
-    assert "Error reading resource" in result.content
-    assert "network down" in result.content
+    with pytest.raises(ToolErrorException) as excinfo:
+        await tool._run_in_stage_async(uri="urn://x")
+    assert "Error reading resource" in excinfo.value.error_message
+    assert "network down" in excinfo.value.error_message
+
+
+@pytest.mark.asyncio
+async def test_unauthorized_exception_propagates_unwrapped():
+    client = MagicMock()
+    client.read_mcp_resource = AsyncMock(side_effect=MCPUnauthorizedException("ts"))
+    ctx = _context([_meta("urn://x", "ts")], clients={"ts": client})
+    tool = _make_tool(ctx)
+    with pytest.raises(MCPUnauthorizedException):
+        await tool._run_in_stage_async(uri="urn://x")
 
 
 # --- Content handling ---
@@ -149,6 +169,7 @@ async def test_text_content_returned():
     tool = _make_tool(ctx)
     result = await tool._run_in_stage_async(uri="urn://x")
     assert result.content == "hello world"
+    assert result.is_error is False
 
 
 @pytest.mark.asyncio
@@ -209,8 +230,15 @@ async def test_stage_wrapper_receives_result_when_provided():
 
 
 @pytest.mark.asyncio
-async def test_stage_wrapper_receives_error_result_on_missing_uri():
-    tool = _make_tool(_context([]))
-    stage_wrapper = MagicMock()
-    result = await tool._run_in_stage_async(stage_wrapper=stage_wrapper, uri=None)
-    stage_wrapper.add_result.assert_called_once_with(result)
+async def test_failure_is_converted_to_error_result_by_the_base_tool():
+    tool = _ReadMcpResourceTool(
+        stage_wrapper_builder=MagicMock(),
+        tool_config=READ_MCP_RESOURCE_TOOL_CONFIG,
+        perf_timer=MagicMock(),
+        context=_context([]),
+        stage_display_level=StageDisplayLevel.NONE,
+    )
+    result = await tool.arun("call-1", uri="urn://unknown")
+    assert result.is_error is True
+    assert result.tool_call_id == "call-1"
+    assert "urn://unknown" in result.content

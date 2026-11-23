@@ -1,16 +1,20 @@
 import pytest
 
+from quickapp.common.project_context import ProjectContext
 from quickapp.dial_files_tooling._path_argument_transformer import _AppdataHomePathTransformer
 from quickapp.shared.home_path.home_path_resolver import HomePathResolver
 from tests.unit_tests.dial_files_tooling._helpers import make_config, make_service
 
 
 def _make_transformer(
-    appdata: str | None = "appbucket", agent_home_dir: str = ""
+    appdata: str | None = "appbucket",
+    agent_home_dir: str = "",
+    project: ProjectContext | None = None,
 ) -> _AppdataHomePathTransformer:
     resolver = HomePathResolver(
         dial_file_service=make_service(appdata=appdata),
         dial_files_config=make_config(agent_home_dir=agent_home_dir),
+        project=project,
     )
     return _AppdataHomePathTransformer(home_resolver=resolver)
 
@@ -70,3 +74,36 @@ class TestAppdataHomePathTransformer:
         transformer = _make_transformer(agent_home_dir="workspace/")
         result = await transformer.transform({"path": "files/appbucket/workspace/reports/x.md"})
         assert result["path"] == "reports/x.md"
+
+
+_PROJECT = ProjectContext(url="projects/user-bucket/My Project")
+
+
+class TestProjectPaths:
+    @pytest.mark.asyncio
+    async def test_artifacts_url_relativized(self):
+        transformer = _make_transformer(project=_PROJECT)
+        result = await transformer.transform(
+            {"path": "projects/user-bucket/My Project/files/artifacts/notes.md"}
+        )
+        assert result["path"] == "notes.md"
+
+    @pytest.mark.asyncio
+    async def test_context_url_left_absolute_and_decoded(self):
+        url = "projects/user-bucket/My%20Project/files/context/tickets.csv"
+        transformer = _make_transformer(project=_PROJECT)
+        result = await transformer.transform({"path": url})
+        assert result["path"] == "projects/user-bucket/My Project/files/context/tickets.csv"
+
+    @pytest.mark.asyncio
+    async def test_other_project_url_untouched(self):
+        url = "projects/user-bucket/Other/files/artifacts/notes.md"
+        transformer = _make_transformer(project=_PROJECT)
+        result = await transformer.transform({"path": url})
+        assert result["path"] == url
+
+    @pytest.mark.asyncio
+    async def test_project_url_untouched_without_project(self):
+        url = "projects/user-bucket/My Project/files/artifacts/notes.md"
+        result = await _make_transformer().transform({"path": url})
+        assert result["path"] == url

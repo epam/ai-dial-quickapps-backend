@@ -168,7 +168,7 @@ never `None` — and pass it explicitly to their underlying client. No
 - **Deployment (`AsyncDial` / `AsyncAzureOpenAI`)** — both the shared
   `AsyncDial` client (`AppModule.__provide_async_dial`) and the deployment
   tool's `DEPLOYMENT_AZURE_CLIENT`
-  (`DialDeploymentToolingModule.provide_deployment_openai_client`) pass
+  (`DeploymentClientModule.provide_deployment_openai_client`) pass
   `timeout=openai.Timeout(connect=5, read=T, write=T, pool=T)`. `connect`
   is held at 5s to preserve fast-fail on dead deployments; the other phases
   track `T`. `http_client=` is not used — it would replace the whole
@@ -502,7 +502,7 @@ required.
 
 - `application/app_module.__provide_async_dial` — apply resolved timeout as
   `openai.Timeout(connect=5, read=T, write=T, pool=T)`
-- `dial_deployment_tooling/dial_deployment_tooling_module.provide_deployment_openai_client`
+- `shared/deployment_client/deployment_client_module.provide_deployment_openai_client`
   — inject `ToolTimeoutResolver`, apply the same
   `openai.Timeout(connect=5, read=T, write=T, pool=T)` shape to
   `AsyncAzureOpenAI` so the deployment tool's client is bounded consistently

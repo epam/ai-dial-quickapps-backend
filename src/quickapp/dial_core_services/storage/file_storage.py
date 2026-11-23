@@ -1,10 +1,14 @@
 from abc import ABC, abstractmethod
 from typing import Literal
 
-from aidial_client.types.metadata import FileMetadata
+from aidial_client.types.metadata import FileItem, FileMetadata
 from pydantic import BaseModel, ConfigDict
 
 from quickapp.dial_core_services.exceptions import FileTooLargeError
+
+# What an upload returns: Core's metadata for v1, metadata built from the write for a project
+# file (Core's v2 PUT returns none).
+UploadedFile = FileItem | FileMetadata
 
 
 class FolderEntry(BaseModel):
@@ -37,8 +41,9 @@ class FileStorage(ABC):
         *,
         if_none_match: Literal["*"] | None = None,
         if_match: str | None = None,
-    ) -> str:
-        """Write the file and return its URL; ``EtagMismatchError`` on a failed precondition."""
+    ) -> UploadedFile:
+        """Write the file and return its metadata; ``EtagMismatchError`` on a failed
+        precondition."""
 
     @abstractmethod
     async def delete(self, url: str) -> None: ...

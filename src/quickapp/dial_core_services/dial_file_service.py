@@ -8,7 +8,7 @@ from injector import inject
 
 from quickapp.common.state_holder import StateHolder
 from quickapp.common.url_sanitization import sanitize_url
-from quickapp.dial_core_services.storage.file_storage import FileStorage, FolderEntry
+from quickapp.dial_core_services.storage.file_storage import FileStorage, FolderEntry, UploadedFile
 
 logger = logging.getLogger(__name__)
 
@@ -54,8 +54,8 @@ class DialFileService:
         content_type: str = "text/plain",
         overwrite: bool = False,
         if_match: str | None = None,
-    ) -> str:
-        """Create or overwrite a file with ETag-aware semantics.
+    ) -> UploadedFile:
+        """Create or overwrite a file with ETag-aware semantics and return its metadata.
 
         Behaviour:
           * `if_match` given: upload with `If-Match` (caller-driven concurrency
@@ -70,13 +70,13 @@ class DialFileService:
         """
         data = content.encode("utf-8")
         if if_match is not None:
-            uploaded_url = await self.__storage.upload(url, data, content_type, if_match=if_match)
+            uploaded = await self.__storage.upload(url, data, content_type, if_match=if_match)
         elif overwrite:
-            uploaded_url = await self.__storage.upload(url, data, content_type)
+            uploaded = await self.__storage.upload(url, data, content_type)
         else:
-            uploaded_url = await self.__storage.upload(url, data, content_type, if_none_match="*")
+            uploaded = await self.__storage.upload(url, data, content_type, if_none_match="*")
         self.invalidate_cache(url)
-        return uploaded_url
+        return uploaded
 
     async def write_bytes(
         self,
@@ -85,8 +85,8 @@ class DialFileService:
         *,
         content_type: str = "application/octet-stream",
         overwrite: bool = False,
-    ) -> str:
-        """Create or overwrite a file from raw bytes (binary-safe).
+    ) -> UploadedFile:
+        """Create or overwrite a file from raw bytes (binary-safe) and return its metadata.
 
         The bytes counterpart of :meth:`write_file` — used for content that is
         not UTF-8 text (downloaded binaries). Shares the same ETag semantics:
@@ -94,11 +94,11 @@ class DialFileService:
         raising ``EtagMismatchError`` if the file exists); ``overwrite=True``
         uploads unconditionally. Cache is invalidated on success.
         """
-        uploaded_url = await self.__storage.upload(
+        uploaded = await self.__storage.upload(
             url, content, content_type, if_none_match=None if overwrite else "*"
         )
         self.invalidate_cache(url)
-        return uploaded_url
+        return uploaded
 
     async def delete(self, file_url: str) -> None:
         await self.__storage.delete(file_url)

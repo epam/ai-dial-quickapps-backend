@@ -7,7 +7,10 @@ from quickapp.common.abstract.tool_call_result_processor import (
     ToolCallResultProcessor,
 )
 from quickapp.common.tool_call_result import ToolCallResult
+from quickapp.common.tool_names import INTERNAL_TOOL_SEARCH_TOOL_NAME
+from quickapp.core.agent.lazy_loaded_tools_holder import LazyLoadedToolsHolder
 from quickapp.core.agent.tool_executor import ToolExecutor
+from tests.unit_tests.common.common import make_tools_holder
 
 
 def _make_tool_call(name: str, tc_id: str = "id1", arguments: str = "{}") -> MagicMock:
@@ -74,6 +77,8 @@ class TestToolExecutorProcessors:
             enrichers=[],
             perf_timer=MagicMock(),
             processors=[_AppendProcessor("!")],
+            deferred_tool_names=[],
+            lazy_loaded_tools_holder=make_tools_holder(),
         )
 
         results = await executor.execute([_make_tool_call("my_tool")])
@@ -93,6 +98,8 @@ class TestToolExecutorProcessors:
             enrichers=[],
             perf_timer=MagicMock(),
             processors=[_AppendProcessor("!"), _DoubleProcessor()],
+            deferred_tool_names=[],
+            lazy_loaded_tools_holder=make_tools_holder(),
         )
 
         results = await executor.execute([_make_tool_call("my_tool")])
@@ -109,6 +116,8 @@ class TestToolExecutorProcessors:
             enrichers=[],
             perf_timer=MagicMock(),
             processors=[],
+            deferred_tool_names=[],
+            lazy_loaded_tools_holder=make_tools_holder(),
         )
 
         results = await executor.execute([_make_tool_call("my_tool")])
@@ -134,6 +143,8 @@ class TestToolExecutorProcessors:
             enrichers=[],
             perf_timer=MagicMock(),
             processors=[_CaptureProcessor()],
+            deferred_tool_names=[],
+            lazy_loaded_tools_holder=make_tools_holder(),
         )
 
         await executor.execute([_make_tool_call("specific_tool", tc_id="call_abc")])
@@ -149,6 +160,8 @@ class TestToolExecutorProcessors:
             enrichers=[],
             perf_timer=MagicMock(),
             processors=[],
+            deferred_tool_names=[],
+            lazy_loaded_tools_holder=make_tools_holder(),
         )
 
         results = await executor.execute(
@@ -170,6 +183,8 @@ class TestToolExecutorProcessors:
             enrichers=[],
             perf_timer=MagicMock(),
             processors=[],
+            deferred_tool_names=[],
+            lazy_loaded_tools_holder=make_tools_holder(),
         )
 
         results = await executor.execute(
@@ -196,6 +211,8 @@ class TestToolExecutorModelHiddenTools:
             enrichers=[],
             perf_timer=MagicMock(),
             processors=[],
+            deferred_tool_names=[],
+            lazy_loaded_tools_holder=make_tools_holder(),
         )
 
     @pytest.mark.asyncio
@@ -236,3 +253,39 @@ class TestToolExecutorModelHiddenTools:
         hidden.arun.assert_not_called()
         assert results[0].content == "found"
         assert "not available to you" in results[1].content
+
+
+class TestToolExecutorDeferredToolGuard:
+    @staticmethod
+    def _executor(tool: MagicMock, holder: LazyLoadedToolsHolder) -> ToolExecutor:
+        return ToolExecutor(
+            tools=[tool],
+            model_hidden_tools=[],
+            enrichers=[],
+            perf_timer=MagicMock(),
+            processors=[],
+            deferred_tool_names=["deferred_tool"],
+            lazy_loaded_tools_holder=holder,
+        )
+
+    @pytest.mark.asyncio
+    async def test_undiscovered_deferred_tool_is_not_run(self):
+        tool = _make_tool("deferred_tool", ToolCallResult(content="ran", content_type="text/plain"))
+        executor = self._executor(tool, make_tools_holder())
+
+        results = await executor.execute([_make_tool_call("deferred_tool")])
+
+        tool.arun.assert_not_called()
+        assert INTERNAL_TOOL_SEARCH_TOOL_NAME in results[0].content
+
+    @pytest.mark.asyncio
+    async def test_discovered_deferred_tool_runs(self):
+        tool = _make_tool("deferred_tool", ToolCallResult(content="ran", content_type="text/plain"))
+        holder = make_tools_holder()
+        holder.add([{"type": "function", "function": {"name": "deferred_tool"}}])
+        executor = self._executor(tool, holder)
+
+        results = await executor.execute([_make_tool_call("deferred_tool")])
+
+        tool.arun.assert_called_once()
+        assert results[0].content == "ran"

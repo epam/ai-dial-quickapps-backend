@@ -214,3 +214,37 @@ def test_format_timeout_message_includes_timeout_value():
     assert "my_tool" in msg
     assert "120" in msg
     assert "timed out" in msg
+
+
+# -- is_error contract -----------------------------------------------------
+
+
+def test_process_fallback_marks_result_as_error():
+    result = FallbackProcessor.process_fallback(_default_strategies(), "call-1", ValueError("x"))
+    assert result.is_error is True
+
+
+def test_process_fallback_marks_tool_error_exception_result_as_error():
+    err = ToolErrorException("my_tool", "boom")
+    result = FallbackProcessor.process_fallback(_default_strategies(), "call-1", err)
+    assert result.is_error is True
+    assert "boom" in result.content
+
+
+def test_timeout_builtin_message_is_marked_as_error():
+    err = ToolTimeoutError("rag_search", 300)
+    result = FallbackProcessor.process_fallback(_default_strategies(), "call-1", err)
+    assert result.is_error is True
+
+
+def test_timeout_explicit_strategy_result_is_marked_as_error():
+    err = ToolTimeoutError("rag_search", 300)
+    strategies = [
+        ContinueStrategyModel(
+            trigger_on=TriggerOn(type=TriggerOnType.contains, value="timed out"),
+            instructions="custom",
+        )
+    ]
+    result = FallbackProcessor.process_fallback(strategies, "call-1", err)
+    assert result.is_error is True
+    assert "custom" in result.content

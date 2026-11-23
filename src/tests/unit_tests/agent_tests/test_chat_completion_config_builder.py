@@ -6,12 +6,14 @@ from aidial_client.types.deployment import Features
 from aidial_sdk.chat_completion import Message, Role
 
 from quickapp.config.agent_settings import AgentSettings
+from quickapp.config.dial_deployment import DialDeploymentParameters
 from quickapp.core.agent._chat_completion_config_builder import _ChatCompletionConfigBuilder
 from quickapp.core.agent._prompt_cache_breakpoints import _PromptCacheBreakpoints
 from quickapp.core.agent._tool_choice_holder import _ToolChoiceHolder
 from quickapp.core.agent.lazy_loaded_tools_holder import LazyLoadedToolsHolder
 from quickapp.core.agent.models import STATE_KEY_ORCHESTRATOR as ORCH
 from quickapp.core.agent.orchestrator_capabilities import OrchestratorCapabilities
+from tests.unit_tests.common.common import make_tools_holder
 
 
 def _make_tool_dict(name: str) -> dict:
@@ -25,9 +27,14 @@ def _make_builder(
     reasoning_efforts: list[str] | None = None,
     cache: bool | None = None,
     breakpoints_enabled: bool = True,
+    features: dict | None = None,
+    parameters_model: DialDeploymentParameters | None = None,
 ) -> _ChatCompletionConfigBuilder:
     config = MagicMock()
-    config.orchestrator.deployment.parameters.model_dump.return_value = parameters or {}
+    if parameters_model is not None:
+        config.orchestrator.deployment.parameters = parameters_model
+    else:
+        config.orchestrator.deployment.parameters.model_dump.return_value = parameters or {}
     config.orchestrator.deployment.deployment_id = "test-model"
     return _ChatCompletionConfigBuilder(
         config=config,
@@ -37,11 +44,13 @@ def _make_builder(
         pre_invocation_transformers=[],
         presentation_settings=MagicMock(show_usage_statistics=False),
         forwarded_headers=None,
-        lazy_loaded_tools_holder=lazy_holder or LazyLoadedToolsHolder(),
+        lazy_loaded_tools_holder=lazy_holder or make_tools_holder(),
         capabilities=OrchestratorCapabilities(
             deployment=SimpleNamespace(  # type: ignore[arg-type]
                 id="test-model",
-                features=Features(reasoning_efforts=reasoning_efforts or [], cache=cache),
+                features=Features(
+                    reasoning_efforts=reasoning_efforts or [], cache=cache, **(features or {})
+                ),
             )
         ),
         agent_settings=AgentSettings(PROMPT_CACHE_BREAKPOINTS_ENABLED=breakpoints_enabled),
@@ -55,7 +64,7 @@ def _system_and_user() -> list[Message]:
 
 def test_build_appends_lazy_tools_after_sorted_eager_tools():
     """Eager tools are sorted by name; discovered (lazy) tools follow in discovery order."""
-    lazy_holder = LazyLoadedToolsHolder()
+    lazy_holder = make_tools_holder()
     lazy_holder.add([_make_tool_dict("c"), _make_tool_dict("a")])
     builder = _make_builder([_make_tool_dict("z"), _make_tool_dict("b")], lazy_holder)
 
@@ -67,7 +76,7 @@ def test_build_appends_lazy_tools_after_sorted_eager_tools():
 
 def test_build_dedupes_lazy_tools_against_eager_names():
     """A lazy tool whose name collides with an eager tool is dropped, not duplicated."""
-    lazy_holder = LazyLoadedToolsHolder()
+    lazy_holder = make_tools_holder()
     lazy_holder.add([_make_tool_dict("shared_name"), _make_tool_dict("discovered_tool")])
     builder = _make_builder([_make_tool_dict("shared_name")], lazy_holder)
 
@@ -78,7 +87,7 @@ def test_build_dedupes_lazy_tools_against_eager_names():
 
 
 def test_build_with_no_lazy_tools_returns_eager_tools_only():
-    lazy_holder = LazyLoadedToolsHolder()
+    lazy_holder = make_tools_holder()
     builder = _make_builder([_make_tool_dict("eager_tool")], lazy_holder)
 
     payload = builder.build([Message(role=Role.USER, content="hi")])
@@ -118,7 +127,7 @@ def test_static_tools_sort_first_and_breakpoint_lands_on_last_function_tool():
 
 
 def test_breakpoint_lands_on_last_discovered_tool():
-    lazy_holder = LazyLoadedToolsHolder()
+    lazy_holder = make_tools_holder()
     lazy_holder.add([_make_tool_dict("a")])
     builder = _make_builder([_make_tool_dict("b")], lazy_holder, cache=True)
 
@@ -230,6 +239,34 @@ def test_reasoning_effort_is_dropped_when_deployment_advertises_none():
     result = builder.build([])
 
     assert "reasoning_effort" not in result
+
+
+@pytest.mark.parametrize(
+    "features",
+    [{"temperature": False}, {"custom_temperature_supported": False}],
+    ids=["temperature_unsupported", "custom_temperature_unsupported"],
+)
+def test_unsupported_temperature_is_dropped(features: dict):
+    builder = _make_builder(parameters={"temperature": 0.5, "seed": 7}, features=features)
+
+    result = builder.build([])
+
+    assert "temperature" not in result
+    # Core defaults `seedSupported` to false, so its flag is not enforced.
+    assert result["seed"] == 7
+
+
+def test_dropping_leaves_the_app_config_untouched():
+    """The drop runs on a fresh dump, so the shared config keeps the value across builds."""
+    parameters = DialDeploymentParameters(temperature=0.5)
+    builder = _make_builder(parameters_model=parameters, features={"temperature": False})
+
+    first = builder.build([])
+    second = builder.build([])
+
+    assert "temperature" not in first
+    assert "temperature" not in second
+    assert parameters.temperature == 0.5
 
 
 def test_custom_fields_are_sent_in_extra_body():

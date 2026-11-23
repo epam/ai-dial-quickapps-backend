@@ -67,7 +67,10 @@ class FallbackProcessor(ApplicableStrategyMixin):
             raise error
 
         return ToolCallResult(
-            content=message, tool_call_id=tool_call_id, content_type="text/markdown"
+            content=message,
+            tool_call_id=tool_call_id,
+            content_type="text/markdown",
+            is_error=True,
         )
 
     @staticmethod
@@ -99,6 +102,7 @@ class FallbackProcessor(ApplicableStrategyMixin):
             content=message or _format_timeout_message(error),
             tool_call_id=tool_call_id,
             content_type="text/markdown",
+            is_error=True,
         )
 
     @staticmethod

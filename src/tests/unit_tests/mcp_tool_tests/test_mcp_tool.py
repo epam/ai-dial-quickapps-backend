@@ -25,6 +25,7 @@ from quickapp.common.abstract.base_tool_argument_transformer import ToolArgument
 from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
+from quickapp.common.project_context import PROJECT_CONTEXT
 from quickapp.config.application import ApplicationConfig, StageDisplayLevel
 from quickapp.config.tools.base import AttachmentConfig
 from quickapp.config.toolsets.mcp import MCPProtocol, MCPServerInfo, MCPToolSet
@@ -77,7 +78,7 @@ async def test_mcp_tool(mock_get_tools_list, mock_call_mcp_tool):
     # Mock attachment service upload
     mock_stage = MagicMock(spec=Stage)
     mock_dial_attachment_service = MagicMock(spec=AttachmentService)
-    mock_dial_attachment_service.upload_attachment_to_core = AsyncMock()
+    mock_dial_attachment_service.upload_output_attachment = AsyncMock()
 
     async def mock_upload(attachment):
         attachment.url = "mocked_url"
@@ -85,7 +86,7 @@ async def test_mcp_tool(mock_get_tools_list, mock_call_mcp_tool):
         attachment.title = "Attachment"
         return attachment
 
-    mock_dial_attachment_service.upload_attachment_to_core.side_effect = mock_upload
+    mock_dial_attachment_service.upload_output_attachment.side_effect = mock_upload
 
     # Provide call_mcp_tool results based on tool name (simulate CallToolResult-like objects)
     async def _call_side_effect(tool_name, **kwargs):
@@ -155,6 +156,7 @@ async def test_mcp_tool(mock_get_tools_list, mock_call_mcp_tool):
         binder.bind(StageDisplayLevel, to=InstanceProvider(StageDisplayLevel.INFO))
         binder.bind(ForwardedHeaders, to=InstanceProvider(None))
         binder.bind(FileStorage, to=V1FileStorage)  # type: ignore[type-abstract]
+        binder.bind(PROJECT_CONTEXT, to=InstanceProvider(None))
         binder.bind(ACCEPT_LANGUAGE, to=InstanceProvider(None))
         binder.bind(CLIENT_CHANNEL_ID, to=InstanceProvider(None))
         binder.bind(InteractiveLoginSettings, to=InteractiveLoginSettings())
@@ -272,7 +274,7 @@ async def test_mcp_tool_narrow_supported_types_skips_non_matching(
 
     mock_stage = MagicMock(spec=Stage)
     mock_dial_attachment_service = MagicMock(spec=AttachmentService)
-    mock_dial_attachment_service.upload_attachment_to_core = AsyncMock()
+    mock_dial_attachment_service.upload_output_attachment = AsyncMock()
 
     async def mock_upload(attachment):
         attachment.url = "mocked_url"
@@ -280,7 +282,7 @@ async def test_mcp_tool_narrow_supported_types_skips_non_matching(
         attachment.title = "Attachment"
         return attachment
 
-    mock_dial_attachment_service.upload_attachment_to_core.side_effect = mock_upload
+    mock_dial_attachment_service.upload_output_attachment.side_effect = mock_upload
 
     # Tool returns both image and text attachments
     async def _call_side_effect(tool_name, **kwargs):
@@ -330,6 +332,7 @@ async def test_mcp_tool_narrow_supported_types_skips_non_matching(
         binder.bind(StageDisplayLevel, to=InstanceProvider(StageDisplayLevel.INFO))
         binder.bind(ForwardedHeaders, to=InstanceProvider(None))
         binder.bind(FileStorage, to=V1FileStorage)  # type: ignore[type-abstract]
+        binder.bind(PROJECT_CONTEXT, to=InstanceProvider(None))
         binder.bind(ACCEPT_LANGUAGE, to=InstanceProvider(None))
         binder.bind(CLIENT_CHANNEL_ID, to=InstanceProvider(None))
         binder.bind(InteractiveLoginSettings, to=InteractiveLoginSettings())
@@ -353,7 +356,8 @@ async def test_mcp_tool_narrow_supported_types_skips_non_matching(
         assert result.attachments[0].type == "image/png"
 
         # Upload should only be called once (for the image)
-        assert mock_dial_attachment_service.upload_attachment_to_core.call_count == 1
+        assert mock_dial_attachment_service.upload_output_attachment.call_count == 1
+        mock_dial_attachment_service.upload_appdata_attachment.assert_not_called()
 
     client = TestClient(app)
     response = client.get("/")

@@ -8,6 +8,7 @@ from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.state_holder import StateHolder
 from quickapp.dial_core_services.dial_downloader import DialDownloader
+from quickapp.file_transfer._file_loader_service import FileLoaderService
 from quickapp.shared.external_fetch.external_url_fetcher import (
     ExternalFetchDisabledError,
     ExternalFetchError,
@@ -339,3 +340,15 @@ async def test_url_no_source_handles_goes_through_dial_branch():
 
     assert result == b"dial-bytes"
     source.load.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_project_url_dispatches_to_dial_downloader():
+    dial_dl = MagicMock(spec=DialDownloader)
+    dial_dl.fetch = AsyncMock(return_value=(b"csv", _metadata()))
+    loader = _make_loader(dial_downloader=dial_dl)
+
+    result = await loader.load("projects/b/p/files/context/tickets.csv")
+
+    assert result == b"csv"
+    dial_dl.fetch.assert_awaited_once_with("projects/b/p/files/context/tickets.csv")

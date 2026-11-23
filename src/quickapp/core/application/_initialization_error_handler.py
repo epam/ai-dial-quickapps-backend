@@ -9,10 +9,10 @@ from quickapp.common.exceptions import (
     InitializationException,
     OffloadConfigurationException,
     OrchestratorSystemPromptException,
+    ProjectInstructionsException,
     SkillCatastrophicInitializationException,
     SkillInitializationException,
     ToolInitializationException,
-    UnsupportedReasoningEffortException,
 )
 from quickapp.common.utils import fenced_code_block
 
@@ -24,7 +24,7 @@ _TOOL_SECTION = "#### Tool initialization"
 _HOOK_SECTION = "#### Hook initialization"
 _SKILL_SECTION = "#### Skill loading"
 _OFFLOAD_SECTION = "#### Large tool-response offload"
-_DEPLOYMENT_PARAMETERS_SECTION = "#### Deployment parameters"
+_PROJECT_SECTION = "#### Project instructions"
 _CATASTROPHIC_HEADER = (
     "> DIAL prompts as a whole could not be loaded — falling back to predefined skills only."
 )
@@ -62,7 +62,7 @@ class _InitializationErrorHandler:
         per_url_error_lines: list[str] = []
         per_url_warning_lines: list[str] = []
         offload_lines: list[str] = []
-        deployment_parameter_lines: list[str] = []
+        project_lines: list[str] = []
         for exc in exceptions:
             if isinstance(exc, OrchestratorSystemPromptException):
                 system_prompt_lines.append(f"- {exc}")
@@ -76,8 +76,8 @@ class _InitializationErrorHandler:
                     hook_lines.append(fenced_code_block(exc.details))
             elif isinstance(exc, OffloadConfigurationException):
                 offload_lines.append(f"- {exc}")
-            elif isinstance(exc, UnsupportedReasoningEffortException):
-                deployment_parameter_lines.append(f"- {exc}")
+            elif isinstance(exc, ProjectInstructionsException):
+                project_lines.append(f"- {exc}")
             elif isinstance(exc, ConfigResolutionException):
                 tool_lines.append(f"- **template '{exc.template_name}'**: {exc}")
                 if exc.details:
@@ -119,8 +119,8 @@ class _InitializationErrorHandler:
             sections.append(skill_section)
         if offload_lines:
             sections.append([_OFFLOAD_SECTION, *offload_lines])
-        if deployment_parameter_lines:
-            sections.append([_DEPLOYMENT_PARAMETERS_SECTION, *deployment_parameter_lines])
+        if project_lines:
+            sections.append([_PROJECT_SECTION, *project_lines])
 
         status = Status.FAILED if any(exc.is_hard for exc in exceptions) else Status.COMPLETED
         stage = self.__stage_provider.get()

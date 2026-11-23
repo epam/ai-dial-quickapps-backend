@@ -208,6 +208,17 @@ class TestPreProcessParams:
         file_service.grant_permissions_to_files.assert_not_awaited()
 
     @pytest.mark.asyncio
+    async def test_dial_url_project_file_is_shared(self):
+        tool, file_service, _ = _make_tool(
+            input_schema={"properties": {"doc_url": {"type": "string", "dial_url": True}}},
+            dial_toolset_id="my-toolset",
+        )
+        await tool._pre_process_params(doc_url="projects/b/P/files/context/a.pdf")
+        file_service.grant_permissions_to_files.assert_awaited_once_with(
+            ["projects/b/P/files/context/a.pdf"], "my-toolset"
+        )
+
+    @pytest.mark.asyncio
     async def test_dial_url_list_with_one_external_rejects_whole_list(self):
         tool, file_service, _ = _make_tool(
             input_schema={

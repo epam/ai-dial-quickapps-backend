@@ -124,19 +124,18 @@ async def test_list_follows_pages_and_marks_folders(httpx_mock) -> None:
     ]
 
 
-@pytest.mark.parametrize("status", [200, 206])
+@pytest.mark.parametrize("content", [b"hello", b""])
 @pytest.mark.asyncio
-async def test_file_etag_asks_for_one_byte(httpx_mock, status) -> None:
+async def test_file_etag_comes_from_the_headers(httpx_mock, content) -> None:
     httpx_mock.add_response(
         method="GET",
         url=f"{BASE_URL}/v2/{FILE_URL}",
-        status_code=status,
-        content=b"h",
+        content=content,
         headers={"etag": "file-etag"},
     )
 
     assert await _client().file_etag(FILE_URL) == "file-etag"
-    assert httpx_mock.get_requests()[0].headers["Range"] == "bytes=0-0"
+    assert "Range" not in httpx_mock.get_requests()[0].headers
 
 
 @pytest.mark.parametrize(
@@ -157,12 +156,24 @@ async def test_unsafe_paths_never_reach_core(httpx_mock, url) -> None:
 
 
 @pytest.mark.asyncio
-async def test_file_etag_of_an_empty_file_comes_from_the_416(httpx_mock) -> None:
+async def test_project_metadata_returns_the_body(httpx_mock) -> None:
     httpx_mock.add_response(
         method="GET",
-        url=f"{BASE_URL}/v2/{FILE_URL}",
-        status_code=416,
-        headers={"etag": "empty-file-etag"},
+        url=f"{BASE_URL}/v2/metadata/projects/b/My%20Project",
+        json={"name": "My Project", "etag": "e"},
     )
 
-    assert await _client().file_etag(FILE_URL) == "empty-file-etag"
+    assert await _client().project_metadata("projects/b/My%20Project") == {
+        "name": "My Project",
+        "etag": "e",
+    }
+
+
+@pytest.mark.asyncio
+async def test_project_metadata_404_is_not_found(httpx_mock) -> None:
+    httpx_mock.add_response(
+        method="GET", url=f"{BASE_URL}/v2/metadata/projects/b/p", status_code=404
+    )
+
+    with pytest.raises(ResourceNotFoundError):
+        await _client().project_metadata("projects/b/p")

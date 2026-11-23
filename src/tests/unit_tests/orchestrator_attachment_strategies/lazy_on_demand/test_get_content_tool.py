@@ -14,9 +14,10 @@ import pytest
 from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
 
 from quickapp.common.dial_settings import DialSettings
-from quickapp.common.exceptions import InvalidToolCallParameterException
+from quickapp.common.exceptions import InvalidToolCallParameterException, ToolErrorException
 from quickapp.common.file_reference_pattern import to_file_url_reference
 from quickapp.common.messages_mixin import MessagesMixin
+from quickapp.common.project_context import ProjectContext
 from quickapp.core.agent import OrchestratorCapabilities
 from quickapp.dial_core_services.dial_file_promoter import DialFilePromoter
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._attachment_acceptance import (
@@ -52,7 +53,9 @@ def _user_msg_with(attachment: Attachment) -> Message:
 
 def _make_home_resolver(home: str = "files/bucket/appdata/app/home/") -> MagicMock:
     resolver = MagicMock(spec=HomePathResolver)
-    resolver.resolve_appdata_url = AsyncMock(side_effect=lambda path: f"{home}{path}")
+    resolver.resolve_appdata_url = AsyncMock(
+        side_effect=lambda path, parameter_name="path": f"{home}{path}"
+    )
     return resolver
 
 
@@ -61,6 +64,7 @@ def _make_tool(
     messages: list[Message] | None = None,
     promoter: DialFilePromoter | None = None,
     home_resolver: MagicMock | None = None,
+    project: ProjectContext | None = None,
 ) -> _GetContentTool:
     caps = OrchestratorCapabilities(
         deployment=SimpleNamespace(  # type: ignore[arg-type]
@@ -88,6 +92,7 @@ def _make_tool(
         deferred_stage_close_registry=MagicMock(),
         materializer=materializer,
         home_resolver=home_resolver or _make_home_resolver(),
+        project=project,
     )
 
 
@@ -207,14 +212,14 @@ class TestGetContentTool:
             ["application/pdf"], messages=[_user_msg_with(attachment)], promoter=promoter
         )
 
-        result = await tool._run_in_stage_async(
-            stage_wrapper=None, attachment_url="https://example.com/data.pdf"
-        )
+        with pytest.raises(ToolErrorException) as excinfo:
+            await tool._run_in_stage_async(
+                stage_wrapper=None, attachment_url="https://example.com/data.pdf"
+            )
 
-        payload = GetContentToolResponse.from_state(result.state)
-        assert payload is not None
-        assert payload.status == GetContentStatus.FAIL
-        assert payload.status_message == "Orchestrator deployment does not accept this file type."
+        assert "Orchestrator deployment does not accept this file type." in (
+            excinfo.value.error_message
+        )
 
     @pytest.mark.asyncio
     async def test_home_relative_path_is_resolved_under_agent_home(self):
@@ -231,7 +236,9 @@ class TestGetContentTool:
         )
 
         promoter.promote.assert_not_awaited()
-        home_resolver.resolve_appdata_url.assert_awaited_once_with("reports/img.png")
+        home_resolver.resolve_appdata_url.assert_awaited_once_with(
+            "reports/img.png", parameter_name="attachment_url"
+        )
         assert result.attachments is not None
         assert result.attachments[0].url == "files/bucket/appdata/app/home/reports/img.png"
         assert result.attachments[0].type == "image/png"
@@ -251,14 +258,10 @@ class TestGetContentTool:
         )
         tool = _make_tool(["image/*"], home_resolver=home_resolver)
 
-        result = await tool._run_in_stage_async(
-            stage_wrapper=None, attachment_url="reports/img.png"
-        )
+        with pytest.raises(ToolErrorException) as excinfo:
+            await tool._run_in_stage_async(stage_wrapper=None, attachment_url="reports/img.png")
 
-        payload = GetContentToolResponse.from_state(result.state)
-        assert payload is not None
-        assert payload.status == GetContentStatus.FAIL
-        assert "appdata namespace is not available" in (payload.status_message or "")
+        assert "appdata namespace is not available" in excinfo.value.error_message
 
     @pytest.mark.asyncio
     async def test_traversal_reference_is_unsupported_before_resolution(self):
@@ -267,23 +270,77 @@ class TestGetContentTool:
         home_resolver = _make_home_resolver()
         tool = _make_tool(["image/*"], home_resolver=home_resolver)
 
-        result = await tool._run_in_stage_async(stage_wrapper=None, attachment_url="../escape.png")
+        with pytest.raises(ToolErrorException) as excinfo:
+            await tool._run_in_stage_async(stage_wrapper=None, attachment_url="../escape.png")
 
         home_resolver.resolve_appdata_url.assert_not_awaited()
-        payload = GetContentToolResponse.from_state(result.state)
-        assert payload is not None
-        assert payload.status == GetContentStatus.FAIL
-        assert (payload.status_message or "").startswith("Unsupported file reference.")
+        assert "Unsupported file reference." in excinfo.value.error_message
 
     @pytest.mark.asyncio
     async def test_home_relative_path_rejected_when_mime_not_accepted(self):
         tool = _make_tool(["image/*"])
 
-        result = await tool._run_in_stage_async(
-            stage_wrapper=None, attachment_url="archives/data.zip"
+        with pytest.raises(ToolErrorException) as excinfo:
+            await tool._run_in_stage_async(stage_wrapper=None, attachment_url="archives/data.zip")
+
+        assert "Orchestrator deployment does not accept this file type." in (
+            excinfo.value.error_message
         )
 
-        payload = GetContentToolResponse.from_state(result.state)
-        assert payload is not None
-        assert payload.status == GetContentStatus.FAIL
-        assert payload.status_message == "Orchestrator deployment does not accept this file type."
+
+_PROJECT = ProjectContext(url="projects/b/My P")
+
+
+class TestProjectUrls:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "url", ["projects/b/My%20P/files/context/a.pdf", "projects/b/My P/files/context/a.pdf"]
+    )
+    async def test_current_project_url_passes_through_canonical(self, url: str):
+        tool = _make_tool(["application/pdf"], project=_PROJECT)
+
+        result = await tool._run_in_stage_async(stage_wrapper=None, attachment_url=url)
+
+        assert result.attachments is not None
+        assert result.attachments[0].url == "projects/b/My%20P/files/context/a.pdf"
+        assert result.attachments[0].type == "application/pdf"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("project", [_PROJECT, None])
+    async def test_other_project_url_rejected(self, project: ProjectContext | None):
+        tool = _make_tool(["application/pdf"], project=project)
+
+        with pytest.raises(ToolErrorException) as excinfo:
+            await tool._run_in_stage_async(
+                stage_wrapper=None, attachment_url="projects/other/P/files/context/a.pdf"
+            )
+
+        assert "current project" in excinfo.value.error_message
+
+    @pytest.mark.asyncio
+    async def test_home_relative_path_resolves_to_the_canonical_project_url(self):
+        home_resolver = _make_home_resolver("projects/b/My%20P/files/artifacts/")
+        tool = _make_tool(["application/pdf"], home_resolver=home_resolver, project=_PROJECT)
+
+        result = await tool._run_in_stage_async(stage_wrapper=None, attachment_url="my notes/a.pdf")
+
+        assert result.attachments is not None
+        assert result.attachments[0].url == "projects/b/My%20P/files/artifacts/my%20notes/a.pdf"
+
+    @pytest.mark.asyncio
+    async def test_user_attachment_matched_in_either_spelling(self):
+        attachment = Attachment(
+            title="Q1 report",
+            url="projects/b/My%20P/files/context/Q1%20(draft).pdf",
+            type="application/pdf",
+        )
+        tool = _make_tool(
+            ["application/pdf"], messages=[_user_msg_with(attachment)], project=_PROJECT
+        )
+
+        result = await tool._run_in_stage_async(
+            stage_wrapper=None, attachment_url="projects/b/My P/files/context/Q1 (draft).pdf"
+        )
+
+        assert result.attachments is not None
+        assert result.attachments[0].title == "Q1 report"

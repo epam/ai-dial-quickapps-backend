@@ -52,7 +52,6 @@ class DialCoreServicesModule(Module):
         project_storage: ProjectFileStorage,
         project: PROJECT_CONTEXT,
     ) -> FileStorage:
-        """v1 only, unless the request has a project: then URLs of that project go to v2."""
-        if project is None:
-            return v1
+        """v1 for ``files/…``; the request's project (if any) through v2; any other
+        ``projects/…`` URL is refused."""
         return RoutedFileStorage(v1, project_storage, project)

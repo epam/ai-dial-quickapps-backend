@@ -4,9 +4,8 @@ These have no dependency on `self`/DI, so they live here rather than on the
 `_DialFileTool` base class (which holds the download/resolution behaviour).
 """
 
-from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.tool_names import INTERNAL_FILE_READ_CHARS_TOOL_NAME
-from quickapp.common.utils import fenced_code_block
+from quickapp.common.utils import canonical_url, fenced_code_block
 from quickapp.dial_core_services.storage.file_storage import FolderEntry
 
 # Read-back tools (read_lines, read_chars, search) are excluded from offload, so an
@@ -47,20 +46,14 @@ def is_root_reference(path: str) -> bool:
     return path.strip() in ("", ".", "./", "/")
 
 
-def reject_absolute_path(parameter_name: str, tool_name: str, value: str) -> None:
-    """Reject an absolute 'files/...' URL for tools that only accept home-relative paths."""
-    if value.startswith("files/"):
-        raise InvalidToolCallParameterException(
-            parameter_name,
-            f"{tool_name} requires a relative path under agent_home_dir; "
-            "do not pass an absolute files/... URL",
-        )
-
-
 def relative_to(url: str, folder_url: str) -> str:
-    """Path of `url` relative to the search root `folder_url` (used for glob matching)."""
-    if url.startswith(folder_url):
-        return url[len(folder_url) :]
+    """Path of `url` relative to the search root `folder_url` (used for glob matching).
+
+    Compared in canonical form: the model may spell the folder decoded (`Q1 (draft)/`)
+    while Core lists `Q1%20(draft)/a.md`. The rest of `url` keeps its own spelling.
+    """
+    if canonical_url(url).startswith(canonical_url(folder_url)):
+        return url.split("/", folder_url.count("/"))[-1]
     return url
 
 

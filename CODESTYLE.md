@@ -137,6 +137,7 @@ def __init__(self, ..., agent_settings: AgentSettings) -> None:
 - **Explicit imports**: Avoid `from module import *`. Import only what you use.
 - **No imports of another package's `_` modules**: see §3. If you need something that lives in a package-private module, re-export it from that package's `__init__.py` (or move it to a public module) instead of reaching into the `_` module.
 - **Import order**: Standard library → third-party → local/project modules, with a blank line between each group.
+- **Absolute imports only**: Never use relative imports (`from . import x`, `from .module import X`, `from ..pkg import Y`). Always import by the full `quickapp.…` path (tests: `quickapp.…` for code under test). This includes package `__init__.py` re-exports.
 
 ---
 

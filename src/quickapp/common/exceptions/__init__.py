@@ -7,13 +7,13 @@ from .offload_configuration import OffloadConfigurationException
 from .orchestrator_exceed_max_iterations import OrchestratorExceedMaxIterationsException
 from .orchestrator_initialization import OrchestratorInitializationException
 from .orchestrator_system_prompt import OrchestratorSystemPromptException
+from .project_instructions import ProjectInstructionsException
 from .skill_initialization import (
     SkillCatastrophicInitializationException,
     SkillInitializationException,
 )
 from .tool_initialization import ToolInitializationException
 from .tool_timeout import TOOL_TIMEOUT_PHRASE, ToolTimeoutError
-from .unsupported_reasoning_effort import UnsupportedReasoningEffortException
 from .tool_error import ToolErrorException
 
 __all__ = [
@@ -26,11 +26,11 @@ __all__ = [
     "OrchestratorExceedMaxIterationsException",
     "OrchestratorInitializationException",
     "OrchestratorSystemPromptException",
+    "ProjectInstructionsException",
     "SkillCatastrophicInitializationException",
     "SkillInitializationException",
     "ToolInitializationException",
     "ToolTimeoutError",
-    "UnsupportedReasoningEffortException",
     "HookInitializationException",
     "ToolErrorException",
 ]

@@ -96,58 +96,52 @@ class _PyInterpreterTool(StagedBaseTool):
         *args: Any,
         **kwargs: Any,
     ) -> ToolCallResult:
-        try:
-            code: str = kwargs["code"]
-            attachment_urls: list[str] | None = kwargs.get("attachment_urls")
-            raw_data_sample_config = kwargs.get("data_sample_config")
-            data_sample_config: DataSampleConfig | None = (
-                DataSampleConfig.model_validate(raw_data_sample_config)
-                if raw_data_sample_config is not None
-                else None
+        # ``_PyInterpreterError`` is intentionally not caught: it propagates to
+        # ``StagedBaseTool``, which owns the failure log, stage error and fallback.
+        code: str = kwargs["code"]
+        attachment_urls: list[str] | None = kwargs.get("attachment_urls")
+        raw_data_sample_config = kwargs.get("data_sample_config")
+        data_sample_config: DataSampleConfig | None = (
+            DataSampleConfig.model_validate(raw_data_sample_config)
+            if raw_data_sample_config is not None
+            else None
+        )
+        display_title: str | None = kwargs.get("display_title")
+
+        async with self.__client as client:
+            session_id = (
+                self.__session_manager.get_session_id()
+                or self.__py_interpreter_settings.default_session_id
             )
-            display_title: str | None = kwargs.get("display_title")
+            session_id = await self.__session_manager.ensure_valid_session(session_id)
 
-            async with self.__client as client:
-                session_id = (
-                    self.__session_manager.get_session_id()
-                    or self.__py_interpreter_settings.default_session_id
+            await self._prepare_input_files(
+                client=client,
+                session_id=session_id,
+                attachment_urls=attachment_urls,
+            )
+
+            execution_result = await client.execute_code(
+                CodeExecutionRequest(sessionId=session_id, code=code)
+            )
+
+            execution_result = ContentSanitizer.sanitize(
+                data=execution_result, data_sample_config=data_sample_config
+            )
+
+            attachments = []
+            if execution_result.display:
+                attachments = await self.__display_content_processor.process_display_content(
+                    execution_result.display, display_title=display_title
                 )
-                session_id = await self.__session_manager.ensure_valid_session(session_id)
-
-                await self._prepare_input_files(
-                    client=client,
-                    session_id=session_id,
-                    attachment_urls=attachment_urls,
-                )
-
-                execution_result = await client.execute_code(
-                    CodeExecutionRequest(sessionId=session_id, code=code)
-                )
-
-                execution_result = ContentSanitizer.sanitize(
-                    data=execution_result, data_sample_config=data_sample_config
-                )
-
-                attachments = []
-                if execution_result.display:
-                    attachments = await self.__display_content_processor.process_display_content(
-                        execution_result.display, display_title=display_title
-                    )
-                    execution_result = self.__display_content_processor.sanitize_display_content(
-                        execution_result
-                    )
-
-                result = ToolCallResult(
-                    content=f"\n```json\n{execution_result.model_dump_json(indent=2)}\n```\n",
-                    content_type=MediaTypes.JSON,
-                    attachments=attachments,
+                execution_result = self.__display_content_processor.sanitize_display_content(
+                    execution_result
                 )
 
-        except _PyInterpreterError as e:
             result = ToolCallResult(
-                content=str(e),
+                content=f"\n```json\n{execution_result.model_dump_json(indent=2)}\n```\n",
                 content_type=MediaTypes.JSON,
-                attachments=None,
+                attachments=attachments,
             )
 
         if stage_wrapper:

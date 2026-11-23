@@ -90,6 +90,13 @@ skills) are visible to transformers:
   orchestrator's `dial` system prompt and fails the request if it cannot be loaded; the deployment
   tool initializer fetches each deployment tool's `dial` prompt the same way, but records a failure
   as an initialization issue instead.
+- **Deployment parameters**: `common/deployment_parameter_support.py` removes the request parameters
+  the target deployment's DialCore `features` declare unsupported: `temperature`
+  (`temperatureSupported`, `customTemperatureSupported`) and `reasoning_effort`
+  (`reasoningEfforts`). It applies to the orchestrator and to deployment tools; each drop is logged
+  as a warning and the request proceeds without the parameter. Boolean flags are enforced only
+  when Core defaults them to `true`, so `seed` (`seedSupported` defaults to `false`) is always
+  sent.
 - **Message preprocessing**: after initializers, `_RequestContextSetup.setup_messages()` calls
   `_MessagesSetup.extract_tool_calls()` to expand packed tool-call state, then runs all
   `MessagesTransformer` instances (adding system prompts, injecting context notifications). After
@@ -265,7 +272,7 @@ This runs in the completion-initializer phase **before** message preprocessing a
 1. **App-configured tools** — OpenAI-function schemas from resolved `StagedBaseTool` instances (REST, deployment, MCP, internal).
 2. **Static tools** — serialized `StaticTool` dicts from `provide_static_tools`, which reads `_OrchestratorStaticToolsContext.static_tools`.
 
-`_ChatCompletionConfigBuilder` receives this merged list via DI, sorts it by name (static tools first) so the prompt-cache prefix stays stable, appends any tools loaded by `tool_search` in discovery order, and sends the result on every orchestrator iteration as `tools` in the streaming `chat.completions.create` payload. Static tools are **not** registered in the tool executor; if the model invokes them, handling stays on the deployment side.
+`_ChatCompletionConfigBuilder` receives this merged list via DI, sorts it by name (static tools first) so the prompt-cache prefix stays stable, appends any tools loaded by `tool_search` in discovery order (tools discovered in earlier turns of the conversation stay loaded; `LazyLoadedToolsHolder` restores them from the assistant message state and writes it back), and sends the result on every orchestrator iteration as `tools` in the streaming `chat.completions.create` payload. Static tools are **not** registered in the tool executor; if the model invokes them, handling stays on the deployment side.
 
 ### Deployment tools
 
@@ -634,6 +641,7 @@ The module is always registered; it is a no-op unless the app sets
 the `internal_file_*` tools speak). The relative form is resolved under the agent home to a `files/` URL
 via the shared `HomePathResolver` (see the Dependency Injection section) and then follows the DIAL
 passthrough path, so the model can hand a file-tool path straight to `internal_attachments_get_content`.
+DIAL deployment tools resolve relative `attachment_urls` the same way (`AttachmentResolver`).
 
 The orchestrator deployment metadata feed (`_OrchestratorDeploymentInitializer`, `OrchestratorCapabilities`,
 `OrchestratorDeploymentCacheService`) lives in `src/quickapp/core/agent/` as a shared facility for any future

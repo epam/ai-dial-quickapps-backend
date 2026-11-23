@@ -10,7 +10,6 @@ from quickapp.dial_core_services.exceptions import (
     ProjectFileOperationException,
 )
 from quickapp.dial_files_tooling._base_file_tool import _DialFileTool
-from quickapp.dial_files_tooling._utils import reject_absolute_path
 
 
 class _MoveFileTool(_DialFileTool):
@@ -25,11 +24,8 @@ class _MoveFileTool(_DialFileTool):
         destination: str = kwargs["destination"]
         overwrite: bool = bool(kwargs.get("overwrite", False))
 
-        reject_absolute_path("source", "move_file", source)
-        reject_absolute_path("destination", "move_file", destination)
-
-        source_url = await self._home_resolver.resolve_appdata_url(source)
-        dest_url = await self._home_resolver.resolve_appdata_url(destination)
+        source_url = await self._home_resolver.resolve_write_url("source", source)
+        dest_url = await self._home_resolver.resolve_write_url("destination", destination)
         dest_display = await self._home_resolver.to_display_path(dest_url)
 
         try:
@@ -49,7 +45,7 @@ class _MoveFileTool(_DialFileTool):
         except PartialMoveException as e:
             raise self._tool_error(e) from e
         except DialException as e:
-            self._check_permission_denied(e, source, parameter_name="source")
+            self._check_permission_denied(e, source)
             raise
 
         result = ToolCallResult(content=f"Moved to: {dest_display}", content_type="text/plain")

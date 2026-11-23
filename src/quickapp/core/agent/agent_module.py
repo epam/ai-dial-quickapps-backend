@@ -95,6 +95,7 @@ class AgentModule(Module):
         binder.bind(Orchestrator, to=Orchestrator)  # type: ignore[type-abstract]
         binder.bind(_ToolChoiceHolder, to=_ToolChoiceHolder, scope=request_scope)
         binder.bind(StateHolder, to=StateHolder, scope=request_scope)
+        binder.bind(LazyLoadedToolsHolder, to=LazyLoadedToolsHolder, scope=request_scope)
         binder.bind(
             DeferredStageCloseRegistry,
             to=DeferredStageCloseRegistry,
@@ -113,7 +114,6 @@ class AgentModule(Module):
         binder.bind(AssistantInvoker, to=AssistantInvoker, scope=NoScope)
         binder.bind(_ChatCompletionConfigBuilder, to=_ChatCompletionConfigBuilder, scope=NoScope)
         binder.bind(_PromptCacheBreakpoints, to=_PromptCacheBreakpoints, scope=singleton)
-        binder.bind(LazyLoadedToolsHolder, to=LazyLoadedToolsHolder, scope=request_scope)
         binder.bind(ChatStreamSinkFactory, to=ChatStreamSinkFactory, scope=NoScope)
         binder.bind(ChatCompletionStreamHandler, to=ChatCompletionStreamHandler, scope=NoScope)
         binder.bind(_AttachmentFilter, to=_AttachmentFilter, scope=request_scope)
@@ -161,16 +161,11 @@ class AgentModule(Module):
 
     @multiprovider
     def _provide_initialization_exceptions(
-        self,
-        initializer: _OrchestratorDeploymentInitializer,
-        system_prompt_initializer: _DialSystemPromptInitializer,
+        self, system_prompt_initializer: _DialSystemPromptInitializer
     ) -> list[InitializationException]:
         # Resolved by _InitializationErrorHandler after the initializers have run, so the
-        # lists already hold whatever initialize() recorded.
-        return [
-            *system_prompt_initializer.initialization_exceptions,
-            *initializer.initialization_exceptions,
-        ]
+        # list already holds whatever initialize() recorded.
+        return list(system_prompt_initializer.initialization_exceptions)
 
     @provider
     def provide_orchestrator_capabilities(
