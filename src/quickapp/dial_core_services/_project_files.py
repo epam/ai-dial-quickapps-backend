@@ -11,17 +11,17 @@ Core behaviour this relies on:
   while a file GET returns the file's own ETag. So callers check a file's own state with
   ``file_etag`` and then send a plain PUT.
 - There is no per-file metadata endpoint, and listings carry no sizes.
+- A file GET ignores ``Range``: it always streams the whole file, with ``Content-Length``
+  and the file's ``ETag`` in the headers.
 - Listing a missing folder returns 200 with no items, never 404.
 """
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from http import HTTPStatus
 from typing import Literal
 
 import httpx
 from aidial_client import AsyncDial, DialException, ResourceNotFoundError
-from aidial_client._http_client._base import ErrorHandler
 from aidial_client._internal_types._http_request import FinalRequestOptions
 from aidial_client.helpers.storage_resource import _storage_error_processor
 from aidial_client.types.file import FileDownloadResponse
@@ -31,25 +31,6 @@ from pydantic import BaseModel, ConfigDict
 
 from quickapp.common.project_context import has_unsafe_segments
 from quickapp.common.utils import canonical_url
-
-
-class _RangeNotSatisfiableError(DialException):
-    """A 416 on a one-byte ranged GET: the file exists but is empty."""
-
-    def __init__(self, etag: str | None):
-        super().__init__(
-            message="Range not satisfiable", status_code=HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE
-        )
-        self.etag = etag
-
-
-def _ranged_get_error_processor(
-    http_status_error: httpx.HTTPStatusError,
-) -> DialException | None:
-    response = http_status_error.response
-    if response.status_code == HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE:
-        return _RangeNotSatisfiableError(response.headers.get("etag"))
-    return _storage_error_processor(http_status_error)
 
 
 class ProjectItem(BaseModel):
@@ -80,22 +61,14 @@ class ProjectFilesClient:
     async def file_etag(self, url: str) -> str | None:
         """The file's own ETag, or ``None`` when the file doesn't exist.
 
-        Asks for the first byte only (200 or 206 both work); if Core ignores ``Range`` the
-        whole file comes back, which is slower but still correct. A 0-byte file answers
-        416 (no byte 0): it exists, and the ETag comes from that response.
+        Opens a GET and reads the headers only: the body is never read, since Core has no
+        per-file metadata endpoint and ignores ``Range``.
         """
         try:
-            response = await self._request(
-                "GET",
-                f"v2/{url}",
-                headers={"Range": "bytes=0-0"},
-                on_http_error=_ranged_get_error_processor,
-            )
+            async with self.stream(url) as response:
+                return response.headers.get("etag")
         except ResourceNotFoundError:
             return None
-        except _RangeNotSatisfiableError as e:
-            return e.etag
-        return response.headers.get("etag")
 
     async def project_metadata(self, project_url: str) -> dict:
         """Metadata of the project ``projects/{b}/{p}``.
@@ -142,13 +115,11 @@ class ProjectFilesClient:
         *,
         files: dict | None = None,
         params: dict | None = None,
-        headers: dict[str, str] | None = None,
-        on_http_error: ErrorHandler = _storage_error_processor,
     ) -> httpx.Response:
         return await self._http.request(
             cast_to=httpx.Response,
-            options=self._options(method, url, files=files, params=params, headers=headers),
-            on_http_error=on_http_error,
+            options=self._options(method, url, files=files, params=params),
+            on_http_error=_storage_error_processor,
         )
 
     @staticmethod
@@ -158,7 +129,6 @@ class ProjectFilesClient:
         *,
         files: dict | None = None,
         params: dict | None = None,
-        headers: dict[str, str] | None = None,
     ) -> FinalRequestOptions:
         # Defence in depth: callers only pass URLs of the request's project, which are
         # checked already; never send a path that could leave it.
@@ -169,7 +139,6 @@ class ProjectFilesClient:
             url=canonical_url(url),
             files=files,
             params=params,
-            headers=headers or {},
         )
 
 

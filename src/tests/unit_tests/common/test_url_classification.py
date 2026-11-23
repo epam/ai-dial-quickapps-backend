@@ -1,6 +1,11 @@
 import pytest
 
-from quickapp.common.url_classification import UrlScheme, classify_url, is_appdir_relative
+from quickapp.common.url_classification import (
+    UrlScheme,
+    classify_url,
+    is_appdir_relative,
+    is_dial_storage_path,
+)
 
 DIAL_URL = "https://dial.example.com"
 
@@ -166,3 +171,16 @@ class TestProjectUrls:
 
     def test_projects_folder_inside_a_relative_path_stays_relative(self):
         assert classify_url("reports/projects/a.md", DIAL_URL) == UrlScheme.DIAL_APPDIR_RELATIVE
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        ("files/b/x.md", True),
+        ("projects/b/P/files/x.md", True),
+        ("reports/x.md", False),
+        (f"{DIAL_URL}/v1/files/b/x.md", False),
+    ],
+)
+def test_is_dial_storage_path(url: str, expected: bool):
+    assert is_dial_storage_path(url) is expected

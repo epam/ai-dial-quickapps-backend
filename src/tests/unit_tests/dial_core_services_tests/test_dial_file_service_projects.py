@@ -72,10 +72,8 @@ def _make_service(
     resolver.resolve.return_value = size_limit
     dial_client = dial_client or _make_dial_client()
     v1 = V1FileStorage(dial_client, resolver)
-    storage: FileStorage = (
-        v1
-        if project is None
-        else RoutedFileStorage(v1, ProjectFileStorage(project_files, resolver), project)
+    storage: FileStorage = RoutedFileStorage(
+        v1, ProjectFileStorage(project_files, resolver), project
     )
     return DialFileService(
         dial_client=dial_client,
@@ -87,21 +85,25 @@ def _make_service(
 class TestDispatchGate:
     @pytest.mark.parametrize("project", [None, ProjectContext(url="projects/b/other")])
     @pytest.mark.asyncio
-    async def test_projects_url_outside_the_requests_project_stays_on_v1(self, project):
+    async def test_projects_url_outside_the_requests_project_is_refused(self, project):
         dial_client = _make_dial_client()
         project_files = _make_project_files()
         svc = _make_service(project_files, dial_client=dial_client, project=project)
 
-        await svc.download_file(PROJECT_FILE)
-        await svc.write_file(PROJECT_FILE, "x", overwrite=True)
-        await svc.delete(PROJECT_FILE)
+        for call in (
+            svc.download_file(PROJECT_FILE),
+            svc.write_file(PROJECT_FILE, "x", overwrite=True),
+            svc.delete(PROJECT_FILE),
+        ):
+            with pytest.raises(ProjectFileOperationException, match="current project"):
+                await call
 
         project_files.stream.assert_not_called()
         project_files.put.assert_not_awaited()
         project_files.delete.assert_not_awaited()
-        dial_client.files.download.assert_awaited_once()
-        dial_client.files.upload.assert_awaited_once()
-        dial_client.files.delete.assert_awaited_once()
+        dial_client.files.download.assert_not_awaited()
+        dial_client.files.upload.assert_not_awaited()
+        dial_client.files.delete.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_files_urls_stay_on_v1_inside_a_project(self):
@@ -384,11 +386,13 @@ class TestReviewFixes:
         assert uploaded.url == "projects/b/My%20Project/files/artifacts/%C3%A4%20b.md"
 
     @pytest.mark.asyncio
-    async def test_traversal_out_of_the_project_is_not_dispatched_to_v2(self):
+    async def test_traversal_out_of_the_project_is_refused(self):
         dial_client = _make_dial_client()
         project_files = _make_project_files()
         svc = _make_service(project_files, dial_client=dial_client)
 
-        await svc.download_file("projects/b/p/files/../../Other/files/x.md")
+        with pytest.raises(ProjectFileOperationException, match="current project"):
+            await svc.download_file("projects/b/p/files/../../Other/files/x.md")
 
         project_files.stream.assert_not_called()
+        dial_client.files.download.assert_not_awaited()
