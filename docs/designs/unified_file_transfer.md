@@ -148,8 +148,9 @@ This decides the delivery order below: the layout first, the storage-routing ste
 
 ### `FileLayout` (new, `shared/file_layout/`)
 
-One DI-provided abstraction answers every "where / what kind of path" question. Two implementations, chosen by a single
-`@provider` (request scope) that is the only reader of `PROJECT_CONTEXT` for this concern:
+One DI-provided abstraction answers every "where / what kind of path" question. Decision D-2: the interface is
+implemented by one class, `DialFileLayout`, that holds the project decision inside. A single `@provider` (request scope)
+is the only reader of `PROJECT_CONTEXT` for this concern and passes it to the class:
 
 ```python
 class DialPathKind(StrEnum):
@@ -168,18 +169,47 @@ class FileLayout(ABC):
     async def resolve_read(self, path: str) -> str         # absolute canonical URL; rejects FOREIGN_PROJECT
     async def resolve_write(self, path: str) -> str        # relative paths only, under home_root
     async def to_display_path(self, url: str) -> str       # inverse, for the model and stage titles
-    def v1_readable(self, url: str) -> bool                # C4: False for a project URL
 ```
 
-| Implementation | Chosen when | home / output | appdata | `v1_readable(project URL)` |
-|---|---|---|---|---|
-| `StandaloneFileLayout` | `PROJECT_CONTEXT is None` | `files/{appdata}/{agent_home_dir}` / appdata root | appdata root | n/a (`classify` returns `FOREIGN_PROJECT`) |
-| `ProjectFileLayout` | project present | `artifacts/` / `artifacts/` | appdata root | `False` |
+| Mode inside `DialFileLayout` | Chosen when | home / output | appdata |
+|---|---|---|---|
+| standalone | `PROJECT_CONTEXT is None` | `files/{appdata}/{agent_home_dir}` / appdata root | appdata root |
+| project | project present | `artifacts/` / `artifacts/` | appdata root |
 
-`SKILL` URLs are readable and never writable: `resolve_write` rejects them in both implementations. The `skill://`
+Outside a project, `classify` returns `FOREIGN_PROJECT` for every `projects/` URL. This matches the storage today:
+`RoutedFileStorage._route` refuses any `projects/` URL that is not the request's project (and every one without a
+project) with a 403, "current project only". The consumers that bypass the storage (promoter, input handler) send such a
+URL to the v1 client and fail at runtime; `AttachmentResolver` has its own `projects/` branch. Each keeps its current
+outcome, and the B1 matrix pins it.
+
+Rules that keep the single class cheap to split later (D-2):
+
+- Consumers type against the `FileLayout` interface, never against `DialFileLayout`. The interface stays even while
+  there is one implementation.
+- The project decision lives inside the layout and does not leak out. The state comes from one field set in the
+  constructor, and a public method has at most one branch point on it. Private helpers do not re-test it.
+- If the project mode grows enough to make the class hard to read (for example the legacy to logical URL conversion of
+  B3b together with `context/` and `artifacts/` rules), split it into `StandaloneFileLayout` and `ProjectFileLayout`
+  behind the same provider. Consumers and their tests do not change, and the B1 matrix pins the behaviour across the
+  split.
+
+`SKILL` URLs are readable and never writable: `resolve_write` rejects them in both modes. The `skill://`
 reference stays a boundary pre-step (skills package: `skill_file_url`); the layout only classifies the resulting
 `skills/...` URL. Who owns the "grant target" of a URL (the resource root for a skill or project file, the file itself
 for `files/`) is an open question below.
+
+**`V1ReadPolicy` (decision D-6).** C4 ("can the v1 client read this URL?") is a question about the reader, not about the
+path, so it is not on the layout. A small DI service in `shared/file_layout/` answers it from the layout's
+classification:
+
+```python
+class V1ReadPolicy:
+    def can_read(self, kind: DialPathKind) -> bool         # C4: False for CURRENT_PROJECT and FOREIGN_PROJECT
+```
+
+A consumer asks `policy.can_read(layout.classify(url))`; the policy does not depend on the layout. It holds the one C4
+rule today, and the B1 matrix pins what it returns for `SKILL`. Lifting C4 is a change in this class only. M5 replaces
+it with an explicit per-consumer capability setting, then deletes it.
 
 **Canonical URL form.** Today the code holds a project or skill file as `projects/{b}/{p}/files/...` and
 `skills/{b}/{name}/files/...`, the form of the old complex-resource routes (`canonical_url`, `ProjectContext.contains`,
@@ -187,8 +217,8 @@ for `files/`) is an open question below.
 that is the form the rest of DIAL (attachments, sharing, publications) uses. The layout is therefore the single place
 that owns the form: it hands out one canonical URL, and the `/files/` segment becomes a private detail of the legacy
 `ProjectFileStorage` / `ProjectFilesClient`, added when a request goes through the old route and removed with them.
-Whether the layout switches to the logical form during track B or only at the migration is an open question; the
-default is to isolate the legacy form behind the layout in B3 and switch at the migration.
+Decision D-3: the legacy form is isolated behind the layout in track B, and the layout switches to the logical form at
+the migration (M4).
 
 **The two forms are ambiguous.** The old complex-resource routes return `projects/{b}/{p}/files/artifacts/x.md`, where
 `files/` separates the resource root from the file path. The unified API reads the same string as a resource whose own
@@ -208,7 +238,8 @@ the conversion is ours, it happens at one place (the layout) and only where the 
   migration: M4 changes what the layout emits, it does not stop it accepting the old form.
 
 `HomePathResolver` is the nearest existing thing and is folded into the layout (its caching of the resolved home and the
-`my_appdata_home()` call move with it). Pure URL syntax (`canonical_url`, `has_unsafe_segments`,
+`my_appdata_home()` call move with it; decision D-5: it is deleted with `shared/home_path/` once its last consumer moves,
+and the layout lives in `shared/file_layout/`). Pure URL syntax (`canonical_url`, `has_unsafe_segments`,
 `to_relative_project_url`) stays in `common/`; the layout is its only caller outside tests.
 
 ### `FileStorage` gets `metadata(url)` (conditional, Delivery track C)
@@ -229,9 +260,21 @@ An MCP toolset receives a file either by value (`file:base64::`, `file:text::`, 
 and sends them) or by link (a `dial_url` parameter: QuickApps grants the toolset access and passes the URL, the server
 downloads it). Core authorizes at the resource root and rejects per-file sharing, so a link to a file of a project or a
 skill is a grant on the whole resource (for a project: `context/`, `conversations/`, `PROJECT.md` and every other
-artifact). The D4 and D8 confinement does not constrain an external consumer. Proposal, to be decided before B6:
-project files go to external consumers by value by default, and a link with a root grant is an explicit opt-in per
-toolset. For skills the grant is already on the skill root (the skill bundle is the unit that is meant to be shared).
+artifact). The D4 and D8 confinement does not constrain an external consumer. For skills the grant is already on the skill root (the skill
+bundle is the unit that is meant to be shared).
+
+Decision D-4 (a stop-gap): a project file reaches a `dial_url` parameter by link, and the grant is on the `artifacts/`
+folder of the current project only, not on the project root. Only files under `artifacts/` of the current project are
+delivered this way. Any other project path (`context/`, `conversations/`, `PROJECT.md`, a foreign project) is rejected
+for a `dial_url` parameter with an explicit error. By-value delivery (`file:` prefixes) is unchanged.
+
+- **Fallback.** The Core draft authorizes at the resource root only, so a grant on a folder inside a project may not be
+  possible. Ask the Core team. If it is not, the grant goes on the whole project resource until consent ships. The
+  confinement stays ours: only `artifacts/` files of the current project are accepted for `dial_url`, whatever the
+  scope of the grant. B6 does not wait for the answer, and the PR states which grant scope it uses.
+- **Temporary.** Core is adding consent for the files and resources of toolsets, given by an admin or a user when the
+  toolset is configured. When it ships, QuickApps stops granting, and this logic is replaced by showing the consent.
+  Reopen D-4 then.
 
 ### Consumers after the refactor
 
@@ -239,7 +282,7 @@ toolset. For skills the grant is already on the skill root (the skill bundle is 
 |---|---|---|
 | file tools, path-argument transformer | `resolve_read`, `resolve_write`, `to_display_path` | `PROJECT_CONTEXT`, prefixes |
 | `AttachmentService` | `output_url`, `appdata_url` | `PROJECT_CONTEXT`, `contains` |
-| `DialFilePromoter`, `AttachmentResolver`, `InputFileHandler` | `classify`, `v1_readable` | `PROJECT_CONTEXT` and `startswith("projects/")` (resolver), direct v1 metadata calls |
+| `DialFilePromoter`, `AttachmentResolver`, `InputFileHandler` | `classify`, `V1ReadPolicy.can_read` | `PROJECT_CONTEXT` and `startswith("projects/")` (resolver), direct v1 metadata calls |
 | `get_content` tool, keep policy, materializer | `classify` | `PROJECT_CONTEXT`, `startswith("files/")`, `is_dial_storage_path` |
 | `_MCPTool` (`dial_url` parameters), skill file source | `classify`, `resolve_read` | appdir-relative gap (TODO #445), `skill_file_url` imports into `mcp_tooling` |
 
@@ -251,6 +294,9 @@ toolset. For skills the grant is already on the skill root (the skill bundle is 
 - The stored content type is `None` for a DIAL URL today and stays so, so `load_with_content_type` resolves it exactly
   as before (stored value, then file name, then the default).
 - The "metadata is stored with the bytes" invariant, and its comment, live in `download_file` only.
+- No new import direction: `shared/file_transfer` already imports `dial_core_services` (`DialDownloader`), as do
+  `shared/home_path`, `shared/user_access` and `shared/project`. `dial_core_services` does not import
+  `shared/file_transfer` (checked by import search, direct imports only), so there is no cycle.
 
 ### External bytes: one cache inside `ExternalUrlFetcher`
 
@@ -260,8 +306,13 @@ toolset. For skills the grant is already on the skill root (the skill bundle is 
 - `WebContentFetcher` drops its own dict. `FileLoaderService` keeps writing the bytes to the `StateHolder`, and the
   promoter keeps its task map: its value is the *upload result*, not the bytes.
 - Policy does not change: the SSRF guard, redirect cap and per-app switches run inside the first fetch, a cache hit
-  returns what that fetch produced in the same request, and a failed fetch is not cached. The same bytes are held once
-  per request instead of up to three times.
+  returns what that fetch produced in the same request, and a failed fetch is not cached. The size limit, the timeout and
+  the egress policy are resolved once per request by `ExternalUrlFetcher` itself (not per consumer), so a hit cannot
+  return a result produced under a different policy.
+- Callers wait on a shared in-flight task through `asyncio.shield`, so cancelling the caller that started the fetch does
+  not cancel it for the others. A failed or cancelled task is removed from the map, so the next call retries.
+- An external URL is fetched once per request instead of up to three times. The bytes are held in the fetcher's cache, and
+  a `file:` load also keeps them in the `StateHolder` (the default, see the open question), so at most two copies.
 
 ### Appdata root
 
@@ -271,8 +322,10 @@ see the open questions.
 
 ### Guard against regression
 
-An architecture test fails when `PROJECT_CONTEXT` or the literals `"files/"` / `"projects/"` / `"skills/"` appear outside an
-allow-list: `common/project_context.py`, `common/url_classification.py` (until absorbed), the layout package, the
+An architecture test parses `src/quickapp` with `ast` (no such test exists in the repo yet) and fails when `PROJECT_CONTEXT`
+is referenced, or a string constant starting with `files/`, `projects/` or `skills/` appears, outside an allow-list.
+Docstrings and comments are not scanned, so they cannot cause false positives. The allow-list is one table in the test,
+one line of reason per entry, and a failure names the file and the line. It holds: `common/project_context.py`, `common/url_classification.py` (until absorbed), the layout package, the
 storage DI provider and `RoutedFileStorage`, the places that create `PROJECT_CONTEXT` (`AppModule` provider,
 `_request_context.py`, `_request_context_setup.py`), and the genuinely project-only features (`ProjectModule`: prompt
 provider, instructions, access preflight). The code survey of 2026-11-23 also found literals in
@@ -286,10 +339,10 @@ Every step is its own small PR with no behaviour change, leaves the tree green (
 file-transfer integration suite from track 0) and can be shipped without the steps after it. Sizes: S is a few files,
 M is a package.
 
-Track 0 comes first and gates the rest. After it, tracks A and B do not depend on each other. Track A needs only
-`FileStorage`, which the projects stack already introduced, so it can start as soon as that stack is merged and the
-cases it needs are green; it does not wait for the skills branch. Track B needs both the projects stack and the skills
-branch merged (the skills URLs and `FileSource` are part of what the layout classifies). Track C is conditional.
+Track 0 comes first and gates the rest. After it, tracks A and B do not depend on each other. The projects stack (up to
+PR 4/5) and the skills branch are both merged into the working branch, so no PR below waits for either of them. Track A
+needs only `FileStorage`; track B needs both, because the skills URLs and `FileSource` are part of what the layout
+classifies. Track C is conditional.
 
 ### Track 0: file-transfer integration suite (before any refactor)
 
@@ -328,13 +381,13 @@ Probes live next to `data_server_for_tests.py` and are started by `make start_te
 | In-6 | Interpreter input x `files/`, an external URL (promoted), a project file (known error) | interpreter |
 | Out-1 | MCP output file, REST `response_as_attachment`, interpreter display content: appdata root outside a project, `artifacts/` inside one; the same name twice replaces the file (I#725) | `produce_file`, read back |
 | Out-2 | A large tool result is offloaded to appdata, in a project as well | read back |
-| Cp | Copy and move: inside the agent home, inside `artifacts/`, from a personal file into `artifacts/` and back (a download and an upload today, and still after the unified API: Core rejects complex to plain), `overwrite` on and off, a failed delete after the copy (`PartialMoveException`) | read back from Core |
+| Cp | Copy and move: inside the agent home, inside `artifacts/`, from a personal file into `artifacts/` and back (a download and an upload today, and still after the unified API: Core rejects complex to plain), `overwrite` on and off | read back from Core. The failed delete after the copy (`PartialMoveException`) needs fault injection on a real Core, so it stays a unit test of `_transfer.py` |
 | Et | Per-file ETag semantics: `If-Match` on edit, `If-None-Match` on create-only, two writes to different files of one project. Today a project write is a plain PUT after a file-level check; the same cases must pass unchanged after the migration | read back from Core |
 | Sk | `read_skill` of a bundled file; `skill://` delivered by content and by link | after the skills merge |
-| Neg | Foreign project URL, `..` traversal, an oversized file, external fetch switched off, an unsupported scheme, an absolute `files/` or `projects/` write target (also in a project chat: the personal folder is not writable there, D4): the exact error the model sees. Also the two URL forms: the same file in the legacy (`.../files/artifacts/x`) and the logical (`.../artifacts/x`) form, and a skill that bundles a real `files/` folder | tool result text |
+| Neg | Foreign project URL, `..` traversal, an oversized file, external fetch switched off, an unsupported scheme, an absolute `files/` or `projects/` write target (also in a project chat: the personal folder is not writable there, D4): the error the model sees, pinned by its class and a key substring, not by the full text. Also the two URL forms: the same file in the legacy (`.../files/artifacts/x`) and the logical (`.../artifacts/x`) form, and a skill that bundles a real `files/` folder | tool result text |
 
 Cases that fail today by design or because Core support is unverified (C4, links to `projects/` files, TODO #445)
-are recorded with their current outcome and error text and marked as known, so a refactor cannot change them silently.
+are recorded with their current outcome and error class (plus a key substring) and marked as known, so a refactor cannot change them silently.
 A case changes status only in the PR that intentionally changes the behaviour, and that PR updates the expectation.
 
 **Which cases gate which step.**
@@ -344,7 +397,8 @@ A case changes status only in the PR that intentionally changes the behaviour, a
 | A1 download path | In-1, In-3 (the edit tool's `If-Match` depends on the stored metadata), In-4, Neg |
 | A2 external cache | external rows of In-1, In-4, In-5, In-6 |
 | A3 in-flight de-duplication | In-3 |
-| B3 - B6 layout and literals | In-1 to In-4, Out-1, Out-2, Cp, Sk, Neg |
+| B3 - B5 layout and literals | The outside-a-project cases of In-1 to In-4, Out-1, Out-2, Cp, Sk, Neg (T2, T3, T6) and the B1 matrix. The project variants (T4) are not required to start: until T4 is green, project behaviour is pinned by the B1 matrix only, and the PRs say so |
+| B6 `dial_url` parameters | The above, and the In-2 project cases from T4: B6 changes the grant for a `projects/` URL on purpose, so it is not merged without a live Core check |
 | B4 appdata root | Out-1, Out-2, In-3 (agent home) |
 | C1 - C4 metadata through the storage | In-5, In-6, In-2 |
 | M1 storage over the unified API | Every group, with Cp and Et as the cases that exercise what the new API changes (per-file ETag, copy and move) |
@@ -358,29 +412,32 @@ A case changes status only in the PR that intentionally changes the behaviour, a
 | T3 | Out-1, Out-2 outside a project, and Neg | S | T1 |
 | T4 | The same groups inside a project (needs a Core with project support and a per-request key); known C4 and link cases recorded. This is PR5 of the projects series | M | T2, T3, Core release with project support |
 | T5 | In-5 and In-6: deployment attachments and the interpreter | M | T1 |
-| T6 | Sk, and `skill://` in In-1 and In-2 | S | T1, skills merged |
+| T6 | Sk, and `skill://` in In-1 and In-2 | S | T1 (skills branch merged) |
 
-The suite needs a live Core, so it follows the existing integration workflow (manual in CI, not a PR gate; see the
-open questions).
+The suite needs a live Core. Decision D-7: it runs on the author's machine against a real Core, through the existing
+proxy-based integration tests, and is not a CI gate. A PR that is gated on Track 0 (B3a to B6) states in its description
+which groups were run and that they were green; the reviewer checks that statement. A nightly or docker-based job is
+possible later and is not part of this design.
 
 ### Track A: I/O seams
 
 | # | PR | Size | Depends on | Pinned by |
 |---|---|---|---|---|
-| A1 | `FileLoaderService` uses `DialFileService.download_file` for DIAL URLs; delete `DialDownloader` (class, DI binding, `test_dial_downloader.py`; the tests that mock it are in `test_file_loader_service.py`, `test_skill_file_reference_wiring.py` and `test_async_dial_http_calls.py`) | S | projects stack | A `FileLoaderService` test that a DIAL load stores the metadata, so the edit tool's `If-Match` still has an ETag |
-| A2 | Request-scoped fetch cache (in-flight map plus results) inside `ExternalUrlFetcher`; `WebContentFetcher` drops its dict | S | none | Two consumers of one URL cause one HTTP fetch; a failed fetch is retried; SSRF and size-limit tests unchanged |
+| A1 | `FileLoaderService` uses `DialFileService.download_file` for DIAL URLs; delete `DialDownloader` (class, DI binding, `test_dial_downloader.py`; the tests that mock it are in `test_file_loader_service.py`, `test_skill_file_reference_wiring.py` and `test_async_dial_http_calls.py`) | S | none (projects stack merged) | A `FileLoaderService` test that a DIAL load stores the metadata, so the edit tool's `If-Match` still has an ETag |
+| A2 | Request-scoped fetch cache (in-flight map plus results) inside `ExternalUrlFetcher`; `WebContentFetcher` drops its dict | S | none | Two consumers of one URL cause one HTTP fetch; a failed fetch is retried; cancelling the first caller does not fail the second; SSRF and size-limit tests unchanged |
 | A3 | In-flight de-duplication in `DialFileService.download_file` | S | A1 | Two concurrent downloads of one file hit Core once. Only if the open question below answers yes |
 
 ### Track B: the layout
 
 | # | PR | Size | Depends on | Pinned by |
 |---|---|---|---|---|
-| B1 | **Pin behaviour.** A parametrised unit matrix: consumer x (project / no project) x (relative / `files/` / current `projects/` / foreign `projects/` / `skills/` / host-matched absolute `/v1/projects/`) x (legacy `/files/` form / logical form). Records today's results, including the known C4 failures, and the skill with a real `files/` folder. Tests only | M | both merged | Itself |
+| B1a - B1d | **Pin behaviour.** A parametrised unit matrix: consumer x (project / no project) x (relative / `files/` / current `projects/` / foreign `projects/` / `skills/` / host-matched absolute `/v1/projects/`) x (legacy `/files/` form / logical form). Records today's results, including the known C4 failures, and the skill with a real `files/` folder. Tests only. Split by consumer group, one PR each (size S to M): **B1a** `HomePathResolver` and `RoutedFileStorage` (gates B3), **B1b** `AttachmentService` (gates B4), **B1c** `AttachmentResolver`, `_GetContentTool`, keep policy, materializer, `DialFilePromoter`, `InputFileHandler`, `FileLoaderService` (gates B5), **B1d** `_MCPTool` and `_SkillFileSource` (gates B6) | S - M | none (both merged) | Itself |
 | B2 | **Pin the appdata root.** Both calls hit `GET /v1/bucket` and agree on the value (code survey), so this is a test that pins the one real difference: `appdata or bucket` in `AttachmentService` against an error in `HomePathResolver` when appdata is missing. The result picks the rule `FileLayout` applies | S | none | The test itself |
-| B3 | **Introduce `FileLayout`** (interface, the chosen implementation shape, provider) with `classify`, `home_root`, `resolve_read`, `resolve_write`, `to_display_path`; `HomePathResolver` delegates to it. Callers unchanged | M | B1, B2 | B1 matrix, unchanged results |
-| B4 | **`AttachmentService`** switches to `output_url` / `appdata_url` and drops `PROJECT_CONTEXT`; `HomePathResolver` and `AttachmentService` use the same appdata call, so the appdata root has one owner | S | B3 | B1 matrix; the existing output-root tests |
-| B5 | **Literals, group 1:** `get_content` tool (it also reads `PROJECT_CONTEXT`), keep policy, materializer, `AttachmentResolver` (`PROJECT_CONTEXT` and a `projects/` branch), `is_dial_storage_path`, the path-argument transformer take `classify` / `resolve_read`. One PR per consumer if the diff gets large | M | B3 | B1 matrix |
-| B6 | **Literals, group 2:** `_MCPTool` `dial_url` parameters (also closes TODO #445) and the skill file source stop importing `skill_file_url` into `mcp_tooling` | S | B3, skills merged | B1 matrix plus the skills branch's MCP tests |
+| B3a | **Introduce `FileLayout`** (interface, `DialPathKind`, `DialFileLayout` with the standalone branch, `V1ReadPolicy`, provider) with `classify`, `home_root`, `resolve_read`, `resolve_write`, `to_display_path`; `HomePathResolver` delegates to it. Callers unchanged | M | B1a, B2 | B1 matrix, unchanged results |
+| B3b | **Project branch** of `DialFileLayout`, and the legacy to logical URL conversion for known roots only | M | B3a | B1 matrix, unchanged results |
+| B4 | **`AttachmentService`** switches to `output_url` / `appdata_url` and drops `PROJECT_CONTEXT`; `HomePathResolver` and `AttachmentService` use the same appdata call, so the appdata root has one owner | S | B3b, B1b | B1 matrix; the existing output-root tests |
+| B5 | **Literals, group 1:** `get_content` tool (it also reads `PROJECT_CONTEXT`), keep policy, materializer, `AttachmentResolver` (`PROJECT_CONTEXT` and a `projects/` branch), `is_dial_storage_path`, the path-argument transformer take `classify` / `resolve_read`. One PR per consumer if the diff gets large | M | B3b, B1c | B1 matrix |
+| B6 | **Literals, group 2:** `_MCPTool` `dial_url` parameters (also closes TODO #445) and the skill file source stop importing `skill_file_url` into `mcp_tooling` | S | B3b, B1d | B1 matrix plus the skills branch's MCP tests |
 | B7 | **Architecture test** with the allow-list (see "Guard against regression") | S | B4, B5, B6 | Itself |
 
 **Checkpoint after B4.** Track C is the only step that touches classes talking to a real Core outside the storage. Do it
@@ -393,14 +450,14 @@ interpreter reading `projects/`) is needed first. Otherwise skip it and go strai
 |---|---|---|---|---|
 | C0 | Gate: T4, T5 and the In-2 cases are green and run in CI | n/a | T4, T5 | n/a |
 | C1 | `FileStorage.metadata(url)`: v1 `files.get_metadata`, project via the ranged GET; `RoutedFileStorage` routes it | S | B4, C0 | New storage unit tests |
-| C2 | `DialFilePromoter` uses `FileStorage.metadata` and `classify` / `v1_readable`; `ProjectFilesClient` leaves its constructor | S | C1 | B1 matrix, promoter tests |
+| C2 | `DialFilePromoter` uses `FileStorage.metadata` and `classify` / `V1ReadPolicy`; `ProjectFilesClient` leaves its constructor | S | C1 | B1 matrix, promoter tests |
 | C3 | `AttachmentResolver` uses `FileStorage.metadata` instead of `metadata.get("files", ...)` | S | C1 | B1 matrix, resolver tests |
-| C4 | `InputFileHandler` uses `classify` / `v1_readable` for the request DIAL side (the dev-DIAL upload stays as is) | S | C1 | B1 matrix, interpreter input tests |
+| C4 | `InputFileHandler` uses `classify` / `V1ReadPolicy` for the request DIAL side (the dev-DIAL upload stays as is) | S | C1 | B1 matrix, interpreter input tests |
 
 With the unified API on the way, the project half of C1 (the ranged GET) is throw-away work: if the API ships before
 this track starts, skip C1 to C4 for projects and take the `metadata` method straight from the migration (M1, M2).
 
-Follow-ups this makes cheap: lifting C4 (flip `v1_readable` and add a v2 read path in one place), collision-safe output
+Follow-ups this makes cheap: lifting C4 (change `V1ReadPolicy` and add a v2 read path in one place), collision-safe output
 names ([I#725](https://github.com/epam/ai-dial-quickapps-backend/issues/725): one change in `output_url`).
 
 ## Migration to the unified API
@@ -414,7 +471,7 @@ released and track 0 is green on the old backend.
 | M2 | `FileStorage.metadata`, `download`, `upload` use per-file ETags and the metadata endpoint; the ranged GET goes; create-only outputs (I#725) | S | `If-None-Match: *` replaces the unconditional overwrite where the product wants it |
 | M3 | Delete `ProjectFilesClient`, `RoutedFileStorage`, `V1FileStorage` / `ProjectFileStorage` (as far as v1 consumers allow), the skills `FileSource`, and the setting | S | After the rollout of the Core release is complete everywhere we run |
 | M4 | The layout switches its canonical form to the logical URL (no `/files/`) | S | Only if not already done in B3; `skill_file_url` and `ProjectContext` follow |
-| M5 | `v1_readable` becomes a capability flag on the consumer, then is deleted when every consumer is past the version with the new SDK method | S | We cannot see a consumer's SDK version, so the flag is explicit configuration |
+| M5 | `V1ReadPolicy` becomes a capability flag on the consumer, then is deleted when every consumer is past the version with the new SDK method | S | We cannot see a consumer's SDK version, so the flag is explicit configuration |
 
 Points that shape these steps:
 
@@ -429,8 +486,9 @@ Points that shape these steps:
 3. **Per-file ETag changes edit and upload semantics for projects**, so Et cases in track 0 are the acceptance of M2:
    `If-Match` on edit, create-only outputs, two writers of different files.
 4. **Delivery to external consumers.** The grants for MCP `dial_url` parameters stay ours and, for a project or a
-   skill, become grants on the whole resource (see "by value or by link"). `url_attachments` is a model capability,
-   not an API one, and does not change.
+   skill, become grants on the resource (see "by value or by link" and D-4: for a project, the `artifacts/` folder).
+   Core's consent feature is expected to take these grants over. `url_attachments` is a model capability, not an API
+   one, and does not change.
 5. **New error shapes to map:** `404` on a write without a resource marker (a project that does not exist), `409` /
    `422` on a delete rejected by the type's `validateFileMutation` (to check: whether deleting the last file of a
    project is rejected, since the project handler accepts only a non-empty file tree), `400` on a folder or a resource
@@ -440,10 +498,10 @@ Points that shape these steps:
 
 ## Alternatives Considered
 
-- **One `FileLayout` class with the single `if project is None` inside.** Less ceremony, still one place for the
-  decision. Polymorphism wins only if the two modes keep diverging (a third mode, per-chat subfolders); with today's
-  two modes this is a legitimate lighter choice. To settle in review. The unified API makes the two modes converge
-  (one backend for both), which favours this lighter variant and leaves less to throw away.
+- **Two `FileLayout` implementations (standalone and project) chosen by the provider.** Rejected for now (D-2).
+  Polymorphism wins only if the two modes keep diverging (a third mode, per-chat subfolders); with today's two modes it
+  is more ceremony for one decision. The unified API makes the two modes converge (one backend for both), so the single
+  class leaves less to throw away. The split stays cheap if the rules in "`FileLayout`" are kept.
 - **Only route everything through `FileStorage`, no layout.** Closes the v1 bypass but leaves roots and prefixes
   scattered. Necessary (track C) but not sufficient.
 - **Docs + test matrix only.** B1 alone. Cheap and worth doing regardless, but it documents the spread instead of
@@ -463,20 +521,12 @@ Points that shape these steps:
 
 ## Open Questions
 
-- Does `HomePathResolver` survive as a thin facade for tool-argument concerns, or is it removed outright?
 - Does the host-matched absolute-URL normalisation (`to_relative_project_url`, needs `DIAL_URL`) belong in
   `classify`, or stay a pre-step at the boundary (tool argument parsing)?
-- Name and package: `shared/file_layout/` next to `shared/home_path/`, or inside `dial_core_services/`?
 - Who owns the grant target of a URL (the resource root for `skills/...` and `projects/...`, the file for `files/...`):
   the layout, or a separate grants component next to `DialFileService.grant_permissions_to_files`?
-- Project files to external consumers: by value by default with an opt-in link per toolset (the proposal above), or
-  always by link with a root grant? Decide before B6.
-- Writing to the personal folder from a project chat: today impossible by design (D4: write tools take relative paths
-  only, and in a project the home is `artifacts/`); reading it by an absolute `files/` URL works. Keep, or allow an
-  explicit target? An explicit target changes `FileLayout.resolve_write` and must be decided before B3. Server-side copy
-  does not help here: Core rejects complex to plain.
-- Canonical URL form: does the layout switch to the logical URL (no `/files/`) in B3 or at the migration (M4)? The
-  default is to isolate the legacy form behind the layout in B3.
+- Can Core grant on the `artifacts/` folder of a project alone (D-4)? Ask the Core team. If not, the grant is on the
+  whole project resource until consent ships; B6 does not wait for the answer.
 - Legacy versus logical URL ambiguity (see "The two forms are ambiguous"): `projects/.../files/x` and `skills/.../files/x`
   mean different files in the old and the new form, and Core cannot tell them apart. Is "convert only where the root is
   known (current project, registered skill), never by pattern" enough, or do we also ask the Core team to reject the
@@ -502,10 +552,6 @@ Points that shape these steps:
   probe's report (nondeterministic model, repeat runs), or through a hook-called hidden tool as `test_hidden_from_model.py`
   does (deterministic, but skips the model-facing path)? The default: hook-driven for the transport cases, the
   orchestrator only where the model-facing shape (`skill://`, relative paths) is the thing under test.
-- Track 0, where it runs: the existing integration workflow is manual and needs a live Core. As the refactor's yardstick
-  it should run on every refactor PR; options are a manual run per PR, a nightly run, or a job against a Core in
-  docker (`docker_compose_files/`). Which of them, and is a Core with project support available there (series PR5 waits
-  for the Core release)?
 - Track 0, how a test reads a file back from Core and with which credential, given that access to a project is granted
   at the resource root (D7).
 
@@ -526,16 +572,18 @@ alternative to that API is explored separately in [`sdk_level_file_resolution.md
 - Status values: `todo`, `in progress`, `done` (add the PR link), `blocked` (name the blocker).
 
 **Gate for waves 1 and 3 (proposal, to confirm).** The track 0 rule "a step starts only when its integration cases are
-green" is relaxed: A1, A2, B1 and B2 go under unit tests (their "Pinned by" column), and track 0 (T1 to T3) must be green
-before B3 starts. If the owner prefers the strict rule, wave 2 moves in front of A1 and A2.
+green" is relaxed: A1, A2, B1 and B2 go under unit tests (their "Pinned by" column), and track 0 (T1 to T3, T6) must be
+green before B3a starts. B3b, B4 and B5 do not wait for T4 (blocked on PR#729 and a Core release with project support):
+project behaviour is pinned by the B1 matrix alone until then, and each of those PRs says so. T4 is a condition for
+merging B6 and for releasing the layout. If the owner prefers the strict rule, wave 2 moves in front of A1 and A2.
 
 ### Wave 1: no decisions needed, PRs are independent
 
 | ID | What | Touches | Tests | Status |
 |---|---|---|---|---|
 | A1 | `FileLoaderService.__load_dial` calls `DialFileService.download_file`; delete `DialDownloader`. The "metadata is stored next to the bytes" comment moves into `download_file`. Keep the stored content type `None` for DIAL URLs. Note: `download_file` logs an ERROR with `exc_info` on any failure, which `FileLoaderService` did not; decide whether that is acceptable noise | `shared/file_transfer/_file_loader_service.py`, `dial_core_services/dial_downloader.py` (delete), `dial_core_services/dial_core_services_module.py` (binding), `dial_file_service.py` | Delete `test_dial_downloader.py`. Update `test_file_loader_service.py`, `test_skill_file_reference_wiring.py`, `test_async_dial_http_calls.py`. New: a DIAL load stores the metadata (ETag) | todo |
-| A2 | In-flight map plus result map keyed by the requested URL inside `ExternalUrlFetcher.fetch`; `WebContentFetcher` drops `__fetched_by_url`. The promoter keeps its task map (its value is the upload result). SSRF guard, redirect cap and per-app switches run inside the first fetch; a failed fetch is not cached | `shared/external_fetch/external_url_fetcher.py`, `WebContentFetcher` (find by name) | `test_external_url_fetcher.py`, `test_web_fetch_tool.py`. New: two consumers of one URL cause one HTTP fetch; a failed fetch is retried | todo |
-| B1 | Parametrised unit matrix, tests only. Axes: consumer x (project / no project) x path kind (relative, `files/`, current `projects/`, foreign `projects/`, `skills/`, host-matched absolute `/v1/projects/`) x (legacy `/files/` form / logical form). Consumers: `HomePathResolver` (the file tools, the argument transformer), `AttachmentService`, `RoutedFileStorage`, `AttachmentResolver`, `_GetContentTool`, keep policy, materializer, `DialFilePromoter`, `InputFileHandler`, `_MCPTool._collect_dial_url_files`, `FileLoaderService`, `_SkillFileSource`. Record today's results, including the known C4 failures, a skill with a real `files/` folder, and the fact that `_MCPTool` passes a `projects/` URL through `_validate_dial_file` to the grant as is, with no current-project check | new test module(s) next to the consumers | Extend `test_home_path_resolver.py`, `test_file_storage_wiring.py`, `test_project_file_flow.py`, `test_attachment_resolver.py`, `test_get_content_tool.py`, `test_dial_file_promoter.py` | todo |
+| A2 | In-flight map plus result map keyed by the requested URL inside `ExternalUrlFetcher.fetch`; `WebContentFetcher` drops `__fetched_by_url`. The promoter keeps its task map (its value is the upload result). SSRF guard, redirect cap and per-app switches run inside the first fetch; a failed fetch is not cached | `shared/external_fetch/external_url_fetcher.py`, `WebContentFetcher` (find by name) | `test_external_url_fetcher.py`, `test_web_fetch_tool.py`. New: two consumers of one URL cause one HTTP fetch; a failed fetch is retried; cancelling the first caller does not fail the second | todo |
+| B1a - B1d | Parametrised unit matrix, tests only, one PR per consumer group (the groups are in the B1 row of "Track B"). Axes: consumer x (project / no project) x path kind (relative, `files/`, current `projects/`, foreign `projects/`, `skills/`, host-matched absolute `/v1/projects/`) x (legacy `/files/` form / logical form). Consumers: `HomePathResolver` (the file tools, the argument transformer), `AttachmentService`, `RoutedFileStorage`, `AttachmentResolver`, `_GetContentTool`, keep policy, materializer, `DialFilePromoter`, `InputFileHandler`, `_MCPTool._collect_dial_url_files`, `FileLoaderService`, `_SkillFileSource`. Record today's results, including the known C4 failures, a skill with a real `files/` folder, and the fact that `_MCPTool` passes a `projects/` URL through `_validate_dial_file` to the grant as is, with no current-project check | new test module(s) next to the consumers | Extend `test_home_path_resolver.py`, `test_file_storage_wiring.py`, `test_project_file_flow.py`, `test_attachment_resolver.py`, `test_get_content_tool.py`, `test_dial_file_promoter.py` | todo |
 | B2 | Test that pins the appdata fallback difference (see the B2 row above) | `AttachmentService`, `HomePathResolver` tests | New test | todo |
 | T1 | Probe servers (`inspect_by_link`, `inspect_by_value`, `produce_file`), fixtures with known bytes and hashes, the read-back helper. Extension points: `src/tests/integration_tests/data_server_for_tests.py` (REST on `:8002`, MCP on `:8003` via `test_runner/mcp_server/mcp_http_test_server.py`), `test_runner/stub_deployment.py` (a stub response only today, no file probes), `make start_test_server`. `local_test_servers/mcp_skill_file_server.py` (untracked, the #420 PoC, `fetch_skill_file`, port 8007) is the base of `inspect_by_link` | `src/tests/integration_tests/` | The probes are exercised by T2 onwards | todo |
 
@@ -552,19 +600,32 @@ before B3 starts. If the owner prefers the strict rule, wave 2 moves in front of
 ### Wave 3: the layout, after the decisions below and after T1 to T3
 
 Decisions to take first (see Open Questions):
-- **D-1** Writing to the personal folder from a project chat (changes `resolve_write`): before B3.
-- **D-2** One `FileLayout` class with a single `if project` or two implementations: before B3.
-- **D-3** Canonical URL form: the default (isolate the legacy form behind the layout in B3, switch at M4) holds unless changed.
-- **D-4** Project files to external consumers, by value or by link: before B6.
-- Builder calls, settle in the PR: the fate of `HomePathResolver`, the package (`shared/file_layout/`), who owns the grant target.
+- **D-1** (decided) Writing to the personal folder from a project chat stays impossible: write tools take relative paths
+  only, and in a project the home is `artifacts/` (D4). Reading it by an absolute `files/` URL keeps working.
+  `resolve_write` does not change.
+- **D-2** (decided) One `DialFileLayout` class with the project decision inside, behind the `FileLayout` interface. The
+  rules that keep a later split into two classes cheap are in "`FileLayout`".
+- **D-3** (decided) Canonical URL form: the legacy form is isolated behind the layout in track B, and the layout switches
+  to the logical form at M4.
+- **D-5** (decided) `HomePathResolver` is removed, not kept as a facade: B3a makes it delegate to the layout, and the PR
+  that moves its last consumer onto `FileLayout` deletes it and `shared/home_path/`. The layout lives in the new
+  `shared/file_layout/` package.
+- **D-6** (decided) C4 ("can the v1 client read this URL?") lives in a separate `V1ReadPolicy` service next to the layout,
+  not on `FileLayout`. It takes a `DialPathKind` and is replaced by a per-consumer capability setting in M5.
+- **D-7** (decided) Track 0 runs locally against a real Core (the existing proxy-based integration tests), not in CI. A
+  gated PR states in its description which groups ran green.
+- **D-4** (decided, a stop-gap until Core consent) A project file reaches a `dial_url` parameter by link, with a grant on
+  the `artifacts/` folder of the current project only; other project paths are rejected for `dial_url`. If Core cannot
+  grant on a folder, the grant goes on the whole project until consent ships (see "by value or by link").
+- Builder call, settle in the PR: who owns the grant target.
 
 | ID | What | Touches | Depends on | Status |
 |---|---|---|---|---|
-| B3a | `FileLayout` interface, `DialPathKind`, the standalone implementation, the provider; `HomePathResolver` (bound in `shared/home_path/home_path_module.py`, request scope) delegates. `PROJECT_CONTEXT` is still created in `AppModule` and `_request_context`; the layout provider is its only reader for this concern | new `shared/file_layout/`, `shared/home_path/` | B1, B2, T1 to T3, D-1, D-2 | todo |
-| B3b | The project implementation and the legacy to logical URL conversion for known roots only (see "The two forms are ambiguous") | `shared/file_layout/`, `common/project_context.py` | B3a | todo |
-| B4 | `AttachmentService` uses `output_url` / `appdata_url` and drops `PROJECT_CONTEXT`; one appdata rule | `dial_core_services/attachment_service.py` | B3b | todo |
-| B5 | Literals, group 1 (see the B5 row above). One PR per consumer if large | `_get_content_tool.py`, keep policy, materializer, `_attachment_resolver.py`, `url_classification.py`, the argument transformer | B3b | todo |
-| B6 | `_MCPTool` `dial_url` parameters (closes TODO #445); the skill file source stops importing `skill_root_of_file_url` into `mcp_tooling`. The current pass-through of a `projects/` URL to the grant changes here: a deliberate behaviour change, call it out in the PR | `mcp_tooling/_mcp_tool.py`, `skills/skill_file_url.py` | B3b, D-4 | todo |
+| B3a | `FileLayout` interface, `DialPathKind`, `DialFileLayout` with the standalone branch, `V1ReadPolicy` (D-6), the provider; `HomePathResolver` (bound in `shared/home_path/home_path_module.py`, request scope) delegates. `PROJECT_CONTEXT` is still created in `AppModule` and `_request_context`; the layout provider is its only reader for this concern | new `shared/file_layout/`, `shared/home_path/` | B1a, B2, T1 to T3, T6 | todo |
+| B3b | The project branch of `DialFileLayout` and the legacy to logical URL conversion for known roots only (see "The two forms are ambiguous") | `shared/file_layout/`, `common/project_context.py` | B3a | todo |
+| B4 | `AttachmentService` uses `output_url` / `appdata_url` and drops `PROJECT_CONTEXT`; one appdata rule | `dial_core_services/attachment_service.py` | B3b, B1b | todo |
+| B5 | Literals, group 1 (see the B5 row above). One PR per consumer if large | `_get_content_tool.py`, keep policy, materializer, `_attachment_resolver.py`, `url_classification.py`, the argument transformer | B3b, B1c | todo |
+| B6 | `_MCPTool` `dial_url` parameters (closes TODO #445); the skill file source stops importing `skill_root_of_file_url` into `mcp_tooling`. The current pass-through of a `projects/` URL to the grant changes here: a deliberate behaviour change, call it out in the PR | `mcp_tooling/_mcp_tool.py`, `skills/skill_file_url.py` | B3b, B1d | todo |
 | B7 | Architecture test with the allow-list from "Guard against regression" | new test | B4, B5, B6 | todo |
 
 ### Conditional and not sliced yet
