@@ -16,6 +16,9 @@ logger = logging.getLogger(__name__)
 PROJECT_HEADER = "x-project-id"
 
 _PROJECTS_TYPE = "projects"
+CURRENT_PROJECT_ONLY_MESSAGE = (
+    "only files of the current project can be accessed by a projects/... URL"
+)
 _FORBIDDEN_PROJECT_SEGMENTS = frozenset({"", ".", "..", "files"})
 
 
@@ -103,6 +106,18 @@ def extract_project_context(headers: ForwardedHeaders) -> "ProjectContext | None
             "Ignoring a malformed %s header: the request runs without a project", PROJECT_HEADER
         )
         return None
+
+
+def current_project_url(project: "ProjectContext | None", url: str) -> str | None:
+    """``url`` in canonical form when it is a file or folder of the request's project, else
+    ``None`` (another project, or no project at all).
+
+    QuickApps touches only the request's project (D8), though Core's grant opens all of the
+    user's projects; each caller refuses a ``None`` its own way.
+    """
+    if project is None or not project.contains(url):
+        return None
+    return canonical_url(url)
 
 
 # `None` outside a project, or when preview features are off.

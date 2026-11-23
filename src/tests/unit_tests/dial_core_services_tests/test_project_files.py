@@ -124,19 +124,18 @@ async def test_list_follows_pages_and_marks_folders(httpx_mock) -> None:
     ]
 
 
-@pytest.mark.parametrize("status", [200, 206])
+@pytest.mark.parametrize("content", [b"hello", b""])
 @pytest.mark.asyncio
-async def test_file_etag_asks_for_one_byte(httpx_mock, status) -> None:
+async def test_file_etag_comes_from_the_headers(httpx_mock, content) -> None:
     httpx_mock.add_response(
         method="GET",
         url=f"{BASE_URL}/v2/{FILE_URL}",
-        status_code=status,
-        content=b"h",
+        content=content,
         headers={"etag": "file-etag"},
     )
 
     assert await _client().file_etag(FILE_URL) == "file-etag"
-    assert httpx_mock.get_requests()[0].headers["Range"] == "bytes=0-0"
+    assert "Range" not in httpx_mock.get_requests()[0].headers
 
 
 @pytest.mark.parametrize(
@@ -154,18 +153,6 @@ async def test_unsafe_paths_never_reach_core(httpx_mock, url) -> None:
 
     assert excinfo.value.status_code == 400
     assert httpx_mock.get_requests() == []
-
-
-@pytest.mark.asyncio
-async def test_file_etag_of_an_empty_file_comes_from_the_416(httpx_mock) -> None:
-    httpx_mock.add_response(
-        method="GET",
-        url=f"{BASE_URL}/v2/{FILE_URL}",
-        status_code=416,
-        headers={"etag": "empty-file-etag"},
-    )
-
-    assert await _client().file_etag(FILE_URL) == "empty-file-etag"
 
 
 @pytest.mark.asyncio

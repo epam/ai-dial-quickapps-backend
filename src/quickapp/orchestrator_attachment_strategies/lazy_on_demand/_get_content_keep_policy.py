@@ -8,6 +8,7 @@ from quickapp.common.attachment_processing_utils import (
 )
 from quickapp.common.tool_message_utils import tool_function_name_for_tool_message
 from quickapp.common.tool_names import INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
+from quickapp.common.url_classification import is_dial_storage_path
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._attachment_acceptance import (
     _AttachmentAcceptance,
 )
@@ -16,8 +17,8 @@ from quickapp.orchestrator_attachment_strategies.lazy_on_demand._attachment_acce
 @inject
 class _GetContentKeepPolicy(AttachmentKeepPolicy):
     """Keep an attachment when it belongs to an ``internal_attachments_get_content``
-    TOOL message, points at a DIAL ``files/`` path, and its MIME is accepted by the
-    orchestrator.
+    TOOL message, points at a DIAL ``files/`` or ``projects/`` path, and its MIME is
+    accepted by the orchestrator.
 
     Authorization of the underlying fetch is enforced upstream — DIAL Core gates
     ``files/`` access by the caller's permissions and the external-fetch policy gates
@@ -51,7 +52,7 @@ class _GetContentKeepPolicy(AttachmentKeepPolicy):
         if not attachment.url:
             return False
         normalized = normalize_attachment_url_argument(str(attachment.url))
-        if not normalized.startswith("files/"):
+        if not is_dial_storage_path(normalized):
             return False
         # Match the synthetic injector's MIME gate (with URL-filename fallback) so an
         # attachment with an empty ``type`` but an accepted URL isn't injected upstream

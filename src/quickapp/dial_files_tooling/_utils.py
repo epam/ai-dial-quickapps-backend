@@ -5,7 +5,7 @@ These have no dependency on `self`/DI, so they live here rather than on the
 """
 
 from quickapp.common.tool_names import INTERNAL_FILE_READ_CHARS_TOOL_NAME
-from quickapp.common.utils import fenced_code_block
+from quickapp.common.utils import canonical_url, fenced_code_block
 from quickapp.dial_core_services.storage.file_storage import FolderEntry
 
 # Read-back tools (read_lines, read_chars, search) are excluded from offload, so an
@@ -47,9 +47,13 @@ def is_root_reference(path: str) -> bool:
 
 
 def relative_to(url: str, folder_url: str) -> str:
-    """Path of `url` relative to the search root `folder_url` (used for glob matching)."""
-    if url.startswith(folder_url):
-        return url[len(folder_url) :]
+    """Path of `url` relative to the search root `folder_url` (used for glob matching).
+
+    Compared in canonical form: the model may spell the folder decoded (`Q1 (draft)/`)
+    while Core lists `Q1%20(draft)/a.md`. The rest of `url` keeps its own spelling.
+    """
+    if canonical_url(url).startswith(canonical_url(folder_url)):
+        return url.split("/", folder_url.count("/"))[-1]
     return url
 
 

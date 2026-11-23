@@ -31,8 +31,10 @@ def _make_storage(data: bytes = b"data", content_type: str = "text/plain") -> Ma
     return storage
 
 
-def _make_router(v1: MagicMock, project: MagicMock) -> RoutedFileStorage:
-    return RoutedFileStorage(v1, project, PROJECT)
+def _make_router(
+    v1: MagicMock, project: MagicMock, context: ProjectContext | None = PROJECT
+) -> RoutedFileStorage:
+    return RoutedFileStorage(v1, project, context)
 
 
 class TestSingleUrlRouting:
@@ -42,8 +44,6 @@ class TestSingleUrlRouting:
             (PROJECT_FILE, True),
             ("projects/b/p/files/artifacts/", True),
             (V1_FILE, False),
-            ("projects/b/other/files/x.md", False),
-            ("projects/b/p/files/../../other/files/x.md", False),
         ],
     )
     @pytest.mark.asyncio
@@ -65,6 +65,43 @@ class TestSingleUrlRouting:
         chosen.list_level.assert_awaited_once_with(url)
         for method in (other.download, other.upload, other.delete, other.list_level):
             method.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_a_decoded_project_url_reaches_the_storage_canonical(self):
+        v1, project = _make_storage(), _make_storage()
+        router = RoutedFileStorage(v1, project, ProjectContext(url="projects/b/My Project"))
+
+        await router.download("projects/b/My Project/files/context/a b.md")
+
+        project.download.assert_awaited_once_with("projects/b/My%20Project/files/context/a%20b.md")
+
+    @pytest.mark.parametrize(
+        "url, context",
+        [
+            ("projects/b/other/files/x.md", PROJECT),
+            ("projects/b/p/files/../../other/files/x.md", PROJECT),
+            (PROJECT_FILE, None),
+        ],
+    )
+    @pytest.mark.parametrize("operation", ["download", "delete", "list_level"])
+    @pytest.mark.asyncio
+    async def test_other_projects_are_refused(self, url, context, operation):
+        v1, project = _make_storage(), _make_storage()
+        router = _make_router(v1, project, context)
+
+        with pytest.raises(ProjectFileOperationException, match="current project") as excinfo:
+            await getattr(router, operation)(url)
+        assert excinfo.value.status_code == 403
+        for storage in (v1, project):
+            getattr(storage, operation).assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_without_a_project_files_go_to_v1(self):
+        v1, project = _make_storage(), _make_storage()
+
+        await _make_router(v1, project, None).download(V1_FILE)
+
+        v1.download.assert_awaited_once_with(V1_FILE)
 
 
 class TestCopyAndMove:
