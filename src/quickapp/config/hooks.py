@@ -1,7 +1,7 @@
 from enum import StrEnum
 from typing import Any, Literal, Self
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from quickapp.common.hook_context.context import (
     CompletionHookContext,
@@ -39,7 +39,17 @@ RefreshConditionConfig = TTLRefreshCondition
 
 
 class _BaseHookConfig(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     event: HookEvent
+    async_: bool = Field(
+        default=False,
+        alias="async",
+        description=(
+            "Run the hook in the background without delaying the response. Its result is "
+            "discarded and failures are only logged. Only supported for 'on_completion'."
+        ),
+    )
     name: str | None = None
     timeout_seconds: float | None = Field(
         default=None,
@@ -79,6 +89,12 @@ class ToolCallHookConfig(_BaseHookConfig):
                     raise ValueError(
                         f"'{field_name}' is only supported for event 'on_request_start'"
                     )
+        return self
+
+    @model_validator(mode="after")
+    def _reject_async_request_start(self) -> Self:
+        if self.async_ and self.event is not HookEvent.ON_COMPLETION:
+            raise ValueError("'async' is only supported for event 'on_completion'")
         return self
 
     @model_validator(mode="after")

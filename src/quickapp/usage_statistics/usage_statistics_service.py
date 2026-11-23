@@ -1,3 +1,4 @@
+import logging
 from typing import Literal
 
 from aidial_sdk.chat_completion import Choice
@@ -7,6 +8,8 @@ from quickapp.common.deployment_usage import DeploymentUsage
 from quickapp.usage_statistics._aggregated_stats import _AggregatedStats
 from quickapp.usage_statistics._pricing_service import _PricingService
 from quickapp.usage_statistics._usage_statistics_renderer import _UsageStatisticsRenderer
+
+logger = logging.getLogger(__name__)
 
 
 @inject
@@ -41,6 +44,12 @@ class UsageStatisticsService:
         markdown_table = _UsageStatisticsRenderer.render_usage_statistics_table(
             list(aggregated.values())
         )
+
+        if self.__choice.closed:
+            logger.warning(
+                "Skipping the usage statistics stage: the response choice is already closed"
+            )
+            return
 
         with self.__choice.create_stage("Usage Statistics") as stage:
             stage.append_content(markdown_table)

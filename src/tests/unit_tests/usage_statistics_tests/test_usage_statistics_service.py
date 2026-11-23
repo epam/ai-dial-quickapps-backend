@@ -12,6 +12,7 @@ from quickapp.usage_statistics.usage_statistics_service import UsageStatisticsSe
 @pytest.fixture
 def mock_choice():
     choice = MagicMock()
+    choice.closed = False
     stage = MagicMock()
     choice.create_stage.return_value.__enter__.return_value = stage
     return choice
@@ -41,6 +42,28 @@ async def test_process_usage_statistics_empty_list(service, mock_choice):
 
 
 from unittest.mock import patch
+
+
+@pytest.mark.asyncio
+async def test_process_usage_statistics_skips_stage_when_choice_is_closed(
+    service, mock_pricing_service, mock_choice, caplog
+):
+    """A detached hook can report usage after the response is closed: log it, never raise."""
+    mock_choice.closed = True
+    mock_pricing_service.get_price.return_value = _Pricing(0.01, 0.02)
+    usage = DeploymentUsage(
+        deployment_id="gpt-5",
+        deployment_name="gpt-5",
+        model_name="gpt-5",
+        prompt_tokens=1,
+        completion_tokens=1,
+    )
+
+    with caplog.at_level("WARNING"):
+        await service.process_usage_statistics([usage])
+
+    mock_choice.create_stage.assert_not_called()
+    assert "already closed" in caplog.text
 
 
 @pytest.mark.asyncio

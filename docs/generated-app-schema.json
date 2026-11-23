@@ -3895,6 +3895,12 @@
         "event": {
           "$ref": "#/$defs/HookEvent"
         },
+        "async": {
+          "default": false,
+          "description": "Run the hook in the background without delaying the response. Its result is discarded and failures are only logged. Only supported for 'on_completion'.",
+          "title": "Async",
+          "type": "boolean"
+        },
         "name": {
           "anyOf": [
             {

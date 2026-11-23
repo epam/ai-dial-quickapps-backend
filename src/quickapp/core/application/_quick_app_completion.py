@@ -137,8 +137,13 @@ class _QuickAppCompletion(ChatCompletion):
                 # Skip the execution-time stage when an error is propagating, so no
                 # spurious stage trails the delivered error.
                 if not failed and self.__presentation_settings.show_execution_time_stage:
-                    with choice.create_stage("Execution time") as stage:
-                        stage.append_content(timer_service.get_report_md())
+                    if choice.closed:
+                        logger.warning(
+                            "Skipping the execution time stage: the response choice is already closed"
+                        )
+                    else:
+                        with choice.create_stage("Execution time") as stage:
+                            stage.append_content(timer_service.get_report_md())
 
     def __log_request_received(self, request: Request) -> None:
         app_config = self.__injector.get(ApplicationConfig)
