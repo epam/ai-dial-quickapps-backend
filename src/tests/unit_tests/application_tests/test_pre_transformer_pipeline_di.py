@@ -21,7 +21,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
 from fastapi_injector import Injected
-from injector import Binder, Module, multiprovider
+from injector import Binder, InstanceProvider, Module, multiprovider
 from starlette.testclient import TestClient
 
 from quickapp.attachment_processing._tool_configs import AVAILABLE_CONTEXT_TOOL_NAME
@@ -29,6 +29,7 @@ from quickapp.attachment_processing.attachment_processing_module import Attachme
 from quickapp.common.abstract.folder_listing_provider import FolderListingProvider
 from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher
 from quickapp.common.dial_settings import DialSettings
+from quickapp.common.project_context import PROJECT_CONTEXT
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.context import FileContextConfig
 from quickapp.config.orchestrator_attachment_strategy import LazyOnDemandAttachmentStrategy
@@ -86,6 +87,7 @@ def _make_context_app(ctx_url: str, *, lazy_strategy: bool = False):
             dial_settings = MagicMock(spec=DialSettings)
             dial_settings.url = "https://dial.local"
             binder.bind(DialSettings, to=dial_settings)
+            binder.bind(PROJECT_CONTEXT, to=InstanceProvider(None))
         binder.bind(ApplicationConfig, to=app_config)
         caps = MagicMock(spec=OrchestratorCapabilities)
         caps.input_attachment_types = ["application/pdf", "text/csv", "image/*"]
