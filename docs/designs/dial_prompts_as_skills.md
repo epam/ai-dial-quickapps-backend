@@ -209,9 +209,9 @@ future cross-request debugging.
 
 All per-URL failure modes — fetch exceptions, empty content, invalid frontmatter (via `SkillValidationError`),
 and duplicate names — produce a `SkillInitializationException(url=..., reason=...)`. Each such instance is
-"soft" (`is_hard = False`), meaning the request proceeds with whatever skills did resolve. Whole-subsystem
+recorded at `level = error`, and the request proceeds with whatever skills did resolve. Whole-subsystem
 failures (resolver raises before any per-URL task runs) are represented by the subclass
-`SkillCatastrophicInitializationException` with `is_hard = True`; that flip is what lets the handler (§4.4)
+`SkillCatastrophicInitializationException` with `level = critical`; that level is what lets the handler (§4.4)
 decide the stage's close status without inspecting a separate field.
 
 **Error handling:** Each skill config is resolved independently. A failure in one does not affect others.
@@ -376,10 +376,10 @@ feature module binds `@multiprovider → list[InitializationException]` and the 
 list.
 
 ```
-InitializationException                                (Exception; is_hard: ClassVar[bool] = True)
+InitializationException                                (Exception; level = critical)
 ├── ToolInitializationException                         (unchanged fields: tool_name, toolset_name, details)
-└── SkillInitializationException                        (fields: url, reason; is_hard = False)
-    └── SkillCatastrophicInitializationException        (no url; is_hard = True — flips stage to FAILED)
+└── SkillInitializationException                        (fields: url, reason, level; default level = error)
+    └── SkillCatastrophicInitializationException        (no url; level = critical — flips stage to FAILED)
 ```
 
 **Base class docstring contract.** `InitializationException` carries a one-line docstring stating its
@@ -389,27 +389,30 @@ This gives a future maintainer introducing a third subclass (e.g. for a new `"cu
 REST-API tool context) an unambiguous criterion: if the entry needs to appear in the unified
 `Initialization issues` stage, subclass `InitializationException`; otherwise it is a different concern.
 
-**What `is_hard` does.** `is_hard` is a `ClassVar[bool]` the handler consults to decide the close status
-of the single `Initialization issues` stage. If *any* exception in the merged list has `is_hard = True`, the
-stage closes `FAILED`; otherwise `COMPLETED`. The request proceeds either way — the status is a UI cue.
+**What `level` does.** `level` is an `InitializationIssueLevel` (`warning` < `error` < `critical`). Each
+class sets a default; an instance overrides it only where one class produces mixed levels (skills). The
+handler reads it for three things: the app's level threshold (issues below it are hidden), the stage close
+status (`FAILED` if *any* shown issue is `critical`, otherwise `COMPLETED`), and the skill `Errors:` /
+`Warnings:` split. `level` only controls display — the request stops only where the issue is raised rather
+than recorded.
 
-**Behavior preservation for tool-only runs.** Because `ToolInitializationException.is_hard = True` is a
-classvar true for every instance, any non-empty contribution from `MCPToolingModule` flips the stage to
+**Behavior preservation for tool-only runs.** Because `ToolInitializationException.level = critical` is a
+class default true for every instance, any non-empty contribution from `MCPToolingModule` flips the stage to
 `FAILED` — identical to today's unconditional `Status.FAILED` at `_initialization_error_handler.py:36`.
 The generalization strictly weakens FAILED only for *skill-only* runs with no catastrophics, which is a
 new surface; tool behavior is unchanged.
 
-- `ToolInitializationException.is_hard = True` — any tool-init failure is treated as hard, matching
-  existing behavior.
-- `SkillInitializationException.is_hard = False` — per-URL skill failures are soft; the agent still runs
-  with whatever skills resolved.
-- `SkillCatastrophicInitializationException.is_hard = True` — whole-subsystem failure (DIAL prompts as a
-  whole could not be loaded) is hard.
+- `ToolInitializationException.level = critical` — any tool-init failure is a missing capability,
+  matching existing behavior.
+- `SkillInitializationException.level = error` — per-URL skill failures; the agent still runs with
+  whatever skills resolved. Instances can be `warning` (author-only diagnostics).
+- `SkillCatastrophicInitializationException.level = critical` — whole-subsystem failure (DIAL prompts as a
+  whole could not be loaded).
 
 **Why a subclass rather than a field for catastrophic.** A `SkillCatastrophicInitializationException` needs
-(a) different rendering (distinct sub-header, no per-URL bullet shape) and (b) a different `is_hard` value.
+(a) different rendering (distinct sub-header, no per-URL bullet shape) and (b) a different `level`.
 Encoding both via subclass keeps the handler's logic a pure `isinstance` dispatch and avoids magic field
-values (empty-string `url`, nullable fields). If a future skill source needs another "hard, subsystem-wide"
+values (empty-string `url`, nullable fields). If a future skill source needs another "critical, subsystem-wide"
 failure it simply subclasses `SkillInitializationException` the same way.
 
 **Rejected alternative: polymorphic `render()` on the exception classes.** Pushing markdown generation onto
@@ -518,7 +521,7 @@ synchronous bugs — e.g. `asyncio.gather` raising before it can schedule (unlik
 `SkillCatastrophicInitializationException` subclass (rather than folding into `SkillInitializationException`
 with an empty `url`) because when it fires the UI header should say "DIAL prompts as a whole could not be
 loaded" rather than presenting a lone stray entry that is indistinguishable from a per-URL issue, and the
-close-stage status needs to flip to `FAILED` (hard).
+close-stage status needs to flip to `FAILED` (`critical`).
 
 **Deletion criterion.** If logs across three consecutive releases show zero `SkillCatastrophicInitializationException`
 instances, delete the subclass and fold the resolver-level `except Exception` catch back into
@@ -642,8 +645,8 @@ optional context injection.
      (`**{e.url}**: {e.reason}`).
 
    Sections for feature-kinds that reported nothing are omitted entirely.
-4. Close the stage with a status derived from `is_hard`:
-   - **`FAILED`** iff `any(e.is_hard for e in exceptions)`.
+4. Close the stage with a status derived from `level`:
+   - **`FAILED`** iff `any(e.level == critical for e in exceptions)`.
    - **`COMPLETED`** otherwise (for example, per-URL skill failures only, no tool failures, no
      catastrophics). The request always proceeds in both cases; the status flag is purely a UI cue.
 
@@ -848,7 +851,7 @@ Initialization issues
 - **prompts/<bucket>/greetings**: No YAML frontmatter found
 ```
 
-The stage closes with `COMPLETED` (soft warning only) and the request proceeds without this skill.
+The stage closes with `COMPLETED` (no `critical` issue) and the request proceeds without this skill.
 If any tool-initialization exceptions were also present, a `#### Tool initialization` section would
 appear in the same stage and its close status would flip to `FAILED`.
 
@@ -877,9 +880,9 @@ None. The `skills` field is optional and defaults to `None`. Existing applicatio
 
 | Component | Change |
 |---|---|
-| **`common/exceptions/initialization.py`** (new) | `InitializationException(Exception)` base with `is_hard: ClassVar[bool] = True`. |
+| **`common/exceptions/initialization.py`** (new) | `InitializationException(Exception)` base with `level: InitializationIssueLevel = critical`. |
 | **`common/exceptions/tool_initialization.py`** | `ToolInitializationException` now inherits from `InitializationException`; fields unchanged. |
-| **`common/exceptions/skill_initialization.py`** (new) | `SkillInitializationException(InitializationException)` with `url: str` / `reason: str` and `is_hard = False`; `SkillCatastrophicInitializationException(SkillInitializationException)` with `is_hard = True`. |
+| **`common/exceptions/skill_initialization.py`** (new) | `SkillInitializationException(InitializationException)` with `url: str` / `reason: str` and `level` (default `error`); `SkillCatastrophicInitializationException(SkillInitializationException)` with `level = critical`. |
 | **`common/exceptions/__init__.py`** | Re-export the three new classes alongside existing symbols. |
 | **`skills/_exceptions.py`** | Remove `SkillResolutionWarning` — superseded by `SkillInitializationException` in `common/exceptions/`. All call sites (`dial_prompt_skills/_dial_prompt_skill_resolver.py`, `skills/_skills_registry.py`) switch to the new class in the same commit. Keep `SkillValidationError` (still raised by `parse_frontmatter`). |
 | **`config/skill.py`** (new) | `DialPromptSkillConfig` (`type: "dial-prompt"`) and `SkillConfig` discriminated union. |
@@ -891,7 +894,7 @@ None. The `skills` field is optional and defaults to `None`. Existing applicatio
 | **`skills/_skill_reader_tool.py`** | Depend on `SkillsRegistry`; call its synchronous `get_skill_content()`. |
 | **`dial_prompt_skills/`** (new package) | `DialPromptSkillResolver` returning `DialPromptSkillResolverOutput(resolved, exceptions)`, `_DialPromptSkillInitializer`, `_DialPromptSkillsContext` (holds `_resolved_skills` and `_exceptions: list[SkillInitializationException]`), `DialPromptSkillsModule` (`@preview_module`) exposing `@multiprovider → list[InitializationException]` and `list[CompletionInitializer]`. |
 | **`mcp_tooling/mcp_tooling_module.py`** | Widen `__provide_initialization_exceptions` return type from `list[ToolInitializationException]` to `list[InitializationException]` so both modules feed the same injected list. |
-| **`application/_initialization_error_handler.py`** | Rename `handle_initialization_errors` → `handle_initialization_issues`. Inject `ProviderOf[list[InitializationException]]` (merged multiprovider) and `ProviderOf[Stage]`. Render one `"Initialization issues"` stage with `#### Tool initialization` and/or `#### Skill loading` sections grouped by `isinstance`; catastrophics render first within the Skill loading section. Close `FAILED` iff `any(e.is_hard for e in exceptions)`, otherwise `COMPLETED`. |
+| **`application/_initialization_error_handler.py`** | Rename `handle_initialization_errors` → `handle_initialization_issues`. Inject `ProviderOf[list[InitializationException]]` (merged multiprovider) and `ProviderOf[Stage]`. Render one `"Initialization issues"` stage with `#### Tool initialization` and/or `#### Skill loading` sections grouped by `isinstance`; catastrophics render first within the Skill loading section. Close `FAILED` iff any issue's `level` is `critical`, otherwise `COMPLETED`. |
 | **`application/_messages_setup.py`** | Decompose `setup()` into two public methods: `extract_tool_calls(messages)` (structural; runs pre-init) and `run_transformers(messages)` (transformer chain; runs post-init). Same combined behavior; `setup()` is removed. |
 | **`application/_request_context_setup.py`** | Split into `setup_pre_init()` and `finalize_messages()` — see §4.1. `setup_pre_init` calls `extract_tool_calls`; `finalize_messages` calls `run_transformers`. |
 | **`application/_quick_app_completion.py`** | New call order: `setup_pre_init` → initializers → `finalize_messages` → `_InitializationErrorHandler.handle_initialization_issues()` → `Orchestrator.invoke` (§4.1). |
