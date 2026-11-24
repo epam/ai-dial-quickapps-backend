@@ -121,6 +121,9 @@ Detailed instructions in Markdown...
 | `compatibility` | Optional. Max 500 chars (truncated with warning if exceeded).                                           |
 | `allowed-tools` | Optional. String (space-separated) or YAML list; normalized to `list[str]`.                             |
 
+Since #737 only structural checks reject a skill (required `name`/`description`, YAML mapping, `allowed-tools`
+format); the length and naming limits above aren't checked.
+
 Directories without a `SKILL.md` file are silently ignored. Skills that fail validation (including name mismatch with
 directory) are skipped with a warning log. The application continues to start — a malformed skill does not prevent
 serving requests.

@@ -7,9 +7,10 @@ SkillIssueSeverity = Literal["error", "warning"]
 
 class SkillInitializationException(InitializationException):
     """Per-URL skill-loading issue — fetch error, invalid frontmatter,
-    duplicate name, predefined-vs-external name collision, or a non-fatal
-    parser warning. Soft by default: the request proceeds with whatever
-    skills did resolve. ``severity`` drives the renderer's section split.
+    duplicate name, predefined-vs-external name collision, or a warning
+    (bundled files couldn't be listed, too many skills invoked). Soft by default: the
+    request proceeds with whatever skills did resolve. ``severity`` drives
+    the renderer's section split.
     """
 
     is_hard: ClassVar[bool] = False
