@@ -12,25 +12,37 @@ from quickapp.config.toolsets.deployment import DeploymentToolSet
 
 
 def form_source_tool_name_before(messages: list[Message], index: int) -> str | None:
-    """Name of the tool whose form_schema was last seen in ``messages[:index]``.
+    """Name of the tool whose form the client is currently filling, resolved from
+    ``messages[:index]``.
 
-    Returns None when no tool message before ``index`` carries a form_schema.
+    The orchestrator sends only the *first* form_schema of a turn to the client
+    (SDK allows one ``set_form_schema`` per choice), and the client renders the form
+    from the *latest* turn that carried one. So: scan turn segments (split by user
+    messages) from the end, and within the latest segment carrying a form_schema take
+    the first one. Returns None when no tool message before ``index`` carries a
+    form_schema.
     """
-    tool_call_id: str | None = None
-    for message in messages[:index]:
-        if message.role != Role.TOOL or not message.tool_call_id:
+    history = messages[:index]
+    # segment boundaries: each user message starts a new turn segment; the leading
+    # segment (before the first user message) is also a segment
+    segment_starts = [0] + [i for i, m in enumerate(history) if m.role == Role.USER]
+    for seg_start in reversed(segment_starts):
+        tool_call_id: str | None = None
+        for message in history[seg_start:]:
+            if message.role != Role.TOOL or not message.tool_call_id:
+                continue
+            cc = message.custom_content
+            if cc is not None and isinstance(cc.form_schema, dict):
+                tool_call_id = message.tool_call_id
+                break  # first form within the latest form-bearing turn wins
+        if tool_call_id is None:
             continue
-        cc = message.custom_content
-        if cc is not None and isinstance(cc.form_schema, dict):
-            tool_call_id = message.tool_call_id
-    if tool_call_id is None:
-        return None
-    for message in messages[:index]:
-        if message.role != Role.ASSISTANT or not message.tool_calls:
-            continue
-        for tc in message.tool_calls:
-            if tc.id == tool_call_id:
-                return tc.function.name
+        for message in history[seg_start:]:
+            if message.role != Role.ASSISTANT or not message.tool_calls:
+                continue
+            for tc in message.tool_calls:
+                if tc.id == tool_call_id:
+                    return tc.function.name
     return None
 
 

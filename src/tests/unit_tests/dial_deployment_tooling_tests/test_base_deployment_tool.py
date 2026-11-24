@@ -1120,7 +1120,21 @@ class TestFormValueForThisTool:
 
         assert tool._form_value_for_this_tool(tool.tool_config) is None
 
-    def test_uses_latest_form_schema_tool_call(self):
+    def test_uses_first_form_schema_tool_call_in_turn(self):
+        # orchestrator sends only the FIRST form of a turn to the client (SDK: one per
+        # choice), so the form the user fills is the first one — not the last
+        messages = [
+            *_history_with_form_schema(tool_name="test_tool", tool_call_id="tc-1"),
+            *_history_with_form_schema(tool_name="other_tool", tool_call_id="tc-2"),
+            _user_msg_with_form_value({"a": 1}),
+        ]
+        tool = _build_tool_with_propagation(
+            messages, conversation_mode=ConversationMode(resumable=True)
+        )
+
+        assert tool._form_value_for_this_tool(tool.tool_config) == {"a": 1}
+
+    def test_no_form_value_when_first_form_in_turn_is_other_tool(self):
         messages = [
             *_history_with_form_schema(tool_name="other_tool", tool_call_id="tc-1"),
             *_history_with_form_schema(tool_name="test_tool", tool_call_id="tc-2"),
@@ -1130,4 +1144,4 @@ class TestFormValueForThisTool:
             messages, conversation_mode=ConversationMode(resumable=True)
         )
 
-        assert tool._form_value_for_this_tool(tool.tool_config) == {"a": 1}
+        assert tool._form_value_for_this_tool(tool.tool_config) is None
