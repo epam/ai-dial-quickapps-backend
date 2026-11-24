@@ -22,9 +22,14 @@ along in tool history. So a non-resumable tool that asked the user for input via
   to the app's choice, where the client renders it as an interactive form.
 - The SDK allows `choice.set_form_schema` only once per response — when several tools return a schema in one
   turn, exactly one (the first) is propagated and the rest are dropped with a debug log.
-- The schema is kept on the tool message's `custom_content.form_schema` in the conversation history, so the
-  next request can recover the source tool from history alone (tool message `form_schema` → `tool_call_id` →
-  assistant tool call name) — no state markers are used.
+- The source tool is resolved by **matching schema content** between the two messages of a form turn:
+  the client echoes the **assistant** message back with `custom_content.form_schema` (the schema the UI
+  actually rendered) plus its `tool_calls` (the **initiator**); the **tool** message carries the schema the
+  deployment returned (the **generator**) and its `tool_call_id`. `form_source_tool_name_before` finds the
+  latest assistant message with a schema (first per turn — SDK allows one form per choice), then matches a
+  tool message whose `form_schema` equals it by content and whose `tool_call_id` is in that assistant's
+  `tool_calls`; the initiator's tool call name is the source. Fallback: tool message alone → `tool_call_id` →
+  assistant tool call. No state markers are used.
 - `form_value` routing is decided **per message**: for each message carrying `form_value`, the form's source
   tool is resolved from the history *before* that message, and the value goes either to that tool's request
   (resumable) or into the message content as a `<form_value>` block (non-resumable / unknown source).
@@ -51,8 +56,9 @@ the result keeps the schema in `custom_content.form_schema`, so it stays in the 
 ### UC-2: User submits the form; source tool is resumable
 
 **Trigger:** The client sends the filled values as `custom_content.form_value` on the next user message.
-The last tool message in history carries `custom_content.form_schema`; its `tool_call_id` resolves to the
-tool the orchestrator is about to call, and that tool has `conversation_mode.resumable: true`.
+The latest assistant message in history carries `custom_content.form_schema` (echoed by the client — the
+schema the UI rendered); the tool message with the same schema resolves to the tool the orchestrator is
+about to call, and that tool has `conversation_mode.resumable: true`.
 **Behavior:** `BaseDeploymentTool._form_value_for_this_tool` matches the form's source tool (from history)
 against the tool being called, takes `form_value` from the last raw user message, and
 `DialCompletionService` attaches it to the final user message of the deployment request as
@@ -139,8 +145,9 @@ guard method on `Orchestrator`.
 ### 4. `form_value` routed per message by the form's source tool
 
 **What:** two cooperating pieces, both resolving the source tool from history by content
-(`common/form_utils.py`: `form_source_tool_name_before` — last tool message with
-`custom_content.form_schema` before a given index → `tool_call_id` → assistant tool call name;
+(`common/form_utils.py`: `form_source_tool_name_before` — latest assistant message with
+`custom_content.form_schema` (the schema shown to the client) matched by content to the tool message
+carrying the same schema; the assistant's `tool_calls` give the initiator name;
 `find_tool_conversation_mode` / `is_resumable`):
 
 - `_FormValueContentTransformer` (`core/agent/_form_value_content_transformer.py`, registered first in
@@ -225,7 +232,7 @@ sequenceDiagram
     QA->>QA: accumulate form_schema (last wins)
     QA->>C: choice.set_form_schema(schema); tool message keeps custom_content.form_schema
     C->>QA: submit form → custom_content.form_value on user message
-    QA->>QA: per message: resolve source tool from history before it (form_schema → tool_call_id → tool name)
+    QA->>QA: per message: match assistant form_schema by content to tool message schema → initiator tool name
     alt source tool resumable and is the called tool
         QA->>D: form_value on final user message custom_content (+ history assistant messages)
     else source not resumable / unknown

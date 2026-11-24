@@ -138,3 +138,79 @@ def test_is_resumable_typed():
     assert is_resumable(SimpleNamespace(resumable=True)) is True
     assert is_resumable(SimpleNamespace(resumable=False)) is False
     assert is_resumable(None) is False
+
+
+def _assistant_with_schema(tool_call_id: str, name: str, schema) -> Message:
+    """Assistant message as echoed by the client: form_schema in custom_content + tool_calls."""
+    return Message.model_validate(
+        {
+            "role": "assistant",
+            "content": "calling",
+            "custom_content": {"form_schema": schema},
+            "tool_calls": [
+                {
+                    "id": tool_call_id,
+                    "type": "function",
+                    "function": {"name": name, "arguments": "{}"},
+                }
+            ],
+        }
+    )
+
+
+class TestAssistantSchemaMatching:
+    def test_initiator_from_assistant_schema_matched_to_tool_result(self):
+        """assistant carries the shown schema + tool_calls; tool message carries the same
+        schema → initiator is the assistant's tool call name."""
+        schema = {"title": "form"}
+        msgs = [
+            _user(),
+            _assistant_with_schema("tc-1", "initiator_tool", schema),
+            _tool_with_schema("tc-1", schema=schema),
+        ]
+        assert form_source_tool_name_before(msgs, len(msgs)) == "initiator_tool"
+
+    def test_two_forms_in_turn_first_shown_wins(self):
+        """Two assistant messages with schemas in one turn: the first one is what the UI
+        showed (SDK: one form per choice) → its initiator wins."""
+        schema_a, schema_b = {"title": "A"}, {"title": "B"}
+        msgs = [
+            _user(),
+            _assistant_with_schema("tc-1", "tool_a", schema_a),
+            _tool_with_schema("tc-1", schema=schema_a),
+            _assistant_with_schema("tc-2", "tool_b", schema_b),
+            _tool_with_schema("tc-2", schema=schema_b),
+        ]
+        assert form_source_tool_name_before(msgs, len(msgs)) == "tool_a"
+
+    def test_schema_mismatch_falls_back_to_tool_message(self):
+        """Assistant schema does not match any tool message schema (e.g. proxied form):
+        fall back to tool message with any schema."""
+        msgs = [
+            _user(),
+            _assistant_with_schema("tc-1", "initiator", {"title": "shown"}),
+            _tool_with_schema("tc-1", schema={"title": "generated"}),
+        ]
+        # no content match → fallback path resolves via tool_call_id → assistant tool call
+        assert form_source_tool_name_before(msgs, len(msgs)) == "initiator"
+
+    def test_latest_turn_wins(self):
+        schema_a, schema_b = {"title": "A"}, {"title": "B"}
+        msgs = [
+            _user("one"),
+            _assistant_with_schema("tc-1", "tool_a", schema_a),
+            _tool_with_schema("tc-1", schema=schema_a),
+            _user("two"),
+            _assistant_with_schema("tc-2", "tool_b", schema_b),
+            _tool_with_schema("tc-2", schema=schema_b),
+        ]
+        assert form_source_tool_name_before(msgs, len(msgs)) == "tool_b"
+
+    def test_no_assistant_schema_falls_back_to_tool_only(self):
+        """Old-style history without assistant schema: tool message alone resolves the tool."""
+        msgs = [
+            _user(),
+            _assistant_with_call("tc-1", "tool_a"),
+            _tool_with_schema("tc-1"),
+        ]
+        assert form_source_tool_name_before(msgs, len(msgs)) == "tool_a"
