@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 from aidial_client import AsyncDial
 from injector import inject
@@ -10,6 +11,8 @@ from quickapp.skills.frontmatter import parse_frontmatter
 from quickapp.skills.skill_metadata import ParsedSkill
 from quickapp.skills.skill_resolver import SkillResolution
 from quickapp.skills.skills_provider import ResolvedSkill
+
+logger = logging.getLogger(__name__)
 
 
 async def fetch_and_validate_dial_prompt_skill(
@@ -100,9 +103,11 @@ class DialPromptSkillResolver:
         config: DialPromptSkillConfig,
     ) -> ResolvedSkill:
         parsed, content = await fetch_and_validate_dial_prompt_skill(self._dial_client, config.url)
+        # Cosmetic frontmatter warnings are log-only, not shown to users.
+        for warning in parsed.warnings:
+            logger.warning("Skill '%s': %s", config.url, warning)
         return ResolvedSkill(
             url=config.url,
             metadata=parsed.metadata,
             content=content,
-            warnings=parsed.warnings,
         )
