@@ -2,7 +2,7 @@ import pytest
 from aidial_client._exception import ResourceNotFoundError
 
 from quickapp.common.exceptions import InvalidToolCallParameterException
-from quickapp.config.dial_files import ToolCallResultOffloadSettings
+from quickapp.config.tool_call_result_offload import ToolCallResultOffloadSettings
 from quickapp.dial_files_tooling._read_chars_tool import _ReadCharsTool
 from quickapp.dial_files_tooling._tool_configs import READ_CHARS_TOOL_CONFIG
 from quickapp.dial_files_tooling._utils import MAX_OUTPUT_CHARS

@@ -2,8 +2,8 @@ import pytest
 from pydantic import ValidationError
 
 from quickapp.config.application import ApplicationConfig, Features
-from quickapp.config.dial_files import (
-    DialFilesConfig,
+from quickapp.config.dial_files import DialFilesConfig
+from quickapp.config.tool_call_result_offload import (
     ToolCallResultOffloadConfig,
     ToolCallResultOffloadSettings,
 )
@@ -126,6 +126,20 @@ class TestFeaturesDialFilesDefault:
         assert cfg is not None
         assert cfg.tool_call_result_offload is not None
         assert cfg.tool_call_result_offload.enabled is True
+
+
+class TestFeaturesToolCallResultOffload:
+    def test_enabled_by_default_without_preview(self, monkeypatch):
+        monkeypatch.delenv("ENABLE_PREVIEW_FEATURES", raising=False)
+        raw = create_app_configuration([]).model_dump(mode="json")
+        raw["features"] = {}
+        features = ApplicationConfig.model_validate(raw).features
+        assert features is not None
+        assert features.tool_call_result_offload.enabled is True
+
+    def test_size_threshold_follows_env(self, monkeypatch):
+        monkeypatch.setenv("TOOL_CALL_RESULT_OFFLOAD__SIZE_THRESHOLD", "10000")
+        assert Features.model_validate({}).tool_call_result_offload.size_threshold == 10_000
 
 
 class TestResultLimitConsistency:

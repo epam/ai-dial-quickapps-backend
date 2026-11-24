@@ -23,6 +23,7 @@ from quickapp.config.skill import SkillConfig
 from quickapp.config.starters import ConversationStartersConfig
 from quickapp.config.timestamp import TimestampConfig, ToolCallTimestampConfig
 from quickapp.config.tool_access_filter import ToolAccessFilterConfig
+from quickapp.config.tool_call_result_offload import ToolCallResultOffloadConfig
 from quickapp.config.tool_discovery import ToolDiscoveryConfig
 from quickapp.config.toolsets.toolset import ToolSet
 from quickapp.config.web_fetch import WebFetchConfig
@@ -241,6 +242,15 @@ class Features(BaseModel):
             "When omitted, null or empty, all tools are exposed; use "
             "`enabled_tools: read_only` to expose only the non-mutating ones. "
             "`null` is accepted for backward compatibility only and is treated as the default."
+        ),
+    )
+    tool_call_result_offload: ToolCallResultOffloadConfig = Field(
+        default_factory=ToolCallResultOffloadConfig,
+        description=(
+            "Offload oversized tool-call responses to a file, read back on demand via the "
+            "read_lines / search file tools. Toggled by its `enabled` flag, whose default is "
+            "governed by TOOL_CALL_RESULT_OFFLOAD__ENABLED_BY_DEFAULT. "
+            "Requires read_lines and search to be exposed via `dial_files.enabled_tools`."
         ),
     )
     web_fetch: WebFetchConfig | None = Field(

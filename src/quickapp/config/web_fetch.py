@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 
-from quickapp.config.dial_files import ToolCallResultOffloadSettings
+from quickapp.config.tool_call_result_offload import ToolCallResultOffloadSettings
 
 
 class WebFetchConfig(BaseModel):
