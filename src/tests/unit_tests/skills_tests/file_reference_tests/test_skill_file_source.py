@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from quickapp.common.exceptions import InvalidToolCallParameterException
+from quickapp.skills.dial_resource._exceptions import DialSkillFileNotTextError
 from quickapp.skills.exceptions import SkillFileNotFoundError
 from quickapp.skills.file_reference._skill_file_source import _SkillFileSource
 from quickapp.skills.registry._skills_registry import SkillsRegistry
@@ -47,9 +48,16 @@ class TestLoad:
 
     @pytest.mark.asyncio
     async def test_unreadable_file_becomes_parameter_error(self):
-        source, _ = _source(error=RuntimeError("file is not UTF-8 text"))
+        source, _ = _source(error=DialSkillFileNotTextError("a.py"))
 
         with pytest.raises(InvalidToolCallParameterException, match="not UTF-8 text"):
+            await source.load("skill://s/a.py", "code")
+
+    @pytest.mark.asyncio
+    async def test_unexpected_error_is_not_masked_as_a_parameter_error(self):
+        source, _ = _source(error=RuntimeError("boom"))
+
+        with pytest.raises(RuntimeError, match="boom"):
             await source.load("skill://s/a.py", "code")
 
     @pytest.mark.asyncio

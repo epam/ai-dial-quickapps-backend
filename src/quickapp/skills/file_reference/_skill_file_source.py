@@ -4,6 +4,7 @@ from injector import inject
 
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.shared.file_transfer import FileSource
+from quickapp.skills.exceptions import SkillFileReadError
 from quickapp.skills.registry import SkillsRegistry
 from quickapp.skills.skill_file_url import is_skill_reference, parse_skill_reference
 
@@ -38,7 +39,7 @@ class _SkillFileSource(FileSource):
         skill_name, file_path = parsed
         try:
             text = await self._registry.read_skill_file(skill_name, file_path)
-        except Exception as exc:
+        except (FileNotFoundError, SkillFileReadError) as exc:
             # The messages of these errors are written for the model and name the reason.
             logger.warning("Skill file could not be loaded for parameter %s", parameter_name)
             raise InvalidToolCallParameterException(
