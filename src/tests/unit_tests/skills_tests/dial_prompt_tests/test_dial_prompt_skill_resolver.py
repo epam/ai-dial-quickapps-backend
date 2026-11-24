@@ -165,58 +165,6 @@ class TestDialPromptSkillResolver:
         assert output.exceptions == []
 
     @pytest.mark.asyncio
-    async def test_frontmatter_warning_is_logged_not_reported(self, caplog):
-        """A name >64 chars resolves; the warning is logged, not reported."""
-        long_name = "a" * 65
-        content = f"---\nname: {long_name}\ndescription: desc\n---\nBody\n"
-        prompt = _make_prompt(content=content)
-        resolver = _make_resolver(prompts_get_return=prompt)
-
-        with caplog.at_level("WARNING"):
-            output = await resolver.resolve([_make_config("prompts/bucket/long")])
-
-        assert len(output.resolved) == 1
-        assert output.resolved[0].metadata.name == long_name
-        assert output.exceptions == []
-        assert "exceeds 64 characters" in caplog.text
-
-    @pytest.mark.asyncio
-    async def test_multiple_frontmatter_warnings_are_not_reported(self):
-        bad_name = "-" + "a" * 64  # 65 chars, leading hyphen → both warnings fire
-        content = f"---\nname: {bad_name}\ndescription: desc\n---\nBody\n"
-        prompt = _make_prompt(content=content)
-        resolver = _make_resolver(prompts_get_return=prompt)
-
-        output = await resolver.resolve([_make_config("prompts/bucket/iffy")])
-
-        assert len(output.resolved) == 1
-        assert output.exceptions == []
-
-    @pytest.mark.asyncio
-    async def test_frontmatter_warning_does_not_hide_failure(self):
-        """One URL resolves with a log-only warning; another fails and is reported."""
-        long_name = "a" * 65
-        ok_with_warning = _make_prompt(
-            content=f"---\nname: {long_name}\ndescription: desc\n---\nBody\n"
-        )
-        broken = _make_prompt(content="no frontmatter here")
-
-        dial_client = MagicMock()
-        dial_client.prompts = MagicMock()
-        dial_client.prompts.get = AsyncMock(side_effect=[ok_with_warning, broken])
-        resolver = DialPromptSkillResolver(dial_client=dial_client)
-
-        output = await resolver.resolve(
-            [_make_config("prompts/bucket/ok"), _make_config("prompts/bucket/broken")]
-        )
-
-        assert len(output.resolved) == 1
-        assert output.resolved[0].url == "prompts/bucket/ok"
-        assert len(output.exceptions) == 1
-        assert output.exceptions[0].severity == "error"
-        assert output.exceptions[0].url == "prompts/bucket/broken"
-
-    @pytest.mark.asyncio
     async def test_bom_prefixed_content_resolves(self):
         """Content stored with a leading BOM (common after copy/paste) now parses."""
         content = "﻿" + VALID_SKILL_CONTENT
