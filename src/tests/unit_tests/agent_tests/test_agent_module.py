@@ -5,8 +5,17 @@ from aidial_sdk.chat_completion.request import Function, StaticFunction, StaticT
 from aidial_sdk.exceptions import InvalidRequestError
 from pydantic import SecretStr
 
+from quickapp.config.dial_deployment import DialDeploymentToolConfig
+from quickapp.config.tools.base import (
+    JsonTypeEnum,
+    OpenAiToolConfig,
+    OpenAiToolFunction,
+    OpenAiToolFunctionParameters,
+)
+from quickapp.config.tools.deployment import DialDeploymentTool
 from quickapp.config.tools.internal import InternalTool
 from quickapp.core.agent.agent_module import AgentModule
+from quickapp.dial_files_tooling._tool_configs import COPY_FILE_TOOL_CONFIG
 
 
 def test_provide_openai_client_forwards_bearer_to_default_headers():
@@ -149,3 +158,41 @@ def test_provide_extra_openai_tools_raises_on_name_collision_with_model_hidden_t
 
 def test_provide_model_hidden_tools_defaults_to_empty():
     assert AgentModule().provide_model_hidden_tools() == []
+
+
+def _make_staged_tool(tool_config) -> MagicMock:
+    staged_tool = MagicMock()
+    staged_tool.tool_config = tool_config
+    staged_tool.enrich_openai_tool_schema.side_effect = lambda t: t
+    return staged_tool
+
+
+def test_provide_openai_tools_hides_quickapps_param_settings():
+    [tool] = AgentModule().provide_openai_tools(
+        tools=[_make_staged_tool(COPY_FILE_TOOL_CONFIG)], static_tools=[], deferred_tool_names=[]
+    )
+
+    source = tool["function"]["parameters"]["properties"]["source"]
+    assert "display" not in source
+    assert source["type"] == "string"
+
+
+def test_provide_openai_tools_hides_display_on_deployment_tool_default_params():
+    tool_config = DialDeploymentTool(
+        deployment=DialDeploymentToolConfig(deployment_id="my-app"),
+        open_ai_tool=OpenAiToolConfig(
+            function=OpenAiToolFunction(
+                name="my_app",
+                description="A deployment tool",
+                parameters=OpenAiToolFunctionParameters(type=JsonTypeEnum.object, properties={}),
+            )
+        ),
+    )
+
+    [tool] = AgentModule().provide_openai_tools(
+        tools=[_make_staged_tool(tool_config)], static_tools=[], deferred_tool_names=[]
+    )
+
+    properties = tool["function"]["parameters"]["properties"]
+    assert set(properties) == {"query", "attachment_urls"}
+    assert all("display" not in param for param in properties.values())

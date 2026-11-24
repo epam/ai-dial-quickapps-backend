@@ -6,6 +6,7 @@ from quickapp.config.tools.base import (
     BaseOpenAITool,
     OpenAiToolConfigDict,
     remove_const_schema_params,
+    to_llm_tool_dict,
 )
 from quickapp.config.toolsets.base import BaseToolSet
 
@@ -53,9 +54,11 @@ class DeferredToolsAccumulator:
             {
                 # Apply the same transform pipeline as the eager path (AgentModule.provide_openai_tools)
                 # so a discovered tool's schema matches what it would have looked like loaded eagerly.
-                name: tool.enrich_openai_tool_schema(
-                    remove_const_schema_params(tool_config.open_ai_tool)
-                ).model_dump(mode="json", exclude_none=True)
+                name: to_llm_tool_dict(
+                    tool.enrich_openai_tool_schema(
+                        remove_const_schema_params(tool_config.open_ai_tool)
+                    )
+                )
                 for tool, tool_config, name in entries
             }
         )

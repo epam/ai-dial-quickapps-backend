@@ -193,14 +193,14 @@ by every hit).
   deployments whose adapter caches.
 - **Prefix below the model minimum** (512–4,096 tokens depending on the model) is silently not cached. No
   workaround.
-- **The history misses on the first call of every turn.** Synthetic pairs with `append_if_changed` (the
-  file-transfer `read_skill` pair, config hooks) are rebuilt in place each turn, and with `features.timestamp`
-  each rebuild gets a new `[Timestamp: …]` line, so everything after the first user message changes. Later
-  calls of the turn hit. Workaround: `PROMPT_CACHE_BREAKPOINTS_ENABLED=false`.
-- **Writes cost more.** On Claude, cached tokens written for the first time cost 1.25×. Because of the miss
-  above, a turn with a single model call (no tool call) writes the history and never reads it back, so it pays
-  25% more on the history. Turns with 2 or more calls pay less; it breaks even when about 26–28% of turns make
-  a 2nd call. Workaround: `PROMPT_CACHE_BREAKPOINTS_ENABLED=false`.
+- **The history can still miss on the first call of a turn.** An identical `append_if_changed` pair (the
+  file-transfer `read_skill` pair, config hooks) is left untouched and keeps its original timestamp, but hooks
+  with a TTL refresh or templated arguments, and `_GetContentHistoryPolicy`, still rewrite history. Later calls
+  of the turn hit. Workaround: `PROMPT_CACHE_BREAKPOINTS_ENABLED=false`.
+- **Writes cost more.** On Claude, cached tokens written for the first time cost 1.25×. When the history
+  does miss, a turn with a single model call (no tool call) writes the history and never reads it back, so it
+  pays 25% more on the history. Turns with 2 or more calls pay less; it breaks even when about 26–28% of turns
+  make a 2nd call. Workaround: `PROMPT_CACHE_BREAKPOINTS_ENABLED=false`.
 - **One miss when the tools change:** a `tool_search` load, a different client tool set, or the first file
   attachment (which turns on `available_context`, and with `lazy_on_demand` the get-content tool).
 - **One miss when only the system prompt changes:** an inbound system message with

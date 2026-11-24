@@ -32,8 +32,8 @@ flowchart LR
   it as if it had called the tool itself. The call shows the **rendered** arguments.
 - The identity of the pair (its call id) is derived from the **unrendered** `arguments`, so it stays the same
   from turn to turn even when the rendered values change. This is what `frequency` relies on:
-  - `append_if_changed` (default): an identical result replaces the earlier pair in place, a different
-    result is appended as a new pair.
+  - `append_if_changed` (default): an identical result leaves the earlier pair untouched (an unchanged pair keeps the
+    timestamp of the turn it first appeared in), a different result is appended as a new pair.
   - `always`: a pair is appended every turn.
   - `refresh_condition` (TTL) finds the earlier pair by that identity, so it works only with static
     `arguments`. Combining it with a template is rejected when the configuration is validated.
