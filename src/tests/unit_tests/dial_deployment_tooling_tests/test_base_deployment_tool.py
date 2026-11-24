@@ -1079,44 +1079,36 @@ def _user_msg_with_form_value(form_value) -> Message:
 
 
 class TestFormValueForThisTool:
-    def test_returns_form_value_when_this_tool_is_form_source_and_resumable(self):
-        messages = [*_history_with_form_schema(), _user_msg_with_form_value({"a": 1})]
-        tool = _build_tool_with_propagation(
-            messages, conversation_mode=ConversationMode(resumable=True)
-        )
-
-        assert tool._form_value_for_this_tool(tool.tool_config) == {"a": 1}
-
-    def test_none_when_tool_not_resumable(self):
+    def test_returns_form_value_when_this_tool_is_form_source(self):
         messages = [*_history_with_form_schema(), _user_msg_with_form_value({"a": 1})]
         tool = _build_tool_with_propagation(messages, conversation_mode=None)
 
-        assert tool._form_value_for_this_tool(tool.tool_config) is None
+        assert tool._form_value_for_this_tool(tool.tool_config) == {"a": 1}
+
+    def test_returns_form_value_even_when_resumable(self):
+        messages = [*_history_with_form_schema(), _user_msg_with_form_value({"a": 1})]
+        tool = _build_tool_with_propagation(messages)
+
+        assert tool._form_value_for_this_tool(tool.tool_config) == {"a": 1}
 
     def test_none_when_form_source_is_another_tool(self):
         messages = [
             *_history_with_form_schema(tool_name="other_tool"),
             _user_msg_with_form_value({"a": 1}),
         ]
-        tool = _build_tool_with_propagation(
-            messages, conversation_mode=ConversationMode(resumable=True)
-        )
+        tool = _build_tool_with_propagation(messages)
 
         assert tool._form_value_for_this_tool(tool.tool_config) is None
 
     def test_none_when_no_form_schema_in_history(self):
         messages = [_user_msg_with_form_value({"a": 1})]
-        tool = _build_tool_with_propagation(
-            messages, conversation_mode=ConversationMode(resumable=True)
-        )
+        tool = _build_tool_with_propagation(messages)
 
         assert tool._form_value_for_this_tool(tool.tool_config) is None
 
     def test_none_when_user_message_has_no_form_value(self):
         messages = [*_history_with_form_schema(), Message(role=Role.USER, content="hi")]
-        tool = _build_tool_with_propagation(
-            messages, conversation_mode=ConversationMode(resumable=True)
-        )
+        tool = _build_tool_with_propagation(messages)
 
         assert tool._form_value_for_this_tool(tool.tool_config) is None
 
@@ -1128,9 +1120,7 @@ class TestFormValueForThisTool:
             *_history_with_form_schema(tool_name="other_tool", tool_call_id="tc-2"),
             _user_msg_with_form_value({"a": 1}),
         ]
-        tool = _build_tool_with_propagation(
-            messages, conversation_mode=ConversationMode(resumable=True)
-        )
+        tool = _build_tool_with_propagation(messages)
 
         assert tool._form_value_for_this_tool(tool.tool_config) == {"a": 1}
 
@@ -1140,9 +1130,7 @@ class TestFormValueForThisTool:
             *_history_with_form_schema(tool_name="test_tool", tool_call_id="tc-2"),
             _user_msg_with_form_value({"a": 1}),
         ]
-        tool = _build_tool_with_propagation(
-            messages, conversation_mode=ConversationMode(resumable=True)
-        )
+        tool = _build_tool_with_propagation(messages)
 
         assert tool._form_value_for_this_tool(tool.tool_config) is None
 
@@ -1151,9 +1139,7 @@ class TestFormValueSentOncePerRequest:
     def test_second_call_in_same_request_gets_no_form_value(self):
         """form_value is forwarded to at most one call of the source tool per request."""
         messages = [*_history_with_form_schema(), _user_msg_with_form_value({"a": 1})]
-        tool = _build_tool_with_propagation(
-            messages, conversation_mode=ConversationMode(resumable=True)
-        )
+        tool = _build_tool_with_propagation(messages)
 
         first = tool._form_value_for_this_tool(tool.tool_config)
         second = tool._form_value_for_this_tool(tool.tool_config)
@@ -1163,9 +1149,7 @@ class TestFormValueSentOncePerRequest:
 
     def test_no_form_value_in_user_message_does_not_set_flag(self):
         messages = [*_history_with_form_schema(), Message(role=Role.USER, content="hi")]
-        tool = _build_tool_with_propagation(
-            messages, conversation_mode=ConversationMode(resumable=True)
-        )
+        tool = _build_tool_with_propagation(messages)
 
         assert tool._form_value_for_this_tool(tool.tool_config) is None
         # flag not set → a later call with form_value would still get it

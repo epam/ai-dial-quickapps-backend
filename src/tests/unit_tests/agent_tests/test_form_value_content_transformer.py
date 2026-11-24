@@ -44,12 +44,17 @@ def _history_with_form_schema(
     return [assistant, tool_msg]
 
 
-def _tool(name="my_tool", resumable=None) -> MagicMock:
-    """A runtime tool stub: openai_function_name + tool_config.conversation_mode."""
+def _tool(name="my_tool", resumable=None, propagate_form_value_to_content=True) -> MagicMock:
+    """A runtime tool stub: openai_function_name + tool_config fields."""
+    from quickapp.config.tools.deployment import DialDeploymentTool
+
     tool = MagicMock()
     tool.openai_function_name.return_value = name
     cm = None if resumable is None else SimpleNamespace(resumable=resumable)
     tool.tool_config.conversation_mode = cm
+    # _propagate_to_content checks isinstance(tool_config, DialDeploymentTool)
+    tool.tool_config.__class__ = DialDeploymentTool
+    tool.tool_config.propagate_form_value_to_content = propagate_form_value_to_content
     return tool
 
 
@@ -68,7 +73,8 @@ class TestFormValueContentTransformer:
 
         assert result[-1].content.startswith("submitted")
         assert "<form_value>" in result[-1].content
-        assert result[-1].custom_content.form_value is None
+        # form_value is kept in custom_content (deployment tools read it from raw messages)
+        assert result[-1].custom_content.form_value == {"a": 1}
         # request's own message is not mutated
         assert msg.custom_content.form_value == {"a": 1}
 
@@ -93,14 +99,14 @@ class TestFormValueContentTransformer:
         assert "<form_value>" in result[-1].content
 
     @pytest.mark.asyncio
-    async def test_injects_when_no_form_schema_in_history(self):
-        # source tool unknown → treated as non-resumable → inject (data must not be lost)
+    async def test_no_injection_when_no_form_schema_in_history(self):
+        # source tool unknown → no tool to read propagate_form_value_to_content from → no injection
         t = _FormValueContentTransformer(_tools(_tool()))
         msg = _msg_with_form_value({"a": 1})
 
         result = await t.transform([msg])
 
-        assert "<form_value>" in result[0].content
+        assert result[0] is msg
 
     @pytest.mark.asyncio
     async def test_injects_into_every_message_with_form_value(self):
@@ -114,8 +120,8 @@ class TestFormValueContentTransformer:
 
         assert "<form_value>" in result[-2].content
         assert "<form_value>" in result[-1].content
-        assert result[-2].custom_content.form_value is None
-        assert result[-1].custom_content.form_value is None
+        assert result[-2].custom_content.form_value == {"a": 1}
+        assert result[-1].custom_content.form_value == {"b": 2}
 
     @pytest.mark.asyncio
     async def test_per_message_source_resolution(self):
@@ -139,13 +145,13 @@ class TestFormValueContentTransformer:
     @pytest.mark.asyncio
     async def test_form_after_message_not_counted(self):
         # form_schema appears AFTER the user message with form_value → no source before it
-        # → source unknown → inject (safe default)
+        # → source unknown → no injection
         t = _FormValueContentTransformer(_tools(_tool()))
         msg = _msg_with_form_value({"a": 1})
 
         result = await t.transform([msg, *_history_with_form_schema()])
 
-        assert "<form_value>" in result[0].content
+        assert result[0] is msg
 
     @pytest.mark.asyncio
     async def test_empty_content_gets_block_only(self):
@@ -167,3 +173,43 @@ class TestFormValueContentTransformer:
         result = await t.transform([*_history_with_form_schema(), msg])
 
         assert "<form_value>" in result[-1].content
+
+
+class TestPropagateFormValueToContentFlag:
+    @pytest.mark.asyncio
+    async def test_no_injection_when_flag_false(self):
+        t = _FormValueContentTransformer(_tools(_tool(propagate_form_value_to_content=False)))
+        msg = _msg_with_form_value({"a": 1})
+
+        result = await t.transform([*_history_with_form_schema(), msg])
+
+        assert result[-1] is msg
+        assert "<form_value>" not in (result[-1].content or "")
+
+    @pytest.mark.asyncio
+    async def test_no_injection_when_flag_unset(self):
+        t = _FormValueContentTransformer(_tools(_tool(propagate_form_value_to_content=None)))
+        msg = _msg_with_form_value({"a": 1})
+
+        result = await t.transform([*_history_with_form_schema(), msg])
+
+        assert result[-1] is msg
+
+    @pytest.mark.asyncio
+    async def test_injection_when_flag_true(self):
+        t = _FormValueContentTransformer(_tools(_tool(propagate_form_value_to_content=True)))
+        msg = _msg_with_form_value({"a": 1})
+
+        result = await t.transform([*_history_with_form_schema(), msg])
+
+        assert "<form_value>" in result[-1].content
+
+    @pytest.mark.asyncio
+    async def test_no_injection_when_source_tool_unknown(self):
+        # flag true but source tool not among runtime tools → no injection
+        t = _FormValueContentTransformer(_tools(_tool(name="other")))
+        msg = _msg_with_form_value({"a": 1})
+
+        result = await t.transform([*_history_with_form_schema(), msg])
+
+        assert result[-1] is msg

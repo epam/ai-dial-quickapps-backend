@@ -73,6 +73,15 @@ class DialDeploymentTool(BaseOpenAITool):
             "response the first one wins (the SDK allows a single form per choice)."
         ),
     )
+    propagate_form_value_to_content: bool | None = Field(
+        default=None,
+        description=(
+            "When the form's source tool is not resumable, append the submitted "
+            "`custom_content.form_value` to the message content as a `<form_value>` block "
+            "so the orchestrator model can use it. When false or unset, the value is only "
+            "kept in `custom_content` (consumed by deployment tools)."
+        ),
+    )
     supports_url_attachments: bool = Field(
         default=False,
         description=(

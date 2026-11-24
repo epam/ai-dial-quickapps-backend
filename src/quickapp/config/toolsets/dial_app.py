@@ -74,6 +74,17 @@ class DialAppToolSet(BaseToolSet):
             "the toolset resolves to MCP."
         ),
     )
+    propagate_form_value_to_content: bool | None = Field(
+        default=None,
+        description=(
+            "When the form's source tool is not resumable, append the submitted "
+            "`custom_content.form_value` to the message content as a `<form_value>` block "
+            "so the orchestrator model can use it. When false or unset, the value is only "
+            "kept in `custom_content` (consumed by deployment tools). "
+            "Applies only on the chat-completion branch; ignored (with a warning) when "
+            "the toolset resolves to MCP."
+        ),
+    )
 
     @model_validator(mode="after")
     def _validate_against_allowed_tools(self) -> Self:

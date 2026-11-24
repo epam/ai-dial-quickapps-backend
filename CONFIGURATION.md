@@ -1155,6 +1155,7 @@ have different semantics and will diverge once the deployment-scoped endpoint la
 | fallback_configuration | No       | ToolFallbackConfig | Propagated on both branches. See also: [Tool fallback configuration](#tool-fallback-configuration)                                                                                         | -             |
 | conversation_mode      | No       | Object             | Resumable conversation for the **chat-completion** branch only; ignored (with a warning) on MCP. See [Conversation mode](#conversation-mode)                                              | `null`        |
 | propagate_form_schema_to_choice | No       | Boolean            | Propagate the deployment's `custom_content.form_schema` to the app's answer on the **chat-completion** branch only; ignored (with a warning) on MCP. See [Form schema propagation](#form-schema-propagation) | `null`        |
+| propagate_form_value_to_content | No       | Boolean            | Append the submitted `custom_content.form_value` to the message content as a `<form_value>` block when the form's source tool is not resumable. See [Form schema propagation](#form-schema-propagation) | `null`        |
 
 #### MCP per-tool configuration
 
@@ -1319,6 +1320,7 @@ The same as ApiKeyAuthorization but for mcp location is not configurable and alw
 | fallback_configuration | No                                   | Object | Tools fallback configuration. If not present will always raise Error. See [Tool fallback configuration](#tool-fallback-configuration)                                                     | -                | `null`        |
 | propagate_annotations_to_choice | No                          | Boolean | Only for `deployment-tool` and `dial-deployment-simple`. Propagate citation annotations returned by the deployment to the app's answer. See [Citation annotations](#citation-annotations)               | `true`, `false`  | `null`        |
 | propagate_form_schema_to_choice | No                            | Boolean | Only for `deployment-tool`, `dial-deployment-simple`, and `dial-app` (chat-completion branch only). Propagate the deployment's `custom_content.form_schema` to the app's answer. See [Form schema propagation](#form-schema-propagation) | `true`, `false`  | `null`        |
+| propagate_form_value_to_content | No                            | Boolean | Only for `deployment-tool`, `dial-deployment-simple`, and `dial-app` (chat-completion branch only). Append the submitted `custom_content.form_value` to the message content as a `<form_value>` block when the form's source tool is not resumable. See [Form schema propagation](#form-schema-propagation) | `true`, `false`  | `null`        |
 | conversation_mode               | No                          | Object  | Resumable subagent conversation. Applies to `deployment-tool`, `dial-deployment-simple`, and `dial-app` (chat-completion branch only). See [Conversation mode](#conversation-mode) | - | `null` |
 | content_propagation             | No                          | Object  | Header / **deprecated** history propagation. Prefer `conversation_mode`. See [Content propagation](#content-propagation-deprecated-history-flag) | - | `null` |
 | system_prompt                   | No                          | Object  | Only for `deployment-tool`. Sent to the deployment as a system message. Accepts `custom` and `dial`, not `predefined`. See [System prompt configuration](#system-prompt-configuration) | - | `null` |
@@ -1394,10 +1396,11 @@ plus its `tool_calls`. On the next request, when the client submits the form
 (`custom_content.form_value` on a message), QuickApps recovers the form's source tool from the
 history before that message by matching the assistant message's schema by content to the tool
 message carrying the same schema (the assistant's `tool_calls` give the initiator name) and routes
-the value by that tool: if it has `conversation_mode.resumable: true` and is the tool being called,
-the value is attached to the final user message of the deployment request as
-`custom_content.form_value`; otherwise it is appended to the message content as a `<form_value>`
-block so the orchestrator model can use it.
+the value by that tool: if it is the tool being called, the value is attached to the final user
+message of the deployment request as `custom_content.form_value`; otherwise, if the source tool has
+`propagate_form_value_to_content: true`, it is appended to the message content as a `<form_value>`
+block so the orchestrator model can use it
+(with the flag unset or false, the value stays only in `custom_content`).
 
 ```json
 {

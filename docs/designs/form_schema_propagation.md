@@ -2,7 +2,7 @@
 - **Status:** Implemented
 - **User-facing:** [CONFIGURATION — Form schema propagation](../../CONFIGURATION.md#form-schema-propagation)
 - **Dependencies:**
-  - [subagents_conversation_mode.md](subagents_conversation_mode.md) — `form_value` routing reuses `conversation_mode.resumable` to decide where the submitted form data goes.
+  - [subagents_conversation_mode.md](subagents_conversation_mode.md) — related: resumable subagent conversations.
 
 ## Problem Statement
 
@@ -32,11 +32,12 @@ along in tool history. So a non-resumable tool that asked the user for input via
   assistant tool call. No state markers are used.
 - `form_value` routing is decided **per message**: for each message carrying `form_value`, the form's source
   tool is resolved from the history *before* that message, and the value goes either to that tool's request
-  (resumable) or into the message content as a `<form_value>` block (non-resumable / unknown source).
+  (when it is the tool being called) or into the message content as a `<form_value>` block
+  (`propagate_form_value_to_content: true` on that tool).
 - Injection covers **all** messages with `form_value`, not just the last one — dropping older ones would lose
   data and break the KV cache (the message prefix must stay stable across turns).
-- The orchestrator model never sees the raw `custom_content.form_value` field — it is scrubbed before the LLM
-  call.
+- `custom_content.form_value` is a declared SDK field and is **kept** in messages (not scrubbed): deployment
+  tools read it from the request's own messages, and the orchestrator sees the `<form_value>` content block.
 - Fully backward-compatible: with the flag unset (`null`, the default), behavior is identical to before.
 
 ---
@@ -53,12 +54,12 @@ along in tool history. So a non-resumable tool that asked the user for input via
 the result keeps the schema in `custom_content.form_schema`, so it stays in the conversation history.
 **Outcome:** The client renders the interactive form on the app's answer.
 
-### UC-2: User submits the form; source tool is resumable
+### UC-2: User submits the form; source tool is the one being called
 
 **Trigger:** The client sends the filled values as `custom_content.form_value` on the next user message.
 The latest assistant message in history carries `custom_content.form_schema` (echoed by the client — the
 schema the UI rendered); the tool message with the same schema resolves to the tool the orchestrator is
-about to call, and that tool has `conversation_mode.resumable: true`.
+about to call.
 **Behavior:** `BaseDeploymentTool._form_value_for_this_tool` matches the form's source tool (from history)
 against the tool being called, takes `form_value` from the last raw user message, and
 `DialCompletionService` attaches it to the final user message of the deployment request as
@@ -67,16 +68,15 @@ messages into the reconstructed history's assistant messages.
 **Outcome:** The deployment receives the submitted values both in its conversation history and on the
 current request's user message.
 
-### UC-3: User submits the form; source tool is not resumable
+### UC-3: User submits the form; source tool has `propagate_form_value_to_content: true`
 
-**Trigger:** Same as UC-2, but the source tool resolved from the history before the message has no
-`conversation_mode` (or `resumable: false`) — or no form is found in history at all (unknown source,
-safe default: inject).
+**Trigger:** Same as UC-2, but the tool being called is not the form's source (or the source is another
+tool); the source tool has `propagate_form_value_to_content: true`.
 **Behavior:** `_FormValueContentTransformer` deep-copies the message, appends a
-`<form_value>\n{json}\n</form_value>` block to its content, and clears `custom_content.form_value` on the
-copy. The request's own messages are left untouched. This happens for **every** message carrying
-`form_value` (KV-cache stability). `_ScrubExtraFieldsTransformer` strips the raw field from
-`custom_content` before the messages reach the orchestrator model.
+`<form_value>\n{json}\n</form_value>` block to its content, while `custom_content.form_value` is kept on the
+copy (deployment tools read it from the raw request messages). The request's own messages are left
+untouched. This happens for **every** message carrying `form_value` (KV-cache stability). With the flag
+unset/false, no injection happens — the value stays only in `custom_content`.
 **Outcome:** The orchestrator model sees the submitted data in the message content and can, e.g., pass it to
 another tool.
 
@@ -118,6 +118,17 @@ it applies only to the chat-completion branch; when the toolset resolves to MCP 
 warning (same pattern as `conversation_mode`).
 **Change:** new optional field on three config models; schema regenerated via `make dump_app_schema`.
 
+### 1b. Config flag `propagate_form_value_to_content`
+
+**What:** A `bool | None = None` field added next to `propagate_form_schema_to_choice` on the same three
+config models (`DialDeploymentTool`, `DialDeploymentSimpleTool`, `DialAppToolSet`), threaded onto the
+synthetic `DialDeploymentTool` by the same two paths.
+**Semantics:** gates the `<form_value>` content injection in `_FormValueContentTransformer` for
+non-resumable source tools. `null`/`false` — the submitted value stays only in `custom_content` (consumed
+by deployment tools); `true` — additionally appended to the message content for the orchestrator model.
+**Change:** new optional field on three config models; read from the runtime tool instance in the
+transformer; schema regenerated.
+
 ### 2. Stream parsing and accumulation of `form_schema`
 
 **What:** `NormalizedCustomContent` gains `form_schema: dict[str, Any] | None`
@@ -153,19 +164,20 @@ carrying the same schema; the assistant's `tool_calls` give the initiator name;
 - `_FormValueContentTransformer` (`core/agent/_form_value_content_transformer.py`, registered first in
   `AgentModule.provide_message_transformers`, before the scrubber): for **every** message carrying
   `custom_content.form_value`, resolves the source tool from the history *before* that message; if the
-  source is not resumable (or unknown), appends a `<form_value>{json}</form_value>` block to a deep-copied
-  message's content and clears `form_value` on the copy. Injection into all messages (not just the last)
-  is deliberate: it keeps data and keeps the KV-cache prefix stable across turns.
+  source is not resumable **and** its config has `propagate_form_value_to_content: true`, appends a
+  `<form_value>{json}</form_value>` block to a deep-copied message's content (keeping `form_value` in
+  `custom_content`). Injection into all messages (not just the last) is deliberate: it keeps data and
+  keeps the KV-cache prefix stable across turns.
 - `BaseDeploymentTool._form_value_for_this_tool` + `DialCompletionService.complete_request_async(form_value=...)`:
-  when the tool being called **is** the form's source and is resumable, takes `form_value` from the last raw
+  when the tool being called **is** the form's source, takes `form_value` from the last raw
   request user message (`REQUEST_MESSAGES`, pre-scrub) and attaches it to the final user message of the
-  deployment request's `custom_content`. Separately, `_build_assistant_message` copies `form_value` from
-  tool messages into the reconstructed history's assistant messages.
+  deployment request's `custom_content` (at most once per request). Separately, `_build_assistant_message`
+  copies `form_value` from tool messages into the reconstructed history's assistant messages.
 
 **Owner:** `core/agent/` transformer chain + `dial_deployment_tooling/`.
 **Semantics:** the form is identified by content in history (the schema itself), not by state markers or
-client echo; each `form_value` goes either to its source tool's request (resumable) or into the
-orchestrator's message content (otherwise).
+client echo; each `form_value` goes either to its source tool's request or into the orchestrator's
+message content (if `propagate_form_value_to_content: true` on that tool).
 **Change:** new `common/form_utils.py`; new transformer + DI binding; `request_messages: REQUEST_MESSAGES`
 dependency on `BaseDeploymentTool`/`DeploymentTool`; `form_value` parameter on `complete_request_async`.
 
@@ -173,8 +185,8 @@ dependency on `BaseDeploymentTool`/`DeploymentTool`; `form_value` parameter on `
 
 ## Secondary Fixes
 
-- `_ScrubExtraFieldsTransformer` explicitly strips `custom_content.form_value` from messages sent to the
-  orchestrator model — the raw field is a client→tool payload and must never reach the LLM.
+- `_ScrubExtraFieldsTransformer` no longer strips `custom_content.form_value` — it is a declared SDK field
+  consumed by deployment tools from the request's own messages.
 
 ---
 
@@ -251,8 +263,9 @@ None. The new config field defaults to `null`, which preserves the old drop-at-t
 ### Non-breaking changes
 
 - `propagate_form_schema_to_choice: true` opts a tool into form propagation; existing manifests need no change.
-- `custom_content.form_value` on incoming messages is forwarded to resumable source tools via their
-  reconstructed history; for non-resumable tools it is scrubbed before the orchestrator model.
+- `custom_content.form_value` on incoming messages is kept in `custom_content` (not scrubbed); it is
+  forwarded to resumable source tools via their request, and surfaced to the orchestrator as a
+  `<form_value>` content block for non-resumable sources.
 - `docs/generated-app-schema.json` regenerated; `CONFIGURATION.md` and the `docs/README.md` capability map
   updated.
 
@@ -260,7 +273,7 @@ None. The new config field defaults to `null`, which preserves the old drop-at-t
 
 | Component | Change |
 |---|---|
-| `config/tools/deployment.py`, `config/tools/deployment_simple.py`, `config/toolsets/dial_app.py` | New `propagate_form_schema_to_choice: bool \| None` field |
+| `config/tools/deployment.py`, `config/tools/deployment_simple.py`, `config/toolsets/dial_app.py` | New `propagate_form_schema_to_choice: bool \| None` and `propagate_form_value_to_content: bool \| None` fields |
 | `common/chat_completion_stream/models.py` | `NormalizedCustomContent.form_schema` field |
 | `common/chat_completion_stream/parse.py` | `set_form_schema` + `_has_form_schema` presence flag (distinguishes absent from `{}`) |
 | `common/chat_completion_stream/stream_result.py` | `ChatStreamAccumulator.form_schema` property + `set_form_schema` (replace semantics) |
@@ -272,8 +285,8 @@ None. The new config field defaults to `null`, which preserves the old drop-at-t
 | `dial_deployment_tooling/_deployment_tool_initializer.py`, `dial_app_tooling/_dial_app_resolver.py` | Thread the flag onto synthetic deployment tools |
 | `core/agent/orchestrator.py` | `_send_form_schema` (first-wins guard); no state markers — source tool is recovered from history |
 | `common/form_utils.py` | Shared history-based source-tool resolution (`form_source_tool_name_before`, `find_tool_conversation_mode`, `is_resumable`) |
-| `core/agent/_form_value_content_transformer.py` | Per-message `<form_value>` content injection when the form's source tool (resolved from history before that message) is not resumable; registered before the scrubber |
+| `core/agent/_form_value_content_transformer.py` | Per-message `<form_value>` content injection when the source tool (resolved from history) is not resumable **and** has `propagate_form_value_to_content: true`; registered before the scrubber |
 | `core/agent/agent_module.py` | Bind `_FormValueContentTransformer`, register first in the transformer chain |
-| `core/agent/_scrub_extra_fields_transformer.py` | Explicitly scrub `custom_content.form_value` from orchestrator-bound messages |
+| `core/agent/_scrub_extra_fields_transformer.py` | No longer special-cases `custom_content.form_value` — it is a declared SDK field and stays in messages |
 | `CONFIGURATION.md`, `docs/README.md`, `docs/generated-app-schema.json` | User docs, capability map row, regenerated schema |
 | `src/tests/unit_tests/...` | New tests for transformer, scrubber, parser, accumulator, orchestrator, deployment tool |

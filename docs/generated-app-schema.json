@@ -879,6 +879,19 @@
           "default": null,
           "description": "Propagate the form returned by the deployment onto the app's choice. The deployment's `custom_content.form_schema` is sent to the client. Within one deployment stream the last schema wins; across tools in one response the first one wins (the SDK allows a single form per choice). Applies only on the chat-completion branch; ignored (with a warning) when the toolset resolves to MCP.",
           "title": "Propagate Form Schema To Choice"
+        },
+        "propagate_form_value_to_content": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "When the form's source tool is not resumable, append the submitted `custom_content.form_value` to the message content as a `<form_value>` block so the orchestrator model can use it. When false or unset, the value is only kept in `custom_content` (consumed by deployment tools). Applies only on the chat-completion branch; ignored (with a warning) when the toolset resolves to MCP.",
+          "title": "Propagate Form Value To Content"
         }
       },
       "required": [
@@ -1122,6 +1135,19 @@
           "description": "Propagate the form returned by the deployment onto the app's choice. The deployment's `custom_content.form_schema` is sent to the client. Within one deployment stream the last schema wins; across tools in one response the first one wins (the SDK allows a single form per choice).",
           "title": "Propagate Form Schema To Choice"
         },
+        "propagate_form_value_to_content": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "When the form's source tool is not resumable, append the submitted `custom_content.form_value` to the message content as a `<form_value>` block so the orchestrator model can use it. When false or unset, the value is only kept in `custom_content` (consumed by deployment tools).",
+          "title": "Propagate Form Value To Content"
+        },
         "type": {
           "const": "dial-deployment-simple",
           "default": "dial-deployment-simple",
@@ -1253,6 +1279,19 @@
           "default": null,
           "description": "Propagate the form returned by the deployment onto the app's choice. The deployment's `custom_content.form_schema` is sent to the client. Within one deployment stream the last schema wins; across tools in one response the first one wins (the SDK allows a single form per choice).",
           "title": "Propagate Form Schema To Choice"
+        },
+        "propagate_form_value_to_content": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "When the form's source tool is not resumable, append the submitted `custom_content.form_value` to the message content as a `<form_value>` block so the orchestrator model can use it. When false or unset, the value is only kept in `custom_content` (consumed by deployment tools).",
+          "title": "Propagate Form Value To Content"
         },
         "supports_url_attachments": {
           "default": false,

@@ -11,6 +11,7 @@ from quickapp.common.form_utils import (
     is_resumable,
 )
 from quickapp.common.staged_base_tool import StagedBaseTool
+from quickapp.config.tools.deployment import DialDeploymentTool
 
 logger = logging.getLogger(__name__)
 
@@ -21,11 +22,12 @@ class _FormValueContentTransformer(MessagesTransformer):
     """Inject ``custom_content.form_value`` into message content for the orchestrator.
 
     For every message carrying ``form_value``, the form's source tool is resolved from
-    the history *before* that message (tool message ``form_schema`` → ``tool_call_id`` →
-    assistant tool call name). When the source tool is not resumable, the submitted data
-    is appended to that message's content as a ``<form_value>`` block, so the orchestrator
-    keeps it in the conversation. When the source tool is resumable, the value travels to
-    that tool via ``custom_content`` instead and no injection happens.
+    the history *before* that message (assistant message ``form_schema`` matched by content
+    to the tool message schema → initiator tool call name). When the source tool is not
+    resumable **and** its config has ``propagate_form_value_to_content: true``, the submitted
+    data is appended to that message's content as a ``<form_value>`` block, so the
+    orchestrator keeps it in the conversation. When the source tool is resumable, the value
+    travels to that tool via ``custom_content`` instead and no injection happens.
 
     Injection covers *all* messages with ``form_value`` (not just the last one): dropping
     older ones would lose data and break the KV cache (the message prefix must stay stable
@@ -48,19 +50,35 @@ class _FormValueContentTransformer(MessagesTransformer):
                 result.append(message)
                 continue
             source_tool = form_source_tool_name_before(messages, i)
+            tool = self._find_tool(source_tool)
             conversation_mode = find_tool_conversation_mode(self.__tools, source_tool)
             if is_resumable(conversation_mode):
+                result.append(message)
+                continue
+            if not self._propagate_to_content(tool):
                 result.append(message)
                 continue
             copied = message.model_copy(deep=True)
             block = f"<{_FORM_VALUE_TAG}>\n{json.dumps(form_value, ensure_ascii=False)}\n</{_FORM_VALUE_TAG}>"
             text = copied.content or ""
             copied.content = f"{text}\n\n{block}" if text else block
-            if copied.custom_content is not None:
-                copied.custom_content.form_value = None
             result.append(copied)
             injected += 1
 
         if injected:
             logger.debug("Injected form_value into content of %d message(s)", injected)
         return result
+
+    def _find_tool(self, tool_name: str | None) -> StagedBaseTool | None:
+        if tool_name is None:
+            return None
+        for tool in self.__tools:
+            if tool.openai_function_name() == tool_name:
+                return tool
+        return None
+
+    @staticmethod
+    def _propagate_to_content(tool: StagedBaseTool | None) -> bool:
+        if tool is None or not isinstance(tool.tool_config, DialDeploymentTool):
+            return False
+        return bool(tool.tool_config.propagate_form_value_to_content)

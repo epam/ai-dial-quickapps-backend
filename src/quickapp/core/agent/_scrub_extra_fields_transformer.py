@@ -52,14 +52,6 @@ class _ScrubExtraFieldsTransformer(MessagesTransformer):
         scrubbed = 0
         for message in messages:
             exclude = _extra_fields_exclude(message)
-            if message.custom_content is not None and message.custom_content.form_value is not None:
-                # form_value is a client→tool payload (consumed by deployment tools via
-                # tool history); the orchestrator model must not see it.
-                cc_exclude = (exclude or {}).get("custom_content")
-                if isinstance(cc_exclude, dict):
-                    cc_exclude["form_value"] = True
-                else:
-                    exclude = {**(exclude or {}), "custom_content": {"form_value": True}}
             if exclude is None:
                 result.append(message)
                 continue

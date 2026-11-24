@@ -92,7 +92,9 @@ def test_exclude_spec_walks_lists_and_dicts_like_the_sdk():
 class TestFormValueScrub:
 
     @pytest.mark.asyncio
-    async def test_form_value_is_removed_but_state_kept(self):
+    async def test_form_value_is_kept_in_custom_content(self):
+        # form_value is a declared SDK field and must survive scrubbing: deployment tools
+        # read it from the request's own messages.
         message = Message.model_validate(
             {
                 "role": "user",
@@ -103,10 +105,8 @@ class TestFormValueScrub:
 
         result = await _ScrubExtraFieldsTransformer().transform([message])
 
-        assert result[0].custom_content.form_value is None
+        assert result[0].custom_content.form_value == {"x": 1}
         assert result[0].custom_content.state == {"k": 1}
-        # request's own message is not mutated
-        assert message.custom_content.form_value == {"x": 1}
 
     @pytest.mark.asyncio
     async def test_message_without_form_value_passes_by_reference(self):

@@ -85,12 +85,10 @@ class BaseDeploymentTool(StagedBaseTool):
 
     def _form_value_for_this_tool(self, tool_config: DialDeploymentTool):
         """``form_value`` from the last raw user message, but only when this tool is the
-        source of the form in history (tool message carrying ``custom_content.form_schema``
-        resolves to this tool's name via tool_call_id) and the value was not already
-        forwarded to another call of this tool in the same request.
+        source of the form in history (assistant message ``form_schema`` matched by content
+        to the tool message schema; the assistant's tool call gives this tool's name) and
+        the value was not already forwarded to another call of this tool in the same request.
         """
-        if not self._is_resumable(tool_config):
-            return None
         if self.__form_value_sent:
             return None
         source_tool = form_source_tool_name_before(
