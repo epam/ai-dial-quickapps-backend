@@ -10,7 +10,7 @@ from quickapp.common.form_utils import (
     form_source_tool_name_before,
     is_resumable,
 )
-from quickapp.config.application import ApplicationConfig
+from quickapp.common.staged_base_tool import StagedBaseTool
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +34,8 @@ class _FormValueContentTransformer(MessagesTransformer):
     """
 
     @inject
-    def __init__(self, app_config: ApplicationConfig) -> None:
-        self.__app_config = app_config
+    def __init__(self, tools: list[StagedBaseTool]) -> None:
+        self.__tools = tools
 
     async def transform(self, messages: list[Message]) -> list[Message]:
         result: list[Message] = []
@@ -48,7 +48,7 @@ class _FormValueContentTransformer(MessagesTransformer):
                 result.append(message)
                 continue
             source_tool = form_source_tool_name_before(messages, i)
-            conversation_mode = find_tool_conversation_mode(self.__app_config, source_tool)
+            conversation_mode = find_tool_conversation_mode(self.__tools, source_tool)
             if is_resumable(conversation_mode):
                 result.append(message)
                 continue

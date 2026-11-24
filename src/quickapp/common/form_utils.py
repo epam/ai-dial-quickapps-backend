@@ -5,10 +5,11 @@ A form is identified by content, not by state markers: the tool message carrying
 with that tool call gives the tool name.
 """
 
+from typing import Any
+
 from aidial_sdk.chat_completion import Message, Role
 
-from quickapp.config.application import ApplicationConfig
-from quickapp.config.toolsets.deployment import DeploymentToolSet
+from quickapp.common.staged_base_tool import StagedBaseTool
 
 
 def form_source_tool_name_before(messages: list[Message], index: int) -> str | None:
@@ -46,20 +47,21 @@ def form_source_tool_name_before(messages: list[Message], index: int) -> str | N
     return None
 
 
-def find_tool_conversation_mode(app_config: ApplicationConfig, tool_name: str | None):
-    """conversation_mode of the named tool in the app config, if identifiable."""
+def find_tool_conversation_mode(tools: list[StagedBaseTool], tool_name: str | None) -> Any | None:
+    """``conversation_mode`` of the runtime tool instance with the given LLM-facing
+    name, or None when no such tool exists.
+
+    Resolved against live tool instances (not the static config), so it covers
+    ``deployment-tool``, ``dial-deployment-simple`` and ``dial-app`` alike — all of
+    them expand to a ``DialDeploymentTool`` at runtime.
+    """
     if tool_name is None:
         return None
-    for ts in app_config.tool_sets or []:
-        if isinstance(ts, DeploymentToolSet):
-            for tool in ts.tools:
-                if not getattr(tool, "enabled", True):
-                    continue
-                fn = getattr(getattr(tool, "open_ai_tool", None), "function", None)
-                if getattr(fn, "name", None) == tool_name:
-                    return getattr(tool, "conversation_mode", None)
+    for tool in tools:
+        if tool.openai_function_name() == tool_name:
+            return getattr(tool.tool_config, "conversation_mode", None)
     return None
 
 
-def is_resumable(conversation_mode) -> bool:
+def is_resumable(conversation_mode: Any | None) -> bool:
     return bool(conversation_mode is not None and getattr(conversation_mode, "resumable", False))

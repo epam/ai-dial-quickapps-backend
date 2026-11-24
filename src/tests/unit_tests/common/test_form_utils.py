@@ -2,7 +2,11 @@
 
 from aidial_sdk.chat_completion import Message
 
-from quickapp.common.form_utils import form_source_tool_name_before
+from quickapp.common.form_utils import (
+    find_tool_conversation_mode,
+    form_source_tool_name_before,
+    is_resumable,
+)
 
 
 def _assistant_with_call(tool_call_id: str, name: str) -> Message:
@@ -98,3 +102,39 @@ def test_index_limits_scan_to_prefix():
 def test_empty_schema_dict_still_counts_as_form():
     msgs = [_user(), _assistant_with_call("tc-1", "tool_a"), _tool_with_schema("tc-1", schema={})]
     assert form_source_tool_name_before(msgs, len(msgs)) == "tool_a"
+
+
+class TestFindToolConversationMode:
+    def test_matches_by_runtime_tool_name(self):
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+
+        tool = MagicMock()
+        tool.openai_function_name.return_value = "my_tool"
+        tool.tool_config.conversation_mode = SimpleNamespace(resumable=True)
+
+        assert find_tool_conversation_mode([tool], "my_tool").resumable is True
+
+    def test_unknown_tool_returns_none(self):
+        from unittest.mock import MagicMock
+
+        assert find_tool_conversation_mode([], "nope") is None
+        assert find_tool_conversation_mode([MagicMock()], None) is None
+
+    def test_tool_without_conversation_mode(self):
+        from unittest.mock import MagicMock
+
+        tool = MagicMock()
+        tool.openai_function_name.return_value = "t"
+        tool.tool_config.conversation_mode = None
+
+        assert find_tool_conversation_mode([tool], "t") is None
+        assert is_resumable(find_tool_conversation_mode([tool], "t")) is False
+
+
+def test_is_resumable_typed():
+    from types import SimpleNamespace
+
+    assert is_resumable(SimpleNamespace(resumable=True)) is True
+    assert is_resumable(SimpleNamespace(resumable=False)) is False
+    assert is_resumable(None) is False

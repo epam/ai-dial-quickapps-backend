@@ -2,12 +2,11 @@
 source tool resolved from history before each message."""
 
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 from aidial_sdk.chat_completion import Message
 
-import quickapp.common  # noqa: F401 - init package chain before toolset imports
-from quickapp.config.toolsets.deployment import DeploymentToolSet
 from quickapp.core.agent._form_value_content_transformer import _FormValueContentTransformer
 
 
@@ -45,34 +44,24 @@ def _history_with_form_schema(
     return [assistant, tool_msg]
 
 
-def _config(tool_sets) -> SimpleNamespace:
-    return SimpleNamespace(tool_sets=tool_sets)
+def _tool(name="my_tool", resumable=None) -> MagicMock:
+    """A runtime tool stub: openai_function_name + tool_config.conversation_mode."""
+    tool = MagicMock()
+    tool.openai_function_name.return_value = name
+    cm = None if resumable is None else SimpleNamespace(resumable=resumable)
+    tool.tool_config.conversation_mode = cm
+    return tool
 
 
-def _deployment_ts(conversation_mode=None, tool_name="my_tool") -> DeploymentToolSet:
-    tool = {
-        "type": "deployment-tool",
-        "deployment": {"deployment_id": "apps/x/dep"},
-        "open_ai_tool": {
-            "function": {
-                "name": tool_name,
-                "description": "d",
-                "parameters": {"type": "object", "properties": {}},
-            }
-        },
-    }
-    if conversation_mode is not None:
-        tool["conversation_mode"] = conversation_mode
-    return DeploymentToolSet.model_validate(
-        {"name": "ts", "type": "dial-deployment", "tools": [tool]}
-    )
+def _tools(*tools) -> list:
+    return list(tools)
 
 
 class TestFormValueContentTransformer:
 
     @pytest.mark.asyncio
     async def test_injects_when_source_tool_has_no_conversation_mode(self):
-        t = _FormValueContentTransformer(_config([_deployment_ts()]))
+        t = _FormValueContentTransformer(_tools(_tool()))
         msg = _msg_with_form_value({"a": 1})
 
         result = await t.transform([*_history_with_form_schema(), msg])
@@ -85,7 +74,7 @@ class TestFormValueContentTransformer:
 
     @pytest.mark.asyncio
     async def test_no_injection_when_source_tool_is_resumable(self):
-        t = _FormValueContentTransformer(_config([_deployment_ts({"resumable": True})]))
+        t = _FormValueContentTransformer(_tools(_tool(resumable=True)))
         msg = _msg_with_form_value({"a": 1})
 
         result = await t.transform([*_history_with_form_schema(), msg])
@@ -96,9 +85,7 @@ class TestFormValueContentTransformer:
     async def test_injects_when_source_tool_found_but_other_tool_is_resumable(self):
         # the form came from "my_tool" (no conversation_mode); another resumable tool
         # existing in the app must not block injection — it is not the form's source
-        t = _FormValueContentTransformer(
-            _config([_deployment_ts(), _deployment_ts({"resumable": True}, tool_name="other")])
-        )
+        t = _FormValueContentTransformer(_tools(_tool(), _tool(name="other", resumable=True)))
         msg = _msg_with_form_value({"a": 1})
 
         result = await t.transform([*_history_with_form_schema(), msg])
@@ -108,7 +95,7 @@ class TestFormValueContentTransformer:
     @pytest.mark.asyncio
     async def test_injects_when_no_form_schema_in_history(self):
         # source tool unknown → treated as non-resumable → inject (data must not be lost)
-        t = _FormValueContentTransformer(_config([_deployment_ts()]))
+        t = _FormValueContentTransformer(_tools(_tool()))
         msg = _msg_with_form_value({"a": 1})
 
         result = await t.transform([msg])
@@ -119,7 +106,7 @@ class TestFormValueContentTransformer:
     async def test_injects_into_every_message_with_form_value(self):
         # two user messages with form_value, both after the form in history:
         # both must get the block (KV-cache stability: prefix must stay deterministic)
-        t = _FormValueContentTransformer(_config([_deployment_ts()]))
+        t = _FormValueContentTransformer(_tools(_tool()))
         msg1 = _msg_with_form_value({"a": 1})
         msg2 = _msg_with_form_value({"b": 2})
 
@@ -134,9 +121,7 @@ class TestFormValueContentTransformer:
     async def test_per_message_source_resolution(self):
         # first form from non-resumable "my_tool", second form from resumable "new_tool";
         # the message after the first form gets injected, the one after the second does not
-        t = _FormValueContentTransformer(
-            _config([_deployment_ts(), _deployment_ts({"resumable": True}, tool_name="new_tool")])
-        )
+        t = _FormValueContentTransformer(_tools(_tool(), _tool(name="new_tool", resumable=True)))
         msg1 = _msg_with_form_value({"a": 1})
         msg2 = _msg_with_form_value({"b": 2})
         history = [
@@ -155,7 +140,7 @@ class TestFormValueContentTransformer:
     async def test_form_after_message_not_counted(self):
         # form_schema appears AFTER the user message with form_value → no source before it
         # → source unknown → inject (safe default)
-        t = _FormValueContentTransformer(_config([_deployment_ts()]))
+        t = _FormValueContentTransformer(_tools(_tool()))
         msg = _msg_with_form_value({"a": 1})
 
         result = await t.transform([msg, *_history_with_form_schema()])
@@ -164,7 +149,7 @@ class TestFormValueContentTransformer:
 
     @pytest.mark.asyncio
     async def test_empty_content_gets_block_only(self):
-        t = _FormValueContentTransformer(_config([_deployment_ts()]))
+        t = _FormValueContentTransformer(_tools(_tool()))
         msg = Message.model_validate(
             {"role": "user", "content": None, "custom_content": {"form_value": {"a": 1}}}
         )
@@ -176,7 +161,7 @@ class TestFormValueContentTransformer:
     @pytest.mark.asyncio
     async def test_injects_when_conversation_mode_resumable_false(self):
         # explicit {"resumable": false} is not resumable -> inject
-        t = _FormValueContentTransformer(_config([_deployment_ts({"resumable": False})]))
+        t = _FormValueContentTransformer(_tools(_tool(resumable=False)))
         msg = _msg_with_form_value({"a": 1})
 
         result = await t.transform([*_history_with_form_schema(), msg])
