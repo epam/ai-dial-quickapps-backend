@@ -42,6 +42,7 @@ from quickapp.config.tools.base import (
     JsonTypeEnum,
     OpenAiToolConfig,
     remove_const_schema_params,
+    to_llm_tool_dict,
 )
 from quickapp.config.tools.deployment import DialDeploymentTool
 from quickapp.config.tools.display.paramenter import (
@@ -214,7 +215,7 @@ class AgentModule(Module):
                 if isinstance(tool.tool_config, DialDeploymentTool):
                     open_ai_tool = self._append_default_props(open_ai_tool)
                 open_ai_tool = tool.enrich_openai_tool_schema(open_ai_tool)
-                openai_functions.append(open_ai_tool.model_dump(mode="json", exclude_none=True))
+                openai_functions.append(to_llm_tool_dict(open_ai_tool))
         for default_tool in static_tools:
             openai_functions.append(default_tool.model_dump(mode="json", exclude_none=True))
         return openai_functions
