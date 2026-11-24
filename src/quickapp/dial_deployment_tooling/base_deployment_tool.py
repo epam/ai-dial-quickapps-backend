@@ -75,6 +75,9 @@ class BaseDeploymentTool(StagedBaseTool):
             )
         self.__messages_mixin: MessagesMixin = messages_mixin
         self.__request_messages: REQUEST_MESSAGES = request_messages
+        # Tools are request-scoped: this flag lives for one request only, so form_value
+        # is forwarded to at most one call of this tool per request.
+        self.__form_value_sent = False
 
     @staticmethod
     def _is_resumable(tool_config: DialDeploymentTool) -> bool:
@@ -82,10 +85,13 @@ class BaseDeploymentTool(StagedBaseTool):
 
     def _form_value_for_this_tool(self, tool_config: DialDeploymentTool):
         """``form_value`` from the last raw user message, but only when this tool is the
-        source of the last form in history (the last tool message carrying
-        ``custom_content.form_schema`` resolves to this tool's name via tool_call_id).
+        source of the form in history (tool message carrying ``custom_content.form_schema``
+        resolves to this tool's name via tool_call_id) and the value was not already
+        forwarded to another call of this tool in the same request.
         """
         if not self._is_resumable(tool_config):
+            return None
+        if self.__form_value_sent:
             return None
         source_tool = form_source_tool_name_before(
             self.__messages_mixin.messages, len(self.__messages_mixin.messages)
@@ -94,6 +100,8 @@ class BaseDeploymentTool(StagedBaseTool):
             return None
         for msg in reversed(self.__request_messages):
             if msg.role == Role.USER and msg.custom_content is not None:
+                if msg.custom_content.form_value is not None:
+                    self.__form_value_sent = True
                 return msg.custom_content.form_value
         return None
 

@@ -1145,3 +1145,28 @@ class TestFormValueForThisTool:
         )
 
         assert tool._form_value_for_this_tool(tool.tool_config) is None
+
+
+class TestFormValueSentOncePerRequest:
+    def test_second_call_in_same_request_gets_no_form_value(self):
+        """form_value is forwarded to at most one call of the source tool per request."""
+        messages = [*_history_with_form_schema(), _user_msg_with_form_value({"a": 1})]
+        tool = _build_tool_with_propagation(
+            messages, conversation_mode=ConversationMode(resumable=True)
+        )
+
+        first = tool._form_value_for_this_tool(tool.tool_config)
+        second = tool._form_value_for_this_tool(tool.tool_config)
+
+        assert first == {"a": 1}
+        assert second is None
+
+    def test_no_form_value_in_user_message_does_not_set_flag(self):
+        messages = [*_history_with_form_schema(), Message(role=Role.USER, content="hi")]
+        tool = _build_tool_with_propagation(
+            messages, conversation_mode=ConversationMode(resumable=True)
+        )
+
+        assert tool._form_value_for_this_tool(tool.tool_config) is None
+        # flag not set → a later call with form_value would still get it
+        assert tool._form_value_for_this_tool(tool.tool_config) is None
