@@ -109,23 +109,10 @@ class TestFeaturesDialFilesDefault:
         assert cfg is not None
         assert cfg.enabled_tools == "read_only"
 
-    @pytest.mark.parametrize("dial_files", [None, {}])
-    def test_preview_gate_applies_to_absent_and_null(self, monkeypatch, dial_files):
-        monkeypatch.delenv("ENABLE_PREVIEW_FEATURES", raising=False)
-        raw = create_app_configuration([]).model_dump(mode="json")
-        raw["features"]["dial_files"] = dial_files
-        cfg = ApplicationConfig.model_validate(raw).features.dial_files  # type: ignore[union-attr]
-        assert cfg is not None
-        assert cfg.tool_call_result_offload is None
-
-    def test_offload_follows_env_default_when_preview_enabled(self, monkeypatch):
-        monkeypatch.setenv("ENABLE_PREVIEW_FEATURES", "true")
-        raw = create_app_configuration([]).model_dump(mode="json")
-        raw["features"]["dial_files"] = None
-        cfg = ApplicationConfig.model_validate(raw).features.dial_files  # type: ignore[union-attr]
-        assert cfg is not None
-        assert cfg.tool_call_result_offload is not None
-        assert cfg.tool_call_result_offload.enabled is True
+    def test_no_deprecation_warning_when_old_offload_absent(self, caplog):
+        with caplog.at_level("WARNING"):
+            Features.model_validate({"dial_files": {"enabled_tools": "all"}})
+        assert "deprecated" not in caplog.text
 
 
 class TestFeaturesToolCallResultOffload:
@@ -140,6 +127,20 @@ class TestFeaturesToolCallResultOffload:
     def test_size_threshold_follows_env(self, monkeypatch):
         monkeypatch.setenv("TOOL_CALL_RESULT_OFFLOAD__SIZE_THRESHOLD", "10000")
         assert Features.model_validate({}).tool_call_result_offload.size_threshold == 10_000
+
+    def test_deprecated_location_is_migrated(self, caplog):
+        raw = {"dial_files": {"tool_call_result_offload": {"size_threshold": 10_000}}}
+        with caplog.at_level("WARNING"):
+            offload = Features.model_validate(raw).tool_call_result_offload
+        assert offload.size_threshold == 10_000
+        assert "deprecated" in caplog.text
+
+    def test_new_location_wins_over_deprecated(self):
+        raw = {
+            "tool_call_result_offload": {"size_threshold": 20_000},
+            "dial_files": {"tool_call_result_offload": {"size_threshold": 10_000}},
+        }
+        assert Features.model_validate(raw).tool_call_result_offload.size_threshold == 20_000
 
 
 class TestResultLimitConsistency:

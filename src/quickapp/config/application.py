@@ -275,10 +275,21 @@ class Features(BaseModel):
     @classmethod
     def _null_dial_files_means_default(cls, value: DialFilesConfig | None) -> DialFilesConfig:
         # `null` stays in the field type only so manifests written when `null` meant "file
-        # tools off" (and the published schema) keep validating. It is resolved here, at
-        # parse time, rather than at runtime: the preview gate (`nullify_preview_fields`)
-        # runs on the parsed config, so a runtime-built default would bypass it.
+        # tools off" (and the published schema) keep validating.
         return DialFilesConfig() if value is None else value
+
+    @model_validator(mode="after")
+    def _migrate_deprecated_offload(self) -> "Features":
+        legacy = self.dial_files.tool_call_result_offload if self.dial_files else None
+        if legacy is None:
+            return self
+        logger.warning(
+            "'features.dial_files.tool_call_result_offload' is deprecated; "
+            "use 'features.tool_call_result_offload' instead."
+        )
+        if "tool_call_result_offload" not in self.model_fields_set:
+            self.tool_call_result_offload = legacy
+        return self
 
 
 class ToolDefaults(BaseModel):

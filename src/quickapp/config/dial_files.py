@@ -2,7 +2,6 @@ from typing import Literal, get_args
 
 from pydantic import BaseModel, Field, field_validator
 
-from quickapp.common.base_config import PreviewField
 from quickapp.config.tool_call_result_offload import ToolCallResultOffloadConfig
 
 DialFilesReadToolName = Literal["list", "read_lines", "read_chars", "search", "find"]
@@ -35,13 +34,15 @@ class DialFilesConfig(BaseModel):
             "chat, where the home is the project's 'artifacts/' folder."
         ),
     )
-    tool_call_result_offload: ToolCallResultOffloadConfig | None = PreviewField(  # type: ignore[assignment]
-        default_factory=ToolCallResultOffloadConfig,
+    tool_call_result_offload: ToolCallResultOffloadConfig | None = Field(
+        default=None,
+        deprecated=(
+            "Deprecated and will be removed in a future release. "
+            "Use 'features.tool_call_result_offload' instead."
+        ),
         description=(
-            "Offload oversized tool-call responses to a file, read back on demand via the "
-            "read_lines / search file tools. Toggled by its `enabled` flag, whose default is "
-            "governed by TOOL_CALL_RESULT_OFFLOAD__ENABLED_BY_DEFAULT. "
-            "Requires read_lines and search to be exposed via enabled_tools."
+            "**Deprecated, use `features.tool_call_result_offload`**. "
+            "Honored only when `features.tool_call_result_offload` is not set."
         ),
     )
     max_files_scanned: int = Field(
