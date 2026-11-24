@@ -14,6 +14,14 @@ class InitializationException(Exception):
 
     ``level`` only drives display (threshold filter, stage status, skill section
     split); whether the request stops is decided by raising vs. recording.
+
+    ``str()`` must stay log-safe (CODESTYLE §9); ``user_facing_message`` is the
+    stage text, and ``details`` an optional block rendered under it.
     """
 
     level: InitializationIssueLevel = InitializationIssueLevel.CRITICAL
+    details: str = ""
+
+    @property
+    def user_facing_message(self) -> str:
+        return str(self)

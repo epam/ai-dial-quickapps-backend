@@ -108,7 +108,7 @@ class TestInitialize:
         await initializer.initialize()
 
         assert len(context.exceptions) == 1
-        assert "Failed to resolve user skills" in str(context.exceptions[0])
+        assert "Failed to resolve user skills" in context.exceptions[0].reason
 
 
 class TestMultipleSkillsPerMessage:

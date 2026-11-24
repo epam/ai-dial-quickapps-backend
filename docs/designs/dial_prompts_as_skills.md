@@ -415,10 +415,10 @@ Encoding both via subclass keeps the handler's logic a pure `isinstance` dispatc
 values (empty-string `url`, nullable fields). If a future skill source needs another "critical, subsystem-wide"
 failure it simply subclasses `SkillInitializationException` the same way.
 
-**Rejected alternative: polymorphic `render()` on the exception classes.** Pushing markdown generation onto
-each exception subclass would couple domain types to presentation (Stage, markdown syntax) and complicate
-testing. The handler is where presentation belongs; each new exception class only adds an `isinstance`
-branch there.
+**Message ownership.** Each exception builds its own text, following `ToolErrorException`: `str(e)` is the
+log-safe structural form (no free-text reason, URLs passed through `sanitize_url`), and `user_facing_message`
+is the stage line (subject in bold plus reason), with an optional `details` block. The handler owns only
+the sections and the Stage: it never reads exception fields to compose a line.
 
 **Rejected alternative: single merged bag without a shared base.** The merged-multiprovider approach only
 works when the binding key (`list[InitializationException]`) is expressible. Without the shared base, each
@@ -642,7 +642,7 @@ optional context injection.
      and `per_url = [e for e in skill_exceptions if not isinstance(e, SkillCatastrophicInitializationException)]`.
      Catastrophics render first under a distinct sub-header indicating DIAL prompts as a whole could not
      be loaded (fallback to predefined-only is in effect); then bullets for per-URL entries
-     (`**{e.url}**: {e.reason}`).
+     (`e.user_facing_message`).
 
    Sections for feature-kinds that reported nothing are omitted entirely.
 4. Close the stage with a status derived from `level`:

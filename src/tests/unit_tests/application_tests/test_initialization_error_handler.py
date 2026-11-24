@@ -300,3 +300,22 @@ class TestLevelThreshold:
         # Reasons are free text and stay out of the logs.
         assert "a warning" not in caplog.text
         assert "an error" not in caplog.text
+
+    def test_url_query_is_sanitized_in_log_and_stage(self, caplog):
+        url = "https://host/prompts/b/s?sig=secret"
+        warning = SkillInitializationException(
+            url=url, reason="w", level=InitializationIssueLevel.WARNING
+        )
+        error = SkillInitializationException(url=url, reason="e")
+        stage = MagicMock(spec=Stage)
+
+        with caplog.at_level("INFO"):
+            _make_handler(
+                stage, [warning, error], InitializationIssueLevel.ERROR
+            ).handle_initialization_issues()
+
+        rendered = _stage_content(stage)
+        assert "https://host/prompts/b/s" in caplog.text
+        assert "https://host/prompts/b/s" in rendered
+        assert "secret" not in caplog.text
+        assert "secret" not in rendered

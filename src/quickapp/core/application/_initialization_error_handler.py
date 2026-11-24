@@ -38,13 +38,11 @@ _LEVEL_ORDER = {
 }
 
 
-def _subject_of(exc: InitializationException) -> str:
-    """What the issue is about (URL or tool), without its free-text reason."""
-    if isinstance(exc, SkillInitializationException):
-        return exc.url or ""
-    if isinstance(exc, (ToolInitializationException, HookInitializationException)):
-        return f"{exc.tool_name}{exc.toolset_name}"
-    return ""
+def _lines_of(exc: InitializationException) -> list[str]:
+    lines = [f"- {exc.user_facing_message}"]
+    if exc.details:
+        lines.append(fenced_code_block(exc.details))
+    return lines
 
 
 @inject
@@ -83,33 +81,22 @@ class _InitializationErrorHandler:
         project_lines: list[str] = []
         for exc in exceptions:
             if isinstance(exc, OrchestratorSystemPromptException):
-                system_prompt_lines.append(f"- {exc}")
-            elif isinstance(exc, ToolInitializationException):
-                tool_lines.append(f"- **{exc.tool_name}{exc.toolset_name}**: {exc}")
-                if exc.details:
-                    tool_lines.append(fenced_code_block(exc.details))
+                system_prompt_lines.extend(_lines_of(exc))
+            elif isinstance(exc, (ToolInitializationException, ConfigResolutionException)):
+                tool_lines.extend(_lines_of(exc))
             elif isinstance(exc, HookInitializationException):
-                hook_lines.append(f"- **{exc.tool_name}{exc.toolset_name}**: {exc}")
-                if exc.details:
-                    hook_lines.append(fenced_code_block(exc.details))
+                hook_lines.extend(_lines_of(exc))
             elif isinstance(exc, OffloadConfigurationException):
-                offload_lines.append(f"- {exc}")
+                offload_lines.extend(_lines_of(exc))
             elif isinstance(exc, ProjectInstructionsException):
-                project_lines.append(f"- {exc}")
-            elif isinstance(exc, ConfigResolutionException):
-                tool_lines.append(f"- **template '{exc.template_name}'**: {exc}")
-                if exc.details:
-                    tool_lines.append(fenced_code_block(exc.details))
+                project_lines.extend(_lines_of(exc))
             elif isinstance(exc, SkillCatastrophicInitializationException):
-                catastrophic_lines.append(f"- {exc.reason}")
+                catastrophic_lines.extend(_lines_of(exc))
             elif isinstance(exc, SkillInitializationException):
-                # A skill issue that belongs to the message rather than to one URL
-                # (e.g. more skills invoked than a message may carry) has no url.
-                line = f"- {exc.reason}" if exc.url is None else f"- **{exc.url}**: {exc.reason}"
                 if exc.level == InitializationIssueLevel.WARNING:
-                    per_url_warning_lines.append(line)
+                    per_url_warning_lines.extend(_lines_of(exc))
                 else:
-                    per_url_error_lines.append(line)
+                    per_url_error_lines.extend(_lines_of(exc))
             else:
                 logger.warning(
                     "Unhandled InitializationException subclass %s; not rendered to stage",
@@ -169,6 +156,6 @@ class _InitializationErrorHandler:
                     level.value,
                     type(exc).__name__,
                     exc.level.value,
-                    _subject_of(exc),
+                    exc,
                 )
         return shown

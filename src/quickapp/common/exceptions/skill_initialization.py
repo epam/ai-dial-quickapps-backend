@@ -1,3 +1,5 @@
+from quickapp.common.url_sanitization import sanitize_url
+
 from .initialization import InitializationException, InitializationIssueLevel
 
 
@@ -14,10 +16,17 @@ class SkillInitializationException(InitializationException):
         url: str | None = None,
         level: InitializationIssueLevel = InitializationIssueLevel.ERROR,
     ):
-        super().__init__(reason if url is None else f"{url}: {reason}")
+        # reason is free text (may carry a fetch error's URL), so it stays out of str().
+        super().__init__("Skill issue" if url is None else f"Skill issue at {sanitize_url(url)}")
         self.reason = reason
         self.url = url
         self.level = level
+
+    @property
+    def user_facing_message(self) -> str:
+        if self.url is None:
+            return self.reason
+        return f"**{sanitize_url(self.url)}**: {self.reason}"
 
 
 class SkillCatastrophicInitializationException(SkillInitializationException):

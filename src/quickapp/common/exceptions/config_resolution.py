@@ -19,3 +19,7 @@ class ConfigResolutionException(InitializationException):
         self.template_name = template_name
         self.json_path = json_path
         self.details = details
+
+    @property
+    def user_facing_message(self) -> str:
+        return f"**template '{self.template_name}'**: {self}"
