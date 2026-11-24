@@ -7,6 +7,7 @@ from quickapp.common.exceptions import (
     ConfigResolutionException,
     HookInitializationException,
     InitializationException,
+    InitializationIssueLevel,
     OffloadConfigurationException,
     OrchestratorSystemPromptException,
     ProjectInstructionsException,
@@ -15,7 +16,6 @@ from quickapp.common.exceptions import (
     ToolInitializationException,
 )
 from quickapp.common.utils import fenced_code_block
-from quickapp.config.application import InitializationIssueLevel
 
 logger = logging.getLogger(__name__)
 
@@ -45,12 +45,6 @@ def _subject_of(exc: InitializationException) -> str:
     if isinstance(exc, (ToolInitializationException, HookInitializationException)):
         return f"{exc.tool_name}{exc.toolset_name}"
     return ""
-
-
-def _level_of(exc: InitializationException) -> InitializationIssueLevel:
-    if isinstance(exc, SkillInitializationException) and exc.severity == "warning":
-        return InitializationIssueLevel.WARNING
-    return InitializationIssueLevel.CRITICAL if exc.is_hard else InitializationIssueLevel.ERROR
 
 
 @inject
@@ -112,7 +106,7 @@ class _InitializationErrorHandler:
                 # A skill issue that belongs to the message rather than to one URL
                 # (e.g. more skills invoked than a message may carry) has no url.
                 line = f"- {exc.reason}" if exc.url is None else f"- **{exc.url}**: {exc.reason}"
-                if exc.severity == "warning":
+                if exc.level == InitializationIssueLevel.WARNING:
                     per_url_warning_lines.append(line)
                 else:
                     per_url_error_lines.append(line)
@@ -146,7 +140,11 @@ class _InitializationErrorHandler:
         if project_lines:
             sections.append([_PROJECT_SECTION, *project_lines])
 
-        status = Status.FAILED if any(exc.is_hard for exc in exceptions) else Status.COMPLETED
+        status = (
+            Status.FAILED
+            if any(exc.level == InitializationIssueLevel.CRITICAL for exc in exceptions)
+            else Status.COMPLETED
+        )
         stage = self.__stage_provider.get()
         stage.open()
         try:
@@ -163,15 +161,14 @@ class _InitializationErrorHandler:
         level = self.__level_provider.get()
         shown: list[InitializationException] = []
         for exc in exceptions:
-            exc_level = _level_of(exc)
-            if _LEVEL_ORDER[exc_level] >= _LEVEL_ORDER[level]:
+            if _LEVEL_ORDER[exc.level] >= _LEVEL_ORDER[level]:
                 shown.append(exc)
             else:
                 logger.info(
                     "Initialization issue hidden below level '%s': %s (%s) %s",
                     level.value,
                     type(exc).__name__,
-                    exc_level.value,
+                    exc.level.value,
                     _subject_of(exc),
                 )
         return shown

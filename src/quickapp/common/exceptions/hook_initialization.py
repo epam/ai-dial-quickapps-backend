@@ -1,12 +1,10 @@
-from typing import ClassVar
-
-from .initialization import InitializationException
+from .initialization import InitializationException, InitializationIssueLevel
 
 
 class HookInitializationException(InitializationException):
     """Raised when a hook references a tool not found in the initialized tools list."""
 
-    is_hard: ClassVar[bool] = False
+    level = InitializationIssueLevel.ERROR
 
     def __init__(
         self, message: str, tool_name: str = "", toolset_name: str = "", details: str = ""

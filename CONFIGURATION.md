@@ -668,8 +668,8 @@ the deployment-wide `DEFAULT_INITIALIZATION_ISSUES_LEVEL`; unset (default) defer
 
 | Value      | Shown                                                                                                   |
 |------------|---------------------------------------------------------------------------------------------------------|
-| `warning`  | Everything, including skill warnings (e.g. too many skills invoked in one message)                      |
-| `error`    | Errors and critical issues: something was skipped (a skill, a hook, an unsupported parameter)           |
+| `warning`  | Everything, including skill warnings (e.g. a DIAL skill's bundled files couldn't be listed)              |
+| `error`    | Errors and critical issues: something was skipped (a skill, a hook, offload, PROJECT.md)                 |
 | `critical` | Only issues that mark the stage failed, e.g. a tool or toolset that couldn't be initialized              |
 
 ```json

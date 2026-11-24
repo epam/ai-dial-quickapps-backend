@@ -10,6 +10,7 @@ from quickapp.common.base_config import (
     has_preview_marker,
     is_preview_model,
 )
+from quickapp.common.exceptions import InitializationIssueLevel
 from quickapp.common.feature_settings import FeatureSettings
 from quickapp.config.agent_settings import AgentSettings
 from quickapp.config.context import Context
@@ -34,12 +35,6 @@ class StageDisplayLevel(str, Enum):
     ERROR = "error"
     INFO = "info"
     DEBUG = "debug"
-
-
-class InitializationIssueLevel(str, Enum):
-    WARNING = "warning"
-    ERROR = "error"
-    CRITICAL = "critical"
 
 
 class InitializationIssuesConfig(BaseModel):

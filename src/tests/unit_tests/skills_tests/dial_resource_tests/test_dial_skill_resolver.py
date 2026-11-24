@@ -6,7 +6,7 @@ import pytest
 # packages form a pre-existing import cycle (common/__init__ -> staged_base_tool
 # -> config.application -> config.skill), which only bites when config.skill is
 # the first of them to load. Keep this import above the config one.
-from quickapp.common.exceptions import SkillInitializationException
+from quickapp.common.exceptions import InitializationIssueLevel, SkillInitializationException
 from quickapp.config.skill import DialSkillConfig
 from quickapp.skills.dial_resource._dial_skill_reader import DialSkillReader
 from quickapp.skills.dial_resource._dial_skill_resolver import DialSkillResolver
@@ -136,7 +136,7 @@ class TestResolve:
         # The manifest read fine; the skill is still useful without its files.
         assert output.resolved[0].files == ()
         warning = output.exceptions[0]
-        assert warning.severity == "warning"
+        assert warning.level == InitializationIssueLevel.WARNING
         assert "Could not list bundled files: TimeoutError" in warning.reason
 
     @pytest.mark.asyncio

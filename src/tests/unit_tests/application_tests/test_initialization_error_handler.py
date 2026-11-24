@@ -6,13 +6,13 @@ from aidial_sdk.chat_completion import Stage, Status
 from quickapp.common.exceptions import (
     ConfigResolutionException,
     HookInitializationException,
+    InitializationIssueLevel,
     OffloadConfigurationException,
     OrchestratorSystemPromptException,
     ProjectInstructionsException,
     SkillInitializationException,
     ToolInitializationException,
 )
-from quickapp.config.application import InitializationIssueLevel
 from quickapp.core.application import _InitializationErrorHandler
 
 
@@ -119,7 +119,7 @@ class TestSkillInitializationWarningRendering:
         warning = SkillInitializationException(
             reason="Could not list bundled files",
             url="skills/bucket/no-listing",
-            severity="warning",
+            level=InitializationIssueLevel.WARNING,
         )
         handler = _make_handler(stage, [warning])
 
@@ -139,7 +139,7 @@ class TestSkillInitializationWarningRendering:
         stage = MagicMock(spec=Stage)
         warning = SkillInitializationException(
             reason="At most 5 skills can be invoked per message; these were ignored: b, c",
-            severity="warning",
+            level=InitializationIssueLevel.WARNING,
         )
         handler = _make_handler(stage, [warning])
 
@@ -165,7 +165,7 @@ class TestSkillInitializationWarningRendering:
         stage = MagicMock(spec=Stage)
         error = SkillInitializationException(reason="boom", url="prompts/bucket/broken")
         warning = SkillInitializationException(
-            reason="bad format", url="prompts/bucket/iffy", severity="warning"
+            reason="bad format", url="prompts/bucket/iffy", level=InitializationIssueLevel.WARNING
         )
         handler = _make_handler(stage, [error, warning])
 
@@ -177,7 +177,7 @@ class TestSkillInitializationWarningRendering:
         assert rendered.index("Errors:") < rendered.index("Warnings:")
         assert "prompts/bucket/broken" in rendered
         assert "prompts/bucket/iffy" in rendered
-        # Both entries have is_hard=False — status stays COMPLETED.
+        # Neither entry is critical — status stays COMPLETED.
         stage.close.assert_called_once_with(Status.COMPLETED)
 
 
@@ -192,7 +192,7 @@ class TestOffloadConfigurationRendering:
         rendered = _stage_content(stage)
         assert "Large tool-response offload" in rendered
         assert "read_lines/search" in rendered
-        # is_hard=False — a lone offload issue keeps the stage COMPLETED.
+        # Not critical — a lone offload issue keeps the stage COMPLETED.
         stage.close.assert_called_once_with(Status.COMPLETED)
 
 
@@ -230,7 +230,9 @@ class TestProjectInstructionsRendering:
 
 def _mixed_issues() -> list:
     return [
-        SkillInitializationException(url="prompts/b/w", reason="a warning", severity="warning"),
+        SkillInitializationException(
+            url="prompts/b/w", reason="a warning", level=InitializationIssueLevel.WARNING
+        ),
         SkillInitializationException(url="prompts/b/e", reason="an error"),
         ToolInitializationException(message="connection refused", tool_name="mcp"),
     ]
@@ -274,7 +276,9 @@ class TestLevelThreshold:
 
     def test_stage_not_rendered_when_every_issue_is_hidden(self):
         stage = MagicMock(spec=Stage)
-        warning = SkillInitializationException(url="prompts/b/w", reason="w", severity="warning")
+        warning = SkillInitializationException(
+            url="prompts/b/w", reason="w", level=InitializationIssueLevel.WARNING
+        )
 
         _make_handler(
             stage, [warning], InitializationIssueLevel.ERROR
