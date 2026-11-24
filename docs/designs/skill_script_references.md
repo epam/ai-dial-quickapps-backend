@@ -40,7 +40,7 @@ usual way, because DIAL Core treats a skill as one resource and rejects a permis
    sent as base64, using the existing `file:text::` / `file:base64::` / `file:data::` prefixes.
 4. The model learns the reference syntax from QuickApps itself, not from per-app prompt text: every skill file is shown
    to it as a ready-to-copy reference.
-5. The `file_transfer` package has no knowledge of skills. With the skills feature removed, `file:` references behave
+5. The `shared/file_transfer` package has no knowledge of skills. With the skills feature removed, `file:` references behave
    exactly as before and a `skill://` value is rejected like any other unsupported scheme.
 6. Skills picked by the user in a message (chips) work the same as skills configured on the agent.
 
@@ -145,8 +145,8 @@ sequenceDiagram
 
 ### Concern 3: Delivery by content (`text`, `base64`, `data`)
 
-- **What:** A source-of-files extension point in `file_transfer/` and one implementation in `skills/file_reference/`.
-- **Owner:** `file_transfer/` owns the interface; `skills/` owns the implementation, so the dependency points from
+- **What:** A source-of-files extension point in `shared/file_transfer/` and one implementation in `skills/file_reference/`.
+- **Owner:** `shared/file_transfer/` owns the interface; `skills/` owns the implementation, so the dependency points from
   skills to file transfer and never back.
 - **Semantics:** A `FileSource` interface with two operations: whether it handles a URL, and loading its bytes.
   `FileLoaderService.load` consults the registered sources before classifying the URL by scheme; the `file_transfer`
@@ -155,7 +155,7 @@ sequenceDiagram
   (so it inherits the inventory check, the size cap `DIAL_SKILLS_FILE_MAX_BYTES`, the UTF-8 requirement and the
   per-request cache). The text is encoded back to UTF-8 bytes, so `text`, `base64` and `data` all work through the
   existing prefix handlers and the per-request bytes cache; the MIME type for `data` comes from the file name.
-- **Change:** new interface and multibinding in `file_transfer/`; `FileLoaderService` takes the list of sources;
+- **Change:** new interface and multibinding in `shared/file_transfer/`; `FileLoaderService` takes the list of sources;
   new `SkillFileSource` in `skills/file_reference/`.
 
 ### Concern 4: Teaching the model the syntax
@@ -174,7 +174,8 @@ sequenceDiagram
      the model per the instruction.
   3. **`read_skill` accepts both forms.** The parameter `file_path` is documented as "written as listed in
      `<skill_files>`"; because the listing now shows references, `DialSkillReader` strips a leading
-     `skill://<same name>/` before the inventory check and the tool description is updated.
+     `skill://<same name>/` before the inventory check and the tool description is updated. The `read_skill` tool is
+     built with no argument transformers, so the global `skill://` rewriting never touches its `file_path`.
 - **Owner:** `skills/file_reference/` for the injector; `skills/dial_resource/` for the `<skill_files>` rendering and
   the reader; `skills/registry/` for the tool description.
 - **Semantics:** The name in a reference is always the registry key (`SkillMetadata.name`), never a separate copy, so
@@ -268,8 +269,10 @@ None.
 
 - `read_skill` output for DIAL skills with bundled files shows references instead of bare paths; conversations that
   already hold the old rendering keep it and still resolve, since `read_skill` accepts both forms.
-- A new instruction is injected once per conversation; an existing conversation may pay a one-time prompt-cache miss
-  when it first appears (depends on where the injector inserts it; to be checked during implementation).
+- A new instruction is injected once per conversation. The injector inserts it after the first user message, so an
+  existing conversation pays a single prompt-cache miss on its first request after the release: everything after that
+  message shifts. The pair is then re-inserted at the same position on every request, so the prefix stays stable and
+  there is no recurring cost. New conversations are unaffected.
   Integration-test fixtures that record conversations with skills may need re-recording.
 
 ## Summary of Changes
@@ -283,6 +286,6 @@ None.
 | `skills/dial_resource` | `<skill_files>` rendered as references; `DialSkillReader` accepts `skill://<name>/` prefix. |
 | `skills/registry/_tool_configs.py` | `file_path` description of `read_skill` mentions both forms. |
 | `config/predefined/skills/tool-call-skill-file-references/` (new) | Instruction skill for the model. |
-| `file_transfer/` | `FileSource` interface and multibinding; `FileLoaderService` consults sources before scheme classification. |
+| `shared/file_transfer/` | `FileSource` interface and multibinding; `FileLoaderService` consults sources before scheme classification. |
 | `mcp_tooling/_mcp_tool.py` | Grant on the skill root for skill file URLs; de-duplicated grant resources. |
 | Docs | `docs/skills.md`, `docs/file_transfer.md`, capability row in `docs/README.md`. |
