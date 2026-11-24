@@ -123,6 +123,23 @@ async def test_route_returns_empty_list_on_openai_error():
     result = await _route(agent, CATALOG)
 
     assert result.names == []
+    assert len(result.failures) == 1
+
+
+@pytest.mark.asyncio
+async def test_route_reports_failure_when_routing_deployment_is_not_found():
+    client = AsyncMock()
+    response = MagicMock(status_code=404, headers={})
+    client.chat.completions.create.side_effect = openai.NotFoundError(
+        "Unknown deployment: secret-body", response=response, body=None
+    )
+    agent = _AnonymousAgent(client, _make_config(tool_discovery=True, service_model="m1"))
+
+    result = await _route(agent, CATALOG)
+
+    assert result.names == []
+    assert result.failures == ["Routing model 'm1' is unavailable: the deployment was not found."]
+    assert "secret-body" not in result.failures[0]
 
 
 _USAGE = CompletionUsage(prompt_tokens=120, completion_tokens=8, total_tokens=128)

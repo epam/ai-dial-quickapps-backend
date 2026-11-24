@@ -11,6 +11,9 @@ class RoutingResult(BaseModel):
     # User-facing notes about the routing call(s), e.g. a rejected request. Carried on the result
     # (not on the shared agent) so concurrent searches never see each other's warnings.
     warnings: list[str] = Field(default_factory=list)
+    # Set when a routing call failed outright (e.g. the routing model does not exist), so an empty
+    # `names` means "search unavailable" rather than "nothing matched". Not retryable by the model.
+    failures: list[str] = Field(default_factory=list)
 
     @staticmethod
     def combine(names: list[str], *results: "RoutingResult") -> "RoutingResult":
@@ -33,4 +36,5 @@ class RoutingResult(BaseModel):
             names=names,
             usage=usage,
             warnings=list(dict.fromkeys(w for r in results for w in r.warnings)),
+            failures=list(dict.fromkeys(f for r in results for f in r.failures)),
         )
