@@ -26,8 +26,9 @@ class DialDeploymentSimpleTool(BaseModel):
         default=None,
         description=(
             "Propagate the form returned by the deployment onto the app's choice. "
-            "The deployment's `custom_content.form_schema` is sent to the client "
-            "(the last one received wins)."
+            "The deployment's `custom_content.form_schema` is sent to the client. "
+            "Within one deployment stream the last schema wins; across tools in one "
+            "response the first one wins (the SDK allows a single form per choice)."
         ),
     )
     type: Literal["dial-deployment-simple"] = Field(default="dial-deployment-simple")
