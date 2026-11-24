@@ -598,8 +598,7 @@ Points that shape these steps:
 
 This section is the entry point for a new session: read it, pick a PR id, do only that PR, then update its status here.
 The sections above give the reasoning; this one gives the work. Everything in waves 1 to 3 is independent of the Core
-unified API. Only track M (see "Migration to the unified API") waits for it, and is not sliced yet. The SDK-side
-alternative to that API is explored separately in [`sdk_level_file_resolution.md`](sdk_level_file_resolution.md).
+unified API. Only track M (see "Migration to the unified API") waits for it, and is not sliced yet.
 
 **Rules for every PR**
 - No behaviour change. Known failures (C4, links to `projects/` files, TODO #445) keep failing the same way and are pinned
@@ -673,7 +672,7 @@ Decisions to take first (see Open Questions):
 - **Checkpoint after B4**, then **C0 to C4**: C2 to C4 now have to start from the real code (the promoter calls
   `dial_client.files.get_metadata` directly, there is no `ProjectFilesClient.file_metadata`). Rewrite them at the
   checkpoint.
-- **M1 to M5**: after the Core API is final, and after the choice between the unified API and the SDK approach.
+- **M1 to M5**: after the Core API is final.
 
 ### Log
 
