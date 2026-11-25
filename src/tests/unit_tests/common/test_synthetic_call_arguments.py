@@ -1,12 +1,18 @@
 import json
+from datetime import datetime, timedelta
+from unittest.mock import MagicMock
+from zoneinfo import ZoneInfo
 
 import pytest
 from aidial_sdk.chat_completion import Message, Role
 
+from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher
 from quickapp.common.synthetic_injection.injection_enums import InjectionFrequency
 from quickapp.common.synthetic_injection.synthetic_tool_call_injector import (
     SyntheticToolCallInjector,
 )
+from quickapp.common.time_provider import TimeProvider
+from quickapp.timestamp_tooling._timestamp_metadata_enricher import _TimestampMetadataEnricher
 
 _TEMPLATE = {"q": "${x}"}
 
@@ -101,3 +107,35 @@ class TestGetCallArguments:
         assert len(second) == len(first)
         assert _call_id(second) == _call_id(first)
         assert _displayed_arguments(second) == {"q": "rendered-2"}
+
+
+class _AdvancingClock(TimeProvider):
+    def __init__(self) -> None:
+        super().__init__()
+        self._tick = 0
+
+    def now(self) -> datetime:
+        self._tick += 1
+        return datetime(2026, 1, 1, tzinfo=ZoneInfo("UTC")) + timedelta(minutes=self._tick)
+
+
+class _StampedInjector(_PlainInjector):
+    def __init__(self, enrichers: list[ToolCallResultEnricher]) -> None:
+        provider = MagicMock()
+        provider.get.return_value = enrichers
+        super().__init__(provider)
+
+    async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
+        return InjectionFrequency.APPEND_IF_CHANGED
+
+
+class TestIdenticalPairStaysStable:
+    @pytest.mark.asyncio
+    async def test_identical_pair_is_not_restamped_on_next_turn(self) -> None:
+        injector = _StampedInjector([_TimestampMetadataEnricher(_AdvancingClock())])
+
+        first = await injector.transform(list(_USER))
+        second = await injector.transform(first)
+
+        assert second is first
+        assert second[2].custom_content is not None

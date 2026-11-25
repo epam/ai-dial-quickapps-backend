@@ -94,6 +94,21 @@ class _ToolSearchTool(StagedBaseTool):
         if isinstance(stage_wrapper, _ToolSearchStageWrapper):
             stage_wrapper.add_warnings(routing.warnings)
 
+        if routing.failures and not routing.names:
+            result = ToolCallResult(
+                content=(
+                    "Tool search failed: "
+                    + " ".join(routing.failures)
+                    + " Tool discovery is unavailable; do not call this tool again."
+                ),
+                content_type="text/plain",
+                usage=self.__routing_usage(routing.usage),
+                is_error=True,
+            )
+            if stage_wrapper:
+                stage_wrapper.add_result(result)
+            return result
+
         discovered: list[str] = []
         new_definitions = []
         for name in routing.names:

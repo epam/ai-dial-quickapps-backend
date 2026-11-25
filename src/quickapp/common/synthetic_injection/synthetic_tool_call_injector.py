@@ -172,8 +172,14 @@ class SyntheticToolCallInjector(BaseSyntheticInjector, ABC):
 
         pair = _find_pair_with_args_and_content(messages, ac_prefix)
         if pair is not None:
-            pair_idx, _ = pair
-            # Replace in place (re-stamps TTL when expiry changed, no-op when identical)
+            pair_idx, found_call_id = pair
+            # An identical pair must stay byte-identical: re-enriching would re-stamp it
+            # and change the prefix that earlier thinking-block signatures are bound to.
+            if found_call_id == call_id and _displayed_arguments_match(
+                messages, pair_idx, call_arguments
+            ):
+                return messages
+            # Replace in place (re-stamps TTL when expiry changed, re-renders arguments)
             state = self._enrich_state(call_id, content)
             new_pair = _build_pair(tool_name, call_id, call_arguments, content, state)
             return messages[:pair_idx] + list(new_pair) + messages[pair_idx + 2 :]
@@ -226,6 +232,23 @@ def _find_pair_with_args_and_content(
     return None
 
 
+def _render_arguments(arguments: dict[str, Any]) -> str:
+    """Serialize call arguments for display; shared by the builder and the identity check."""
+    return json.dumps(arguments)
+
+
+def _displayed_arguments_match(
+    messages: list[Message], assistant_idx: int, call_arguments: dict
+) -> bool:
+    """True when the assistant message at ``assistant_idx`` already shows ``call_arguments``."""
+    if assistant_idx < 0:
+        return False
+    tool_calls = messages[assistant_idx].tool_calls
+    if not tool_calls:
+        return False
+    return tool_calls[0].function.arguments == _render_arguments(call_arguments)
+
+
 def _build_pair(
     tool_name: str,
     call_id: str,
@@ -263,7 +286,9 @@ def build_synthetic_multi_call_turn(
             ToolCall(
                 id=call.call_id,
                 type="function",
-                function=FunctionCall(name=call.tool_name, arguments=json.dumps(call.arguments)),
+                function=FunctionCall(
+                    name=call.tool_name, arguments=_render_arguments(call.arguments)
+                ),
             )
             for call in calls
         ],

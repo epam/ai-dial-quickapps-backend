@@ -74,9 +74,9 @@ class _AnonymousAgent:
             response = await self._request(service_model, query, catalog, kind, limit)
         except openai.BadRequestError as exc:
             return _rejected(service_model, exc)
-        except openai.OpenAIError:
+        except openai.OpenAIError as exc:
             logger.exception("Anonymous agent routing call failed")
-            return RoutingResult()
+            return _failed(service_model, exc)
 
         if not response.choices:
             logger.warning("Anonymous agent routing call returned no choices")
@@ -123,6 +123,17 @@ def _rejected(service_model: str, exc: openai.BadRequestError) -> RoutingResult:
             "structured output."
         ]
     )
+
+
+def _failed(service_model: str, exc: openai.OpenAIError) -> RoutingResult:
+    # Only the status is reported: the exception text carries the response body.
+    if isinstance(exc, openai.NotFoundError):
+        reason = "the deployment was not found"
+    elif isinstance(exc, openai.APIStatusError):
+        reason = f"the request failed with status {exc.status_code}"
+    else:
+        reason = "the request failed"
+    return RoutingResult(failures=[f"Routing model '{service_model}' is unavailable: {reason}."])
 
 
 def _log_selection(
