@@ -15,7 +15,6 @@ from quickapp.common.exceptions import (
     SkillInitializationException,
     ToolInitializationException,
 )
-from quickapp.common.utils import fenced_code_block
 
 logger = logging.getLogger(__name__)
 
@@ -36,13 +35,6 @@ _LEVEL_ORDER = {
     InitializationIssueLevel.ERROR: 1,
     InitializationIssueLevel.CRITICAL: 2,
 }
-
-
-def _lines_of(exc: InitializationException) -> list[str]:
-    lines = [f"- {exc.user_facing_message}"]
-    if exc.details:
-        lines.append(fenced_code_block(exc.details))
-    return lines
 
 
 @inject
@@ -81,22 +73,22 @@ class _InitializationErrorHandler:
         project_lines: list[str] = []
         for exc in exceptions:
             if isinstance(exc, OrchestratorSystemPromptException):
-                system_prompt_lines.extend(_lines_of(exc))
+                system_prompt_lines.append(f"- {exc.user_facing_message}")
             elif isinstance(exc, (ToolInitializationException, ConfigResolutionException)):
-                tool_lines.extend(_lines_of(exc))
+                tool_lines.append(f"- {exc.user_facing_message}")
             elif isinstance(exc, HookInitializationException):
-                hook_lines.extend(_lines_of(exc))
+                hook_lines.append(f"- {exc.user_facing_message}")
             elif isinstance(exc, OffloadConfigurationException):
-                offload_lines.extend(_lines_of(exc))
+                offload_lines.append(f"- {exc.user_facing_message}")
             elif isinstance(exc, ProjectInstructionsException):
-                project_lines.extend(_lines_of(exc))
+                project_lines.append(f"- {exc.user_facing_message}")
             elif isinstance(exc, SkillCatastrophicInitializationException):
-                catastrophic_lines.extend(_lines_of(exc))
+                catastrophic_lines.append(f"- {exc.user_facing_message}")
             elif isinstance(exc, SkillInitializationException):
                 if exc.level == InitializationIssueLevel.WARNING:
-                    per_url_warning_lines.extend(_lines_of(exc))
+                    per_url_warning_lines.append(f"- {exc.user_facing_message}")
                 else:
-                    per_url_error_lines.extend(_lines_of(exc))
+                    per_url_error_lines.append(f"- {exc.user_facing_message}")
             else:
                 logger.warning(
                     "Unhandled InitializationException subclass %s; not rendered to stage",

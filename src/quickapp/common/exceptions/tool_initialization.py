@@ -1,3 +1,5 @@
+from quickapp.common.utils import fenced_code_block
+
 from .initialization import InitializationException
 
 
@@ -17,4 +19,5 @@ class ToolInitializationException(InitializationException):
 
     @property
     def user_facing_message(self) -> str:
-        return f"**{self.tool_name}{self.toolset_name}**: {self}"
+        message = f"**{self.tool_name}{self.toolset_name}**: {self}"
+        return f"{message}\n{fenced_code_block(self.details)}" if self.details else message
