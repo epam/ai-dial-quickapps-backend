@@ -240,15 +240,17 @@ sequenceDiagram
     participant D as Deployment tool
     C->>QA: user message
     QA->>D: tool call
-    D-->>QA: stream with delta.custom_content.form_schema
-    QA->>QA: accumulate form_schema (last wins)
-    QA->>C: choice.set_form_schema(schema); tool message keeps custom_content.form_schema
-    C->>QA: submit form → custom_content.form_value on user message
-    QA->>QA: per message: match assistant form_schema by content to tool message schema → initiator tool name
-    alt source tool resumable and is the called tool
-        QA->>D: form_value on final user message custom_content (+ history assistant messages)
-    else source not resumable / unknown
-        QA->>QA: inject <form_value> block into that message's content for the orchestrator
+    D-->>QA: stream with delta custom_content form_schema
+    QA->>QA: accumulate form_schema, last chunk in stream wins
+    QA->>C: choice set_form_schema, tool message keeps form_schema
+    C->>QA: submit form with form_value on user message
+    QA->>QA: per message match assistant form_schema by content to tool message schema, get initiator tool name
+    alt called tool is source tool
+        QA->>D: form_value on final user message custom_content, once per request
+    else source tool has propagate_form_value_to_content true
+        QA->>QA: inject form_value block into that message content for the orchestrator
+    else
+        QA->>QA: form_value stays only in custom_content
     end
 ```
 
