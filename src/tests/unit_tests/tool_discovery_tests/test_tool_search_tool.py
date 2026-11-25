@@ -64,6 +64,26 @@ def _routed_tool(routed: list[str], lazy_holder: MagicMock | None = None) -> _To
     )
 
 
+class TestRoutingFailure:
+    @pytest.mark.asyncio
+    async def test_failure_is_reported_as_error_result_and_nothing_is_added(self):
+        lazy_holder = MagicMock()
+        tool = _make_tool(
+            routing=RoutingResult(failures=["Routing model 'm1' is unavailable: not found."]),
+            catalog=_CATALOG,
+            definitions=[DeferredToolDefinition(name="tool_a", definition={"type": "function"})],
+            lazy_holder=lazy_holder,
+        )
+
+        result = await tool._run_in_stage_async(None, None, query="calendar")
+
+        assert result.is_error is True
+        assert "Tool search failed" in result.content
+        assert "Routing model 'm1' is unavailable" in result.content
+        assert "do not call this tool again" in result.content
+        lazy_holder.add.assert_not_called()
+
+
 class TestEnrichOpenAiToolSchema:
     def test_no_op_when_no_deferred_toolsets(self):
         tool = _make_tool()
