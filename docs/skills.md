@@ -320,7 +320,7 @@ the rest of the conversation. The model does not get to choose — a picked skil
   lets Core re-share the skill on every later turn and keeps the bundled files readable.
 - `content` is opaque. QuickApps never parses it, so the `/name` token is just text.
 - **Several skills per message**, up to `SKILL_INVOCATION_MAX_SKILLS_PER_MESSAGE` (default `5`); any
-  chip beyond the cap is ignored and reported as a warning in the initialization issues stage. Across
+  chip beyond the cap is ignored and reported as an error in the initialization issues stage. Across
   the whole conversation, at most `SKILL_INVOCATION_MAX_SKILLS` (default `10`) distinct picks stay
   resolved, newest first — the picks made on the message being answered are always kept, and the
   remaining budget goes to the next-newest older picks.

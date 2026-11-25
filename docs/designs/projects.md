@@ -196,7 +196,7 @@ flowchart LR
   | 401, other | as today | the generic error |
 
 - `PROJECT.md` is loaded by the prompt provider (`_ProjectInstructions`, once per request), not the preflight. Over the
-  file-loading size limit or a Core error → a soft `ProjectInstructionsException`: a warning in the **Initialization
+  file-loading size limit or a Core error → an `error`-level `ProjectInstructionsException` in the **Initialization
   issues** stage (rendered after the system prompt is built) and a WARNING log; the turn continues without the
   instructions.
 
