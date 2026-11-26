@@ -177,7 +177,7 @@ class TestProjectHome:
         resolver = _resolver(project=_PROJECT)
         expected = "projects/user-bucket/My Project/files/artifacts/"
         assert await resolver.to_display_path(_ARTIFACTS) == expected
-        assert await resolver.resolve_appdata_url(expected) == _ARTIFACTS
+        assert canonical_url(await resolver.resolve_appdata_url(expected)) == _ARTIFACTS
 
     @pytest.mark.asyncio
     async def test_display_path_keeps_names_that_dont_round_trip_encoded(self):
