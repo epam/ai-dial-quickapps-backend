@@ -7,19 +7,20 @@
 Code references are to the `chore/file_transfer_refactoring` tree (projects stack up to PR 4/5, skills branch merged,
 `file_transfer/` now in `shared/file_transfer/`). Line numbers drift: find a symbol by name first.
 
-> **Before this draft becomes the final design:** everything this document says about the Core unified file API comes
-> from a Core draft (`design/universal_file_api.md`), which is itself not final. The document must be re-checked
-> against the **final** version of that Core design before it leaves draft. Walk through "Context: the Core unified
-> file API", "Migration to the unified API" and the Core-related open questions, and update at least: the route
-> shapes and the logical URL form (the `/files/` segment), the ETag and `PUT` response semantics, the authorization
-> model (resource root only) and what it means for grants to external consumers, the copy and move rules, the error
-> codes, the rollout and compatibility behaviour, and whether folder listings carry sizes. Any decision here that
-> rests on a point the final Core design changes (for example the by-value default for project files, the canonical
-> URL form, skipping C1 to C4) is to be reopened, not carried over.
+> **Before this draft becomes the final design:** everything this document says about the Core file API for complex
+> resources (called "the unified API" below) comes from a Core draft (`design/universal_file_api.md`), which is itself
+> not final. The document must be re-checked against the **final** version of that Core design before it leaves draft.
+> Walk through "Context: the Core universal file API", "Migration to the unified API" and the Core-related open
+> questions, and update at least: the route shapes, the ETag and `PUT` response semantics, the authorization model
+> (resource root only) and what it means for grants to external consumers, the copy and move rules, the error codes,
+> the rollout and compatibility behaviour, and whether folder listings carry sizes. Any decision here that rests on a
+> point the final Core design changes (for example the by-value default for project files, the single canonical URL
+> form, skipping C1 to C4) is to be reopened, not carried over.
 >
-> Last compared with the Core draft on 2026-11-24 (the revised "Universal File API"): it added the handling of
-> historical links, the details of copy and move, and confirmed the `PUT` response shape as a proposal. The Core draft
-> is still not final.
+> Last compared with the Core draft on 2026-11-26. The direction changed since the previous comparison (2026-11-24):
+> Core extends the existing `/v1` API instead of adding a `/v2/files` family. A file of a complex resource keeps its
+> DIAL URL with the reserved `files` segment, so there is no second URL form, no legacy-link fallback and no
+> `/v2/ops/files` route. Copy and move now also work across groups. The Core draft is still not final.
 
 ## Problem Statement
 
@@ -86,63 +87,72 @@ survey of the `development` baseline reported is already gone after the projects
 - `InputFileHandler` (`input_file_handler.py:69-77`) calls the SDK directly, but uploads to the *dev* DIAL, a different
   server with its own bucket. Intentional.
 
-## Context: the Core unified file API
+## Context: the Core universal file API
 
-Core is preparing an additive unified file API. The Core spec is **not final** and the API has not shipped (expected in
-weeks; the SDK method and consumer adoption come after it), so everything below is an assumption to re-check against the
-released API. What the current Core draft says:
+Core is preparing an additive file API for the files of complex resources (`skills`, `projects`) in the `/v1` space. The
+Core spec is **not final** and the API has not shipped, so everything below is an assumption to re-check against the
+released API. The direction is settled: Core extends `/v1`. Its earlier option of a separate `/v2/files/{group}/...`
+family with segment-free logical URLs was rejected by Core (alternatives H and I of its design), because the server
+would have to walk up the path to find the resource root and links stored in the segment form would become ambiguous.
+What the current Core draft says:
 
-- **Routes.** `GET` / `PUT` / `DELETE` on `/v2/files/{group}/{bucket}/{path...}`, `GET /v2/metadata/files/...`, and
-  `POST /v2/ops/files/copy` and `/move` (body `{sourceUrl, destinationUrl, overwrite}`), for the groups `files`,
-  `skills` and `projects`. The old routes (`/v1/files`, `/v2/{group}/.../files/...`) stay unchanged, with no deprecation
-  in this change.
-- **Address.** The tail is the **logical DIAL URL**, without the reserved `/files/` segment of the old complex-resource
-  routes: `skills/{bucket}/team/my-skill/refs/a.md`, `projects/{bucket}/{project}/artifacts/x.md`. The server finds the
-  resource root by walking up to the nearest `.dial-resource` marker; the client does not need to know where it is.
-  This is also the URL form that chat attachments, sharing and publications already use.
+- **Routes.** `GET` / `PUT` / `DELETE` on `/v1/{skills|projects}/{bucket}/{resource}/files/{filePath}` and
+  `GET /v1/metadata/{skills|projects}/{bucket}/{resource}/files/{filePath}`. Copy and move are the existing
+  `POST /v1/ops/resource/copy` and `/move` (body `{sourceUrl, destinationUrl, overwrite}`), extended to file URLs. The
+  routes for plain files (`/v1/files`, `/v1/metadata/files`) and the `/v2/{group}/...` routes stay unchanged, with no
+  deprecation in this change. Only the single-file shape is routed: a resource root, a grouping folder and the bucket
+  root have no `/v1` route, and `GET`, `PUT` and `DELETE` of a folder inside a resource are `400` (a folder is listed
+  through the metadata route).
+- **Address.** The request path is `/v1/` followed by the **existing DIAL URL with the reserved `files` segment**:
+  `skills/{bucket}/team/my-skill/files/refs/a.md`, `projects/{bucket}/{project}/files/artifacts/x.md`. The first
+  `files` segment after the bucket separates the resource root from the file path, as on the `/v2/{group}` routes; the
+  server does not search for the root. A file path may itself hold a folder named `files`. This is also the URL form
+  that chat attachments, sharing and publications already use, so a stored link works with no conversion and no
+  fallback.
 - **ETag.** Per file for every group (`GET`, `PUT`, `DELETE`, `If-Match`, `If-None-Match`). The aggregate resource ETag
-  is exposed as `X-Resource-ETag`. Two writers editing different files of one resource do not conflict.
-- **Write.** `PUT` returns the file metadata, the new file `ETag` and, inside a complex resource, `X-Resource-ETag`
-  (proposed, to be confirmed). The body is accepted as raw bytes or as multipart with one file part, for every group
-  (also a proposal). A complex group is written only into an existing resource: without a marker `PUT` is a 404 that
-  points to the whole-resource API. A write is validated by the type handler (`validateFileMutation`), and a delete that
-  breaks the resource (for example `SKILL.md`) is rejected with `409` or `422`.
-- **Metadata.** `url` is the logical URL, files in a complex resource carry an optional `resource: {url, etag}`, content
-  length and content type are present; folder listings reuse the existing shape (whether they carry sizes is not
-  stated), and entries that are resource roots carry their `resourceType`.
-- **Historical links.** Core resolves a legacy link (`skills/{bucket}/{res}/files/{filePath}`) on the new routes itself,
-  with no parameter. A `files` segment after the bucket gives the resource root when a marker is there, the literal
-  new-form path is read first, and only if it is missing, and only for `GET`, metadata and the source of a copy, Core
-  retries without the leading `files/`. Writes, deletes, copy and move destinations and the move source never use the
-  fallback, and responses return the new-form `url`. A resource that holds both `files/x` and `x` returns `files/x` for
-  the legacy link of `x` (a known edge case).
+  is exposed as `X-Resource-ETag`. Two writers editing different files of one resource do not conflict on `If-Match`
+  (their commits are still serialized by the resource lock).
+- **Write.** `PUT` takes `multipart/form-data` with one file part, as `PUT /v1/files` does (a request without a valid
+  multipart `Content-Type` is `400`). It returns `200` with the metadata of the written file, the new file `ETag` and
+  `X-Resource-ETag`. A complex group is written only into an existing resource: without a marker `PUT` is a `404` that
+  points to the whole-resource API (creating a project or a skill stays on the whole-resource route). A write is
+  validated by the type handler (`validateFileMutation`), and a delete that breaks the resource (for example
+  `SKILL.md`) is rejected (`409` or `422`, not decided).
+- **Metadata.** `url` is the DIAL URL in the segment form. Query parameters `token`, `limit`, `recursive` and
+  `permissions`, as in `/v1/metadata/files`; `permissions` is evaluated on the resource root, so every item of a listing
+  carries the resource's permissions. A file carries `etag` (the file's), `contentLength`, `contentType` and an
+  optional `resource: {url, etag}` for the owning root. Folders inside a resource are listed in the `/v1/metadata/files`
+  folder shape (whether that shape carries sizes is not stated). Resources and grouping folders are still listed on
+  `/v2/metadata/{group}/...`.
 - **Authorization.** Checked at the **resource root** with the existing access checks; per-file sharing inside a
   complex resource is explicitly rejected. A caller who can read a project can read every file in it.
   `.dial-resource`, `.dial-folder` and `v/` paths are hidden (404).
-- **Copy and move.** Same group only. Allowed: plain to plain, a file to a file in the same resource, a file to a file
-  in another existing resource of the same group. Complex to plain, plain to complex, and `skills` to `projects` are
-  `400`; so is a folder or a resource root as source or destination. The destination must already be an existing
-  resource (copy and move never create one: `404` otherwise). `overwrite` defaults to `false`, and an existing
-  destination is then `409` (proposed). The type handler validates every side that changes, so a move that would delete
-  `SKILL.md` is rejected before anything is written. A move between two resources is not atomic (the destination commits
-  first), so a failure leaves a duplicate and never loses the file; the client can retry with `overwrite: true`. The
-  response is `200` with the metadata of the destination file.
-- **Rollout.** Pods of the previous Core release answer `404` on the new routes during a rolling deploy, so a client
-  must not use them until the rollout finishes. The Core draft says a client may also fall back to the old routes on
-  `404`; this design does not (see "Migration to the unified API", point 1).
+- **Copy and move.** `POST /v1/ops/resource/copy` and `/move` copy and move **single files** inside a group and across
+  groups: `files` ↔ `skills`, `files` ↔ `projects`, `skills` ↔ `projects`. Both sides name a file; a folder or a resource
+  root on either side is `400`, and so is a whole resource mixed with a file. A complex destination must already be an
+  existing resource (copy and move never create one: `404` otherwise). The type handler validates every complex side
+  that changes, so a file copied from plain storage into a skill is checked like any write, and a move that would delete
+  `SKILL.md` is rejected before anything is written. `overwrite` defaults to `false`, and an existing destination is then
+  `409` (to be confirmed). A move inside one resource is one new version (a rename, atomic). A move between resources or
+  groups is not atomic (the destination commits first), so a failure leaves a duplicate and never loses the file; the
+  client can retry with `overwrite: true`. The response is `200` with an empty body, as the ops return today.
+- **Rollout.** Pods of the previous Core release answer `404` on the new routes and fail the extended ops during a
+  rolling deploy, so a client must not use them until the rollout finishes. The Core draft says a client may also fall
+  back to the `/v2` routes on failure; this design does not (see "Migration to the unified API", point 1).
 
 What it does to the questions this design answers:
 
 | Question | After the unified API |
 |---|---|
-| Which client / API reads or writes this URL (v1, `ProjectFilesClient`, skills reader) | Disappears: one storage over `/v2/files` for every group. `RoutedFileStorage`, `FileSource` and the hand-written project client collapse into one backend. We do not have to wait for the SDK for this: `ProjectFilesClient` is hand-written anyway. |
-| Metadata (size, type, ETag) of a file | Disappears as a workaround: the metadata endpoint replaces the ranged GET of `ProjectFileStorage`. |
+| Which client / API reads or writes this URL (v1, `ProjectFilesClient`, skills reader) | Disappears: the request path is `/v1/` plus the URL for every group, so one storage over `/v1` serves them. `RoutedFileStorage`, `FileSource` and the hand-written project client collapse into one backend. Whether the SDK `files` client accepts `projects/` and `skills/` URLs as it is, or needs a thin wrapper, is checked (open question); we do not have to wait for the SDK, because `ProjectFilesClient` is hand-written anyway. |
+| Which consumers can read a project or skill file (C4) | Mostly disappears: a consumer that reads by DIAL URL through `/v1` reads them too, once the Core release is rolled out and the consumer's client does not reject the prefix (to verify per consumer). `V1ReadPolicy` stays until then. |
+| Metadata (size, type, ETag) of a file | Disappears as a workaround: `GET /v1/metadata/{group}/...` replaces the ranged GET of `ProjectFileStorage`. |
 | Concurrent writes, create-only outputs | Solved by the per-file ETag: no non-atomic project upload, collision-safe output names (I#725) become possible. |
-| Server-side copy and move | Only inside one group and one resource, or between resources of one group. Between a project and personal files it stays our download and upload. |
+| Server-side copy and move | Works inside a group and across groups, including a project and personal files (`files` ↔ `projects`). Our download and upload (`_transfer.py`) is replaced for single files. Still ours: creating the destination project (the destination must exist) and folders (`400`). |
 | DIAL URL or external URL | Stays (`classify`). |
 | Is the path allowed in this request (current project vs foreign, `context/` vs `artifacts/`, skills read-only) | Stays. Core authorizes at the resource root, so confinement is ours (D4, D8). |
-| How a model path (relative, appdata-relative, `skill://`) becomes a logical URL; where outputs go | Stays. It is a product decision. |
-| A legacy link (`.../files/...`) from old history | Reads: Core resolves it (literal path first, then without `files/`), so the layout needs no conversion for a read of an unknown origin. Writes, deletes and copy or move destinations never use that fallback, so the layout still converts to the logical form where the root is known (the current project). |
+| How a model path (relative, appdata-relative, `skill://`) becomes a DIAL URL; where outputs go | Stays. It is a product decision. |
+| A link stored in old history (`.../files/...`) | Disappears as a problem: the segment form is the only form, so a stored link is a request path after `/v1/`, with no conversion and no fallback. |
 | Granting an external consumer access to a file | Stays ours, and gets coarser: a grant on a project or a skill file is a grant on the whole resource. |
 
 So `FileLayout` is the part that survives the migration, and the backend-routing part is what the migration removes.
@@ -207,8 +217,8 @@ Rules that keep the single class cheap to split later (D-2):
   there is one implementation.
 - The project decision lives inside the layout and does not leak out. The state comes from one field set in the
   constructor, and a public method has at most one branch point on it. Private helpers do not re-test it.
-- If the project mode grows enough to make the class hard to read (for example the legacy to logical URL conversion of
-  B3b together with `context/` and `artifacts/` rules), split it into `StandaloneFileLayout` and `ProjectFileLayout`
+- If the project mode grows enough to make the class hard to read (for example the `context/` and `artifacts/` rules
+  together with the current-project root checks), split it into `StandaloneFileLayout` and `ProjectFileLayout`
   behind the same provider. Consumers and their tests do not change, and the B1 matrix pins the behaviour across the
   split.
 
@@ -227,46 +237,31 @@ class V1ReadPolicy:
 ```
 
 A consumer asks `policy.can_read(layout.classify(url))`; the policy does not depend on the layout. It holds the one C4
-rule today, and the B1 matrix pins what it returns for `SKILL`. Lifting C4 is a change in this class only. M5 replaces
+rule today, and the B1 matrix pins what it returns for `SKILL`. Lifting C4 is a change in this class only. M4 replaces
 it with an explicit per-consumer capability setting, then deletes it.
 
-**Canonical URL form.** Today the code holds a project or skill file as `projects/{b}/{p}/files/...` and
-`skills/{b}/{name}/files/...`, the form of the old complex-resource routes (`canonical_url`, `ProjectContext.contains`,
-`artifacts_root`, `skill_file_url`). The unified API addresses the same file by the logical URL without `/files/`, and
-that is the form the rest of DIAL (attachments, sharing, publications) uses. The layout is therefore the single place
-that owns the form: it hands out one canonical URL, and the `/files/` segment becomes a private detail of the legacy
-`ProjectFileStorage` / `ProjectFilesClient`, added when a request goes through the old route and removed with them.
-Decision D-3: the legacy form is isolated behind the layout in track B, and the layout switches to the logical form at
-the migration (M4).
+**Canonical URL form.** The code holds a project or skill file as `projects/{b}/{p}/files/...` and
+`skills/{b}/{name}/files/...` (`canonical_url`, `ProjectContext.contains`, `artifacts_root`, `skill_file_url`). This is
+the one form of the DIAL URL, the one the old routes return, the one chat attachments, sharing and publications use,
+and, since Core extends `/v1`, the one the unified API takes (`/v1/` plus the URL). There is no second form to convert
+to, so the unified API does not change what the layout emits. The layout is still the single place that owns the form,
+because today the `/files/` segment is spread over `canonical_url`, `ProjectContext`, `artifacts_root`,
+`skill_file_url` and several consumers: it hands out one canonical URL and one answer to "where is the resource root".
+Decision D-3 (revised): the segment form is the only canonical form, and no URL conversion exists in the layout.
 
-**The two forms are ambiguous.** The old complex-resource routes return `projects/{b}/{p}/files/artifacts/x.md`, where
-`files/` separates the resource root from the file path. The unified API reads the same string as a resource whose own
-tree has a folder named `files`. The legacy form does not go away: the old routes keep returning it, and old chats hold
-it in their history, in attachments and in tool results.
+What the layout owns about the form:
 
-The revised Core draft handles this for reads. On the new routes Core resolves a legacy link itself: it reads the literal
-new-form path first, and only if that file is missing, and only for `GET`, metadata and the source of a copy, retries
-without the leading `files/`. Writes, deletes, copy and move destinations and the move source never use the fallback.
-The edge case is a resource that holds both `files/x` and `x`: the legacy link of `x` then returns `files/x`.
-
-What stays ours, in one place (the layout), and only where the origin of the path is known:
-
-- **Until M1** the old routes need the legacy form, so the layout isolates it (D-3) and converts only where the root is
-  known.
-- **Current project.** The root `projects/{b}/{p}` is known from `ProjectContext`. The project tree is `PROJECT.md`,
-  `context/`, `conversations/`, `artifacts/` (D2), so `files/` right after the known root is the legacy separator. The
-  layout strips it, for reads as well as writes: a write must use the logical form after M1, and a read then does not
-  depend on whether a literal `files/` file exists. Foreign projects are rejected (`FOREIGN_PROJECT`), so there is
-  nothing to guess for them.
-- **Skills.** URLs we build (`skill_file_url`, the `skill://` reference) carry a known bucket and skill name, so we emit
-  the right form directly. A `skills/...` URL that arrives from outside (typed by the model, taken from history) has no
-  known origin. Before M1 the layout converts it only when the skill is known to the registry, and otherwise leaves it as
-  it is. After M1 it is passed through for reads and Core's rule applies. The layout never strips `files/` by pattern
-  alone, because a skill may bundle a real `files/` folder. Skills are not writable (`SKILL`), so no write needs the
-  conversion.
-- **Input stays tolerant.** `resolve_read` accepts both forms for as long as old history exists, which is longer than the
-  migration: M4 changes what the layout emits, it does not stop it accepting the old form. The Core draft gives no
-  sunset for the legacy fallback.
+- **The resource root.** For a project or skill URL the root is the part before the first `files` segment after the
+  bucket (`files` is a reserved name, so no folder or resource can be called that). The layout never decides by
+  pattern that a `files/` belongs to the file path: a resource may hold a folder named `files`
+  (`skills/{b}/{name}/files/files/x`), and the first segment still splits root and path. The B1 matrix pins this.
+- **The current project.** The root `projects/{b}/{p}` is known from `ProjectContext`. The project tree is
+  `PROJECT.md`, `context/`, `conversations/`, `artifacts/` (D2). Foreign projects are rejected (`FOREIGN_PROJECT`).
+- **Skills.** URLs we build (`skill_file_url`, the `skill://` reference) carry a known bucket and skill name. A
+  `skills/...` URL that arrives from outside (typed by the model, taken from history) is classified as `SKILL` and
+  passed through as it is. Skills are not writable (`SKILL`).
+- **Stored links.** A link in old chat history, in an attachment or in a tool result is in this form already, and is
+  read with no conversion. The layout needs no tolerant-input mode.
 
 `HomePathResolver` is the nearest existing thing and is folded into the layout (its caching of the resolved home and the
 `my_appdata_home()` call move with it; decision D-5: it is deleted with `shared/home_path/` once its last consumer moves,
@@ -281,9 +276,10 @@ side has a module function `project_file_metadata`, not a `ProjectFilesClient` m
 only router. The promoter, the attachment resolver and the interpreter input handler stop touching the v1 client or the
 project client for DIAL URLs.
 
-The `metadata(url)` method itself survives the unified API (it has a metadata endpoint, with content length, content
-type and the per-file ETag); only the project implementation (the ranged GET) and `RoutedFileStorage` are throw-away.
-Since the endpoint is expected within weeks, the project half of this step is the first candidate to skip.
+The `metadata(url)` method itself survives the unified API (`GET /v1/metadata/{group}/...` returns content length,
+content type and the per-file ETag, and it is the same route family as `files.get_metadata`); only the project
+implementation (the ranged GET) and `RoutedFileStorage` are throw-away. The project half of this step is the first
+candidate to skip: once Core ships, the v1 metadata call may serve a `projects/` URL as it is.
 
 ### Delivering a file to an external consumer: by value or by link
 
@@ -292,7 +288,9 @@ and sends them) or by link (a `dial_url` parameter: QuickApps grants the toolset
 downloads it). Core authorizes at the resource root and rejects per-file sharing, so a link to a file of a project or a
 skill is a grant on the whole resource (for a project: `context/`, `conversations/`, `PROJECT.md` and every other
 artifact). The D4 and D8 confinement does not constrain an external consumer. For skills the grant is already on the skill root (the skill
-bundle is the unit that is meant to be shared).
+bundle is the unit that is meant to be shared). Once Core ships `/v1` for complex resources, a consumer that downloads
+by DIAL URL through `/v1` can read such a link with the same code as a plain file, so a link to a project file becomes
+useful to external consumers (this lifts C4 for them); the grant question below does not change.
 
 Decision D-4 (a stop-gap): a project file reaches a `dial_url` parameter by link, and the grant is on the `artifacts/`
 folder of the current project only, not on the project root. Only files under `artifacts/` of the current project are
@@ -412,10 +410,10 @@ Probes live next to `data_server_for_tests.py` and are started by `make start_te
 | In-6 | Interpreter input x `files/`, an external URL (promoted), a project file (known error) | interpreter |
 | Out-1 | MCP output file, REST `response_as_attachment`, interpreter display content: appdata root outside a project, `artifacts/` inside one; the same name twice replaces the file (I#725) | `produce_file`, read back |
 | Out-2 | A large tool result is offloaded to appdata, in a project as well | read back |
-| Cp | Copy and move: inside the agent home, inside `artifacts/`, from a personal file into `artifacts/` and back (a download and an upload today, and still after the unified API: Core rejects complex to plain), `overwrite` on and off | read back from Core. The failed delete after the copy (`PartialMoveException`) needs fault injection on a real Core, so it stays a unit test of `_transfer.py` |
+| Cp | Copy and move: inside the agent home, inside `artifacts/`, from a personal file into `artifacts/` and back (a download and an upload today, server-side through `/v1/ops/resource/copy` after the unified API, which allows `files` ↔ `projects`), `overwrite` on and off | read back from Core. The failed delete after the copy (`PartialMoveException`) needs fault injection on a real Core, so it stays a unit test of `_transfer.py` until M3 |
 | Et | Per-file ETag semantics: `If-Match` on edit, `If-None-Match` on create-only, two writes to different files of one project. Today a project write is a plain PUT after a file-level check; the same cases must pass unchanged after the migration | read back from Core |
 | Sk | `read_skill` of a bundled file; `skill://` delivered by content and by link | after the skills merge |
-| Neg | Foreign project URL, `..` traversal, an oversized file, external fetch switched off, an unsupported scheme, an absolute `files/` or `projects/` write target (also in a project chat: the personal folder is not writable there, D4): the error the model sees, pinned by its class and a key substring, not by the full text. Also the two URL forms: the same file in the legacy (`.../files/artifacts/x`) and the logical (`.../artifacts/x`) form, and a skill that bundles a real `files/` folder | tool result text |
+| Neg | Foreign project URL, `..` traversal, an oversized file, external fetch switched off, an unsupported scheme, an absolute `files/` or `projects/` write target (also in a project chat: the personal folder is not writable there, D4): the error the model sees, pinned by its class and a key substring, not by the full text. Also a resource that holds a real `files/` folder (`skills/{b}/{name}/files/files/x`: the first `files` splits the root), an internal path (`.dial-resource`, `v/`) and a folder as the target of a read or a write | tool result text |
 
 Cases that fail today by design or because Core support is unverified (C4, links to `projects/` files, TODO #445)
 are recorded with their current outcome and error class (plus a key substring) and marked as known, so a refactor cannot change them silently.
@@ -462,17 +460,17 @@ possible later and is not part of this design.
 
 | # | PR | Size | Depends on | Pinned by |
 |---|---|---|---|---|
-| B1a - B1d | **Pin behaviour.** A parametrised unit matrix: consumer x (project / no project) x (relative / `files/` / current `projects/` / foreign `projects/` / `skills/` / host-matched absolute `/v1/projects/`) x (legacy `/files/` form / logical form). Records today's results, including the known C4 failures, and the skill with a real `files/` folder. Tests only. Split by consumer group, one PR each (size S to M): **B1a** `HomePathResolver` and `RoutedFileStorage` (gates B3), **B1b** `AttachmentService` (gates B4), **B1c** `AttachmentResolver`, `_GetContentTool`, keep policy, materializer, `DialFilePromoter`, `InputFileHandler`, `FileLoaderService` (gates B5), **B1d** `_MCPTool` and `_SkillFileSource` (gates B6) | S - M | none (both merged) | Itself |
+| B1a - B1d | **Pin behaviour.** A parametrised unit matrix: consumer x (project / no project) x (relative / `files/` / current `projects/` / foreign `projects/` / `skills/` / host-matched absolute `/v1/projects/`). Records today's results, including the known C4 failures, and a resource with a real `files/` folder. Tests only. Split by consumer group, one PR each (size S to M): **B1a** `HomePathResolver` and `RoutedFileStorage` (gates B3), **B1b** `AttachmentService` (gates B4), **B1c** `AttachmentResolver`, `_GetContentTool`, keep policy, materializer, `DialFilePromoter`, `InputFileHandler`, `FileLoaderService` (gates B5), **B1d** `_MCPTool` and `_SkillFileSource` (gates B6) | S - M | none (both merged) | Itself |
 | B2 | **Pin the appdata root.** Both calls hit `GET /v1/bucket` and agree on the value (code survey), so this is a test that pins the one real difference: `appdata or bucket` in `AttachmentService` against an error in `HomePathResolver` when appdata is missing. The result picks the rule `FileLayout` applies | S | none | The test itself |
 | B3a | **Introduce `FileLayout`** (interface, `DialPathKind`, `DialFileLayout` with the standalone branch, `V1ReadPolicy`, provider) with `classify`, `home_root`, `resolve_read`, `resolve_write`, `to_display_path`; `HomePathResolver` delegates to it. Callers unchanged | M | B1a, B2 | B1 matrix, unchanged results |
-| B3b | **Project branch** of `DialFileLayout`, and the legacy to logical URL conversion for known roots only | M | B3a | B1 matrix, unchanged results |
+| B3b | **Project branch** of `DialFileLayout` (the current-project root, `context/` and `artifacts/` rules, the resource root of a project or skill URL) | M | B3a | B1 matrix, unchanged results |
 | B4 | **`AttachmentService`** switches to `output_url` / `appdata_url` and drops `PROJECT_CONTEXT`; `HomePathResolver` and `AttachmentService` use the same appdata call, so the appdata root has one owner | S | B3b, B1b | B1 matrix; the existing output-root tests |
 | B5 | **Literals, group 1:** `get_content` tool (it also reads `PROJECT_CONTEXT`), keep policy, materializer, `AttachmentResolver` (`PROJECT_CONTEXT` and a `projects/` branch), `is_dial_storage_path`, the path-argument transformer take `classify` / `resolve_read`. One PR per consumer if the diff gets large | M | B3b, B1c | B1 matrix |
 | B6 | **Literals, group 2:** `_MCPTool` `dial_url` parameters (also closes TODO #445) and the skill file source stop importing `skill_file_url` into `mcp_tooling` | S | B3b, B1d | B1 matrix plus the skills branch's MCP tests |
 | B7 | **Architecture test** with the allow-list (see "Guard against regression") | S | B4, B5, B6 | Itself |
 
 **Checkpoint after B4.** Track C is the only step that touches classes talking to a real Core outside the storage. Do it
-if the unified API and its SDK method are further away than Track C itself, or if lifting C4 (deployments and the
+if the unified API and its rollout are further away than Track C itself, or if lifting C4 (deployments and the
 interpreter reading `projects/`) is needed first. Otherwise skip it and go straight to the migration below.
 
 ### Track C (conditional): metadata through the storage
@@ -488,8 +486,9 @@ interpreter reading `projects/`) is needed first. Otherwise skip it and go strai
 With the unified API on the way, the project half of C1 (the ranged GET) is throw-away work: if the API ships before
 this track starts, skip C1 to C4 for projects and take the `metadata` method straight from the migration (M1, M2).
 
-Follow-ups this makes cheap: lifting C4 (change `V1ReadPolicy` and add a v2 read path in one place), collision-safe output
-names ([I#725](https://github.com/epam/ai-dial-quickapps-backend/issues/725): one change in `output_url`).
+Follow-ups this makes cheap: lifting C4 (change `V1ReadPolicy` in one place; the read path itself comes from Core's
+`/v1` routes), collision-safe output names ([I#725](https://github.com/epam/ai-dial-quickapps-backend/issues/725): one
+change in `output_url`).
 
 ## Migration to the unified API
 
@@ -498,40 +497,46 @@ released and track 0 is green on the old backend.
 
 | # | Step | Size | Notes |
 |---|---|---|---|
-| M1 | One `FileStorage` over `/v2/files` (hand-written, like `ProjectFilesClient`) replaces `V1FileStorage`, `ProjectFileStorage` and `RoutedFileStorage`, behind an explicit setting | M | Does not wait for the SDK. Old and new backends coexist until M3; track 0 runs on both |
-| M2 | `FileStorage.metadata`, `download`, `upload` use per-file ETags and the metadata endpoint; the ranged GET goes; create-only outputs (I#725) | S | `If-None-Match: *` replaces the unconditional overwrite where the product wants it |
-| M3 | Delete `ProjectFilesClient`, `RoutedFileStorage`, `V1FileStorage` / `ProjectFileStorage` (as far as v1 consumers allow), the skills `FileSource`, and the setting | S | After the rollout of the Core release is complete everywhere we run |
-| M4 | The layout switches its canonical form to the logical URL (no `/files/`) | S | Only if not already done in B3; `skill_file_url` and `ProjectContext` follow |
-| M5 | `V1ReadPolicy` becomes a capability flag on the consumer, then is deleted when every consumer is past the version with the new SDK method | S | We cannot see a consumer's SDK version, so the flag is explicit configuration |
+| M1 | One `FileStorage` over `/v1` for every group replaces `V1FileStorage`, `ProjectFileStorage` and `RoutedFileStorage`, behind an explicit setting. It takes the URL as it is (`/v1/` plus the URL): the SDK `files` client if it accepts `projects/` and `skills/` URLs, otherwise a thin hand-written wrapper | M | Does not wait for the SDK. Old and new backends coexist until M3; track 0 runs on both |
+| M2 | `FileStorage.metadata`, `download`, `upload` use per-file ETags, the metadata endpoint and the `PUT` response body (metadata plus the new ETag, no follow-up call); the ranged GET goes; create-only outputs (I#725) | S | `If-None-Match: *` replaces the unconditional overwrite where the product wants it |
+| M3 | Delete `ProjectFilesClient`, `RoutedFileStorage`, `V1FileStorage` / `ProjectFileStorage`, the skills `FileSource`, the download and upload part of `_transfer.py` (copy and move go to `/v1/ops/resource/copy` and `move`), and the setting | S | After the rollout of the Core release is complete everywhere we run |
+| M4 | `V1ReadPolicy` answers `True` for project and skill URLs per consumer and is then deleted when every consumer is verified to read them through `/v1` | S | We cannot see a consumer's client, so the answer is explicit configuration until each consumer is checked |
 
 Points that shape these steps:
 
 1. **Explicit gate, not a 404 fallback.** Pods of the previous Core release answer `404` on the new routes, and a `404`
    is also an ordinary "file not found", so a client cannot fall back on it. The switch is a setting (or a Core version
-   check at startup) that the operator turns on after the rollout. The Core draft suggests falling back to the old
-   routes on a `404`; we do not, for the reason above.
-2. **Copy and move stay ours across the boundary.** Server-side copy and move work only inside a group (a file to a
-   file in the same or another resource of that group). A copy between personal files and a project is complex to
-   plain: `400`. So `_transfer.py` (download, upload, `PartialMoveException`) stays for that case and the server-side
-   ops replace it only for plain to plain and project to project. The non-atomic cross-resource move of Core has the
-   same failure shape as ours (a duplicate, never a lost file). A server-side copy or move needs the destination to be an
-   existing resource, so it cannot create a project, and `overwrite` defaults to `false`.
+   check at startup) that the operator turns on after the rollout. The Core draft suggests falling back to the `/v2`
+   routes on failure; we do not, for the reason above.
+2. **Copy and move go server-side, including across groups.** `POST /v1/ops/resource/copy` and `move` work inside a
+   group and across groups, so a copy between personal files and a project is no longer our download and upload. What
+   stays ours: a server-side copy or move needs the destination to be an existing resource, so it cannot create a
+   project; `overwrite` defaults to `false` (an existing destination is `409`), so the file tools set it explicitly
+   where they overwrite today; a folder as source or destination is `400`, so the file tools' folder cases are checked
+   (the projects design copies single files only); a move across resources or groups is not atomic. The failure shape
+   of that move is the same as our `PartialMoveException` (a duplicate, never a lost file), so the error mapping keeps
+   its meaning. The response has an empty body, so a caller that needs the destination metadata asks for it.
 3. **Per-file ETag changes edit and upload semantics for projects**, so Et cases in track 0 are the acceptance of M2:
    `If-Match` on edit, create-only outputs, two writers of different files.
 4. **Delivery to external consumers.** The grants for MCP `dial_url` parameters stay ours and, for a project or a
    skill, become grants on the resource (see "by value or by link" and D-4: for a project, the `artifacts/` folder).
    Core's consent feature is expected to take these grants over. `url_attachments` is a model capability, not an API
-   one, and does not change.
+   one, and does not change. What does change: a link to a project file can be read by a consumer through `/v1`, once
+   its client accepts the prefix (M4).
 5. **New error shapes to map:** `404` on a write without a resource marker (a project that does not exist), `409` /
    `422` on a delete rejected by the type's `validateFileMutation` (to check: whether deleting the last file of a
    project is rejected, since the project handler accepts only a non-empty file tree), `400` on a folder or a resource
-   root as the target, `409` on an existing destination of a copy with `overwrite` off, `404` on a copy or move whose
-   destination is not an existing resource.
-6. **Legacy links on the new routes.** After M1 a read through a stored legacy link works without our conversion (see
-   "The two forms are ambiguous"); a write, delete or destination never does. The Et and Neg cases of track 0 run both
-   forms on both backends.
-7. **Cost.** A complex-group request does up to one marker read per path segment above the file (cached by Core);
-   `artifacts/` paths are shallow, so this is expected to be small. Measure in the same track 0 run.
+   root as the target (also on `GET`, `PUT` and `DELETE` of a folder inside a resource), `404` on `.dial-resource`,
+   `.dial-folder` and `v/` paths, `409` on an existing destination of a copy with `overwrite` off, `404` on a copy or
+   move whose destination is not an existing resource, `400` on a whole resource mixed with a file URL in the ops.
+6. **Stored links need no handling.** A link in history is in the segment form and is a request path after `/v1/`, so
+   there is no conversion step, no fallback and no second form to test. The Neg cases of track 0 pin the one edge that
+   remains: a resource that holds a real `files/` folder.
+7. **Cost.** A complex-group request reads the marker once at the root given by the path (cached by Core), with no
+   walk up the path. A single-file write on a complex resource has the cost of Core's single-file write, which commits a
+   new version under the resource lock and copies the files of the current one natively, so it grows with the number of
+   files in the resource. `artifacts/` is written often (every tool output), so this is the number to measure in the
+   same track 0 run, together with the latency of a read and a write against the `/v2` route.
 
 ## Alternatives Considered
 
@@ -564,21 +569,22 @@ Points that shape these steps:
   the layout, or a separate grants component next to `DialFileService.grant_permissions_to_files`?
 - Can Core grant on the `artifacts/` folder of a project alone (D-4)? Ask the Core team. If not, the grant is on the
   whole project resource until consent ships; B6 does not wait for the answer.
-- Legacy versus logical URL ambiguity (see "The two forms are ambiguous"): Core now resolves legacy links for reads with
-  a defined rule (literal path first, then without `files/`, read-only operations only), so we no longer need to ask it
-  to reject the ambiguous case. What is open: how long the layout keeps accepting the legacy form on input, given that old
-  chat history holds it and the Core draft names no sunset; and whether a response served through the fallback carries a
-  marker (the Core draft lists it as its own open question).
-- Unified API, still open in the Core spec: the body of `PUT` (metadata, proposed) and raw bytes plus multipart for every
-  group (proposed); the error codes (`409` or `422` on a rejected delete, unsupported group, internal paths, no resource
-  root); the route of copy and move (`/v2/ops/files/{copy|move}`, with a query-parameter form as the alternative) and
-  the default of `overwrite` (`false` and `409`, proposed); whether folder listings carry sizes; the rejection of
-  deleting the last file of a project; error bodies we have to map. Answered by the current draft: the logical URL has
-  no `/files/` segment, access is granted at the resource root only (no per-file grants), the destination of a copy or
-  move must already be a resource, and legacy links are resolved by Core for reads.
-- Unified API, timeline: when do Core and the SDK method ship, and do we have to support a Core without it? The answer
-  sets the checkpoint after B4 and whether M1 needs a setting at all.
-- Where does the skills `FileSource` end up in the meantime: kept as is, or folded into `FileStorage` routing?
+- Does the SDK `files` client (aidial-client) take a `projects/` or `skills/` URL as it is and build `/v1/` plus the
+  URL, or does it validate the `files/` prefix? The answer decides whether M1 needs a wrapper. The same question for
+  each consumer that reads by DIAL URL (adapter-dial, RAG, the code interpreter, the MCP servers we know): it decides
+  when `V1ReadPolicy` can answer `True` for them (M4).
+- Unified API, still open in the Core spec: the error codes (`409` or `422` on a rejected delete, internal paths, no
+  resource root on `PUT`, a whole resource mixed with a file URL in the ops); the default of `overwrite` (`false` and
+  `409`, to be confirmed); whether folder listings carry sizes; the rejection of deleting the last file of a project;
+  error bodies we have to map. Answered by the current draft: Core extends `/v1` and the URL keeps its `files` segment
+  (no second form, no legacy fallback), `PUT` is multipart and returns the metadata, access is granted at the resource
+  root only (no per-file grants), the destination of a copy or move must already be a resource, and copy and move work
+  across groups (`files` ↔ `projects` ↔ `skills`) with an empty response body.
+- Unified API, timeline: when does Core ship it, and do we have to support a Core without it? The answer sets the
+  checkpoint after B4 and whether M1 needs a setting at all.
+- Where does the skills `FileSource` end up in the meantime: kept as is, or folded into `FileStorage` routing? With
+  `/v1` serving `skills/.../files/...`, it can fold into the storage at M1 (the skills reader on `/v2/skills` stays for
+  `SKILL.md` and listings).
 - Does `DialFileService.download_file` need in-flight de-duplication (A3)? The code says concurrent downloads of one
   file are possible: `tool_executor.py:106` runs the tool calls of one turn with `asyncio.gather`, so two reads of one
   URL both miss the cache. The harm is small, because the GETs are idempotent. Default: skip A3 unless a real case shows up.
@@ -621,7 +627,7 @@ merging B6 and for releasing the layout. If the owner prefers the strict rule, w
 |---|---|---|---|---|
 | A1 | `FileLoaderService.__load_dial` calls `DialFileService.download_file`; delete `DialDownloader`. The "metadata is stored next to the bytes" comment moves into `download_file`. Keep the stored content type `None` for DIAL URLs. Note: `download_file` logs an ERROR with `exc_info` on any failure, which `FileLoaderService` did not; decide whether that is acceptable noise | `shared/file_transfer/_file_loader_service.py`, `dial_core_services/dial_downloader.py` (delete), `dial_core_services/dial_core_services_module.py` (binding), `dial_file_service.py` | Delete `test_dial_downloader.py`. Update `test_file_loader_service.py`, `test_skill_file_reference_wiring.py`, `test_async_dial_http_calls.py`. New: a DIAL load stores the metadata (ETag) | todo |
 | A2 | In-flight map plus result map keyed by the requested URL inside `ExternalUrlFetcher.fetch`; `WebContentFetcher` drops `__fetched_by_url`. The promoter keeps its task map (its value is the upload result). SSRF guard, redirect cap and per-app switches run inside the first fetch; a failed fetch is not cached | `shared/external_fetch/external_url_fetcher.py`, `WebContentFetcher` (find by name) | `test_external_url_fetcher.py`, `test_web_fetch_tool.py`. New: two consumers of one URL cause one HTTP fetch; a failed fetch is retried; cancelling the first caller does not fail the second | todo |
-| B1a - B1d | Parametrised unit matrix, tests only, one PR per consumer group (the groups are in the B1 row of "Track B"). Axes: consumer x (project / no project) x path kind (relative, `files/`, current `projects/`, foreign `projects/`, `skills/`, host-matched absolute `/v1/projects/`) x (legacy `/files/` form / logical form). Consumers: `HomePathResolver` (the file tools, the argument transformer), `AttachmentService`, `RoutedFileStorage`, `AttachmentResolver`, `_GetContentTool`, keep policy, materializer, `DialFilePromoter`, `InputFileHandler`, `_MCPTool._collect_dial_url_files`, `FileLoaderService`, `_SkillFileSource`. Record today's results, including the known C4 failures, a skill with a real `files/` folder, and the fact that `_MCPTool` passes a `projects/` URL through `_validate_dial_file` to the grant as is, with no current-project check | new test module(s) next to the consumers | Extend `test_home_path_resolver.py`, `test_file_storage_wiring.py`, `test_project_file_flow.py`, `test_attachment_resolver.py`, `test_get_content_tool.py`, `test_dial_file_promoter.py` | todo |
+| B1a - B1d | Parametrised unit matrix, tests only, one PR per consumer group (the groups are in the B1 row of "Track B"). Axes: consumer x (project / no project) x path kind (relative, `files/`, current `projects/`, foreign `projects/`, `skills/`, host-matched absolute `/v1/projects/`). Consumers: `HomePathResolver` (the file tools, the argument transformer), `AttachmentService`, `RoutedFileStorage`, `AttachmentResolver`, `_GetContentTool`, keep policy, materializer, `DialFilePromoter`, `InputFileHandler`, `_MCPTool._collect_dial_url_files`, `FileLoaderService`, `_SkillFileSource`. Record today's results, including the known C4 failures, a resource with a real `files/` folder, and the fact that `_MCPTool` passes a `projects/` URL through `_validate_dial_file` to the grant as is, with no current-project check | new test module(s) next to the consumers | Extend `test_home_path_resolver.py`, `test_file_storage_wiring.py`, `test_project_file_flow.py`, `test_attachment_resolver.py`, `test_get_content_tool.py`, `test_dial_file_promoter.py` | todo |
 | B2 | Test that pins the appdata fallback difference (see the B2 row above) | `AttachmentService`, `HomePathResolver` tests | New test | todo |
 | T1 | Probe servers (`inspect_by_link`, `inspect_by_value`, `produce_file`), fixtures with known bytes and hashes, the read-back helper. Extension points: `src/tests/integration_tests/data_server_for_tests.py` (REST on `:8002`, MCP on `:8003` via `test_runner/mcp_server/mcp_http_test_server.py`), `test_runner/stub_deployment.py` (a stub response only today, no file probes), `make start_test_server`. `local_test_servers/mcp_skill_file_server.py` (untracked, the #420 PoC, `fetch_skill_file`, port 8007) is the base of `inspect_by_link` | `src/tests/integration_tests/` | The probes are exercised by T2 onwards | todo |
 
@@ -643,13 +649,14 @@ Decisions to take first (see Open Questions):
   `resolve_write` does not change.
 - **D-2** (decided) One `DialFileLayout` class with the project decision inside, behind the `FileLayout` interface. The
   rules that keep a later split into two classes cheap are in "`FileLayout`".
-- **D-3** (decided) Canonical URL form: the legacy form is isolated behind the layout in track B, and the layout switches
-  to the logical form at M4.
+- **D-3** (decided, revised after Core chose `/v1`) Canonical URL form: the segment form
+  (`projects/{b}/{p}/files/...`) is the only form. The layout owns it (the resource root, the current project), and no
+  conversion to a logical form exists.
 - **D-5** (decided) `HomePathResolver` is removed, not kept as a facade: B3a makes it delegate to the layout, and the PR
   that moves its last consumer onto `FileLayout` deletes it and `shared/home_path/`. The layout lives in the new
   `shared/file_layout/` package.
 - **D-6** (decided) C4 ("can the v1 client read this URL?") lives in a separate `V1ReadPolicy` service next to the layout,
-  not on `FileLayout`. It takes a `DialPathKind` and is replaced by a per-consumer capability setting in M5.
+  not on `FileLayout`. It takes a `DialPathKind` and is replaced by a per-consumer capability setting in M4.
 - **D-7** (decided) Track 0 runs locally against a real Core (the existing proxy-based integration tests), not in CI. A
   gated PR states in its description which groups ran green.
 - **D-4** (decided, a stop-gap until Core consent) A project file reaches a `dial_url` parameter by link, with a grant on
@@ -660,7 +667,7 @@ Decisions to take first (see Open Questions):
 | ID | What | Touches | Depends on | Status |
 |---|---|---|---|---|
 | B3a | `FileLayout` interface, `DialPathKind`, `DialFileLayout` with the standalone branch, `V1ReadPolicy` (D-6), the provider; `HomePathResolver` (bound in `shared/home_path/home_path_module.py`, request scope) delegates. `PROJECT_CONTEXT` is still created in `AppModule` and `_request_context`; the layout provider is its only reader for this concern | new `shared/file_layout/`, `shared/home_path/` | B1a, B2, T1 to T3, T6 | todo |
-| B3b | The project branch of `DialFileLayout` and the legacy to logical URL conversion for known roots only (see "The two forms are ambiguous") | `shared/file_layout/`, `common/project_context.py` | B3a | todo |
+| B3b | The project branch of `DialFileLayout`: the current-project root, `context/` and `artifacts/` rules, the resource root of a project or skill URL (see "Canonical URL form") | `shared/file_layout/`, `common/project_context.py` | B3a | todo |
 | B4 | `AttachmentService` uses `output_url` / `appdata_url` and drops `PROJECT_CONTEXT`; one appdata rule | `dial_core_services/attachment_service.py` | B3b, B1b | todo |
 | B5 | Literals, group 1 (see the B5 row above). One PR per consumer if large | `_get_content_tool.py`, keep policy, materializer, `_attachment_resolver.py`, `url_classification.py`, the argument transformer | B3b, B1c | todo |
 | B6 | `_MCPTool` `dial_url` parameters (closes TODO #445); the skill file source stops importing `skill_root_of_file_url` into `mcp_tooling`. The current pass-through of a `projects/` URL to the grant changes here: a deliberate behaviour change, call it out in the PR | `mcp_tooling/_mcp_tool.py`, `skills/skill_file_url.py` | B3b, B1d | todo |
@@ -672,7 +679,7 @@ Decisions to take first (see Open Questions):
 - **Checkpoint after B4**, then **C0 to C4**: C2 to C4 now have to start from the real code (the promoter calls
   `dial_client.files.get_metadata` directly, there is no `ProjectFilesClient.file_metadata`). Rewrite them at the
   checkpoint.
-- **M1 to M5**: after the Core API is final.
+- **M1 to M4**: after the Core API is final.
 
 ### Log
 
