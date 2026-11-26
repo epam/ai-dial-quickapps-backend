@@ -1183,8 +1183,8 @@ class TestFormValueFromWorkingMessages:
 
         assert tool._form_value_for_this_tool(tool.tool_config) == {"a": 1}
 
-    def test_skips_trailing_user_without_form_value(self):
-        """Last USER has custom_content but no form_value; an earlier USER has it."""
+    def test_trailing_user_without_form_value_means_no_current_value(self):
+        """Last USER message has no form_value → nothing to forward (current value only)."""
         messages = [
             *_history_with_form_schema(),
             _user_msg_with_form_value({"a": 1}),
@@ -1194,4 +1194,26 @@ class TestFormValueFromWorkingMessages:
         ]
         tool = _build_tool_with_propagation(messages)
 
+        assert tool._form_value_for_this_tool(tool.tool_config) is None
+
+
+class TestFormValueFromCurrentMessageOnly:
+    def test_resumable_source_still_gets_form_value(self):
+        """Current form_value is forwarded to the final request message even when the
+        tool is resumable (reconstructed history has no current tool call)."""
+        messages = [*_history_with_form_schema(), _user_msg_with_form_value({"a": 1})]
+        tool = _build_tool_with_propagation(
+            messages, conversation_mode=ConversationMode(resumable=True)
+        )
+
         assert tool._form_value_for_this_tool(tool.tool_config) == {"a": 1}
+
+    def test_no_form_value_when_last_user_message_lacks_it(self):
+        messages = [
+            *_history_with_form_schema(),
+            _user_msg_with_form_value({"a": 1}),
+            Message(role=Role.USER, content="later, no value"),
+        ]
+        tool = _build_tool_with_propagation(messages)
+
+        assert tool._form_value_for_this_tool(tool.tool_config) is None

@@ -18,7 +18,11 @@ from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.chat_completion_stream.argument_stream_presentation import ArgumentStreamMode
 from quickapp.common.deployment_parameter_support import remove_unsupported_parameters
 from quickapp.common.dial_request_fields import CONFIGURATION, CUSTOM_FIELDS
-from quickapp.common.form_utils import form_source_tool_name_before, last_user_form_value_index
+from quickapp.common.form_utils import (
+    form_source_tool_name_before,
+    form_value_of,
+    last_user_message_index,
+)
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.payload_logging import log_payload
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
@@ -90,22 +94,20 @@ class BaseDeploymentTool(StagedBaseTool):
         if self.__form_value_sent:
             return None
         messages = self.__messages_mixin.messages
-        cutoff = last_user_form_value_index(messages)
+        cutoff = last_user_message_index(messages)
         if cutoff is None:
             return None
         source_tool = form_source_tool_name_before(messages, cutoff)
         if source_tool != tool_config.open_ai_tool.function.name:
             return None
-        # last USER message carrying form_value (not just any custom_content)
-        for msg in reversed(messages):
-            if (
-                msg.role == Role.USER
-                and msg.custom_content is not None
-                and msg.custom_content.form_value is not None
-            ):
-                self.__form_value_sent = True
-                return msg.custom_content.form_value
-        return None
+        # Current form_value comes only from the last USER message; forwarded to the
+        # final user message of the deployment request regardless of resumable
+        # (reconstructed history has no current tool call yet).
+        value = form_value_of(messages[cutoff])
+        if value is None:
+            return None
+        self.__form_value_sent = True
+        return value
 
     def _setup_session(
         self,

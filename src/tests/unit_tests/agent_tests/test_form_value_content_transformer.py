@@ -79,8 +79,21 @@ class TestFormValueContentTransformer:
         assert msg.custom_content.form_value == {"a": 1}
 
     @pytest.mark.asyncio
-    async def test_no_injection_when_source_tool_is_resumable(self):
+    async def test_injects_when_source_tool_is_resumable_and_flag_set(self):
+        # resumable does NOT block content injection: the flag alone decides;
+        # a resumable source additionally gets form_value via its own request
         t = _FormValueContentTransformer(_tools(_tool(resumable=True)))
+        msg = _msg_with_form_value({"a": 1})
+
+        result = await t.transform([*_history_with_form_schema(), msg])
+
+        assert "<form_value>" in result[-1].content
+
+    @pytest.mark.asyncio
+    async def test_no_injection_when_resumable_and_flag_unset(self):
+        t = _FormValueContentTransformer(
+            _tools(_tool(resumable=True, propagate_form_value_to_content=None))
+        )
         msg = _msg_with_form_value({"a": 1})
 
         result = await t.transform([*_history_with_form_schema(), msg])
@@ -125,9 +138,11 @@ class TestFormValueContentTransformer:
 
     @pytest.mark.asyncio
     async def test_per_message_source_resolution(self):
-        # first form from non-resumable "my_tool", second form from resumable "new_tool";
+        # first form from "my_tool" (flag on), second form from "new_tool" (flag off);
         # the message after the first form gets injected, the one after the second does not
-        t = _FormValueContentTransformer(_tools(_tool(), _tool(name="new_tool", resumable=True)))
+        t = _FormValueContentTransformer(
+            _tools(_tool(), _tool(name="new_tool", propagate_form_value_to_content=False))
+        )
         msg1 = _msg_with_form_value({"a": 1})
         msg2 = _msg_with_form_value({"b": 2})
         history = [
@@ -139,8 +154,8 @@ class TestFormValueContentTransformer:
 
         result = await t.transform(history)
 
-        assert "<form_value>" in result[2].content  # msg1: source my_tool, not resumable
-        assert result[5] is msg2  # msg2: source new_tool, resumable → untouched
+        assert "<form_value>" in result[2].content  # msg1: source my_tool, flag on
+        assert result[5] is msg2  # msg2: source new_tool, flag off → untouched
 
     @pytest.mark.asyncio
     async def test_form_after_message_not_counted(self):

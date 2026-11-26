@@ -124,7 +124,7 @@ warning (same pattern as `conversation_mode`).
 config models (`DialDeploymentTool`, `DialDeploymentSimpleTool`, `DialAppToolSet`), threaded onto the
 synthetic `DialDeploymentTool` by the same two paths.
 **Semantics:** gates the `<form_value>` content injection in `_FormValueContentTransformer` for
-non-resumable source tools. `null`/`false` — the submitted value stays only in `custom_content` (consumed
+the form's source tool. `null`/`false` — the submitted value stays only in `custom_content` (consumed
 by deployment tools); `true` — additionally appended to the message content for the orchestrator model.
 **Change:** new optional field on three config models; read from the runtime tool instance in the
 transformer; schema regenerated.
@@ -164,7 +164,7 @@ carrying the same schema; the assistant's `tool_calls` give the initiator name;
 - `_FormValueContentTransformer` (`core/agent/_form_value_content_transformer.py`, registered first in
   `AgentModule.provide_message_transformers`, before the scrubber): for **every** message carrying
   `custom_content.form_value`, resolves the source tool from the history *before* that message; if the
-  source is not resumable **and** its config has `propagate_form_value_to_content: true`, appends a
+  source tool's config has `propagate_form_value_to_content: true` (regardless of `conversation_mode`), appends a
   `<form_value>{json}</form_value>` block to a deep-copied message's content (keeping `form_value` in
   `custom_content`). Injection into all messages (not just the last) is deliberate: it keeps data and
   keeps the KV-cache prefix stable across turns.
@@ -288,7 +288,7 @@ None. The new config field defaults to `null`, which preserves the old drop-at-t
 | `dial_deployment_tooling/_deployment_tool_initializer.py`, `dial_app_tooling/_dial_app_resolver.py` | Thread the flag onto synthetic deployment tools |
 | `core/agent/orchestrator.py` | `_send_form_schema` (first-wins guard); no state markers — source tool is recovered from history |
 | `common/form_utils.py` | Shared history-based source-tool resolution (`form_source_tool_name_before`, `find_tool_conversation_mode`, `is_resumable`) |
-| `core/agent/_form_value_content_transformer.py` | Per-message `<form_value>` content injection when the source tool (resolved from history) is not resumable **and** has `propagate_form_value_to_content: true`; registered before the scrubber |
+| `core/agent/_form_value_content_transformer.py` | Per-message `<form_value>` content injection when the source tool (resolved from history) has `propagate_form_value_to_content: true`, regardless of resumable; registered before the scrubber |
 | `core/agent/agent_module.py` | Bind `_FormValueContentTransformer`, register first in the transformer chain |
 | `core/agent/_scrub_extra_fields_transformer.py` | No longer special-cases `custom_content.form_value` — it is a declared SDK field and stays in messages |
 | `CONFIGURATION.md`, `docs/README.md`, `docs/generated-app-schema.json` | User docs, capability map row, regenerated schema |

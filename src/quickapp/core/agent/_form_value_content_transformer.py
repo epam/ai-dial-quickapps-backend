@@ -5,12 +5,7 @@ from aidial_sdk.chat_completion import Message
 from injector import inject
 
 from quickapp.common.abstract.base_transformer import MessagesTransformer
-from quickapp.common.form_utils import (
-    find_tool,
-    find_tool_conversation_mode,
-    form_source_tool_name_before,
-    is_resumable,
-)
+from quickapp.common.form_utils import find_tool, form_source_tool_name_before
 from quickapp.common.staged_base_tool import StagedBaseTool
 from quickapp.config.tools.deployment import DialDeploymentTool
 
@@ -22,13 +17,12 @@ _FORM_VALUE_TAG = "form_value"
 class _FormValueContentTransformer(MessagesTransformer):
     """Inject ``custom_content.form_value`` into message content for the orchestrator.
 
-    For every message carrying ``form_value``, the form's source tool is resolved from
-    the history *before* that message (assistant message ``form_schema`` matched by content
-    to the tool message schema → initiator tool call name). When the source tool is not
-    resumable **and** its config has ``propagate_form_value_to_content: true``, the submitted
-    data is appended to that message's content as a ``<form_value>`` block, so the
-    orchestrator keeps it in the conversation. When the source tool is resumable, the value
-    travels to that tool via ``custom_content`` instead and no injection happens.
+    For every message carrying ``form_value``, the form's source tool (the initiator — the
+    tool whose call produced the form) is resolved from the history *before* that message.
+    When that tool's config has ``propagate_form_value_to_content: true``, the submitted data
+    is appended to the message's content as a ``<form_value>`` block, so the orchestrator sees
+    it — regardless of ``conversation_mode.resumable`` (a resumable source additionally
+    receives the value via ``custom_content`` in its own request).
 
     Injection covers *all* messages with ``form_value`` (not just the last one): dropping
     older ones would lose data and break the KV cache (the message prefix must stay stable
@@ -52,10 +46,6 @@ class _FormValueContentTransformer(MessagesTransformer):
                 continue
             source_tool = form_source_tool_name_before(messages, i)
             tool = find_tool(self.__tools, source_tool)
-            conversation_mode = find_tool_conversation_mode(self.__tools, source_tool)
-            if is_resumable(conversation_mode):
-                result.append(message)
-                continue
             if not self._propagate_to_content(tool):
                 result.append(message)
                 continue

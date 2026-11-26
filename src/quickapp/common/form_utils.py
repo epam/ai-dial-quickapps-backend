@@ -19,21 +19,23 @@ def _form_schema_of(message: Message) -> dict[str, Any] | None:
     return None
 
 
-def last_user_form_value_index(messages: list[Message]) -> int | None:
-    """Index of the last USER message carrying ``custom_content.form_value``, or None.
+def last_user_message_index(messages: list[Message]) -> int | None:
+    """Index of the last USER message, or None.
 
-    Used as the history cutoff when resolving the form's source tool: tool results
-    produced later in the same request must not shadow the form the user actually
-    submitted.
+    Used as the history cutoff when resolving the form's source tool and as the source
+    of the current ``form_value``: tool results produced later in the same request must
+    not shadow the form the user actually submitted.
     """
     for i in range(len(messages) - 1, -1, -1):
-        msg = messages[i]
-        if (
-            msg.role == Role.USER
-            and msg.custom_content is not None
-            and msg.custom_content.form_value is not None
-        ):
+        if messages[i].role == Role.USER:
             return i
+    return None
+
+
+def form_value_of(message: Message) -> Any | None:
+    """``custom_content.form_value`` of a message, if present."""
+    if message.custom_content is not None:
+        return message.custom_content.form_value
     return None
 
 

@@ -5,8 +5,9 @@ from aidial_sdk.chat_completion import Message
 from quickapp.common.form_utils import (
     find_tool_conversation_mode,
     form_source_tool_name_before,
+    form_value_of,
     is_resumable,
-    last_user_form_value_index,
+    last_user_message_index,
 )
 
 
@@ -161,3 +162,26 @@ def test_latest_turn_wins_real_shape():
         _tool_with_schema("tc-2"),
     ]
     assert form_source_tool_name_before(msgs, len(msgs)) == "tool_b"
+
+
+class TestLastUserMessageIndex:
+    def test_returns_last_user_message(self):
+        msgs = [
+            _user("a"),
+            Message.model_validate(
+                {"role": "user", "content": "b", "custom_content": {"form_value": {"x": 1}}}
+            ),
+            _user("c"),
+        ]
+        assert last_user_message_index(msgs) == 2
+
+    def test_none_when_no_user_message(self):
+        assert last_user_message_index([]) is None
+
+
+def test_form_value_of():
+    msg = Message.model_validate(
+        {"role": "user", "content": "b", "custom_content": {"form_value": {"x": 1}}}
+    )
+    assert form_value_of(msg) == {"x": 1}
+    assert form_value_of(_user()) is None
