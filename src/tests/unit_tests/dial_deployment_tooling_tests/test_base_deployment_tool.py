@@ -1154,3 +1154,19 @@ class TestFormValueSentOncePerRequest:
         assert tool._form_value_for_this_tool(tool.tool_config) is None
         # flag not set → a later call with form_value would still get it
         assert tool._form_value_for_this_tool(tool.tool_config) is None
+
+
+class TestFormValueSourceCutoff:
+    def test_source_resolved_before_current_request_tool_results(self):
+        """tool_C returned a new form_schema earlier in THIS request; the user submitted
+        tool_B's form. tool_B must still be recognized as the source (cutoff = last user
+        message with form_value, not len(messages))."""
+        messages = [
+            *_history_with_form_schema(tool_name="test_tool", tool_call_id="tc-1"),
+            _user_msg_with_form_value({"a": 1}),
+            # same-request iteration: orchestrator called another tool which returned a form
+            *_history_with_form_schema(tool_name="other_tool", tool_call_id="tc-2"),
+        ]
+        tool = _build_tool_with_propagation(messages)
+
+        assert tool._form_value_for_this_tool(tool.tool_config) == {"a": 1}

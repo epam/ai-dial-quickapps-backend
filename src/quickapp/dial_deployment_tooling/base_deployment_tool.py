@@ -18,7 +18,7 @@ from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.chat_completion_stream.argument_stream_presentation import ArgumentStreamMode
 from quickapp.common.deployment_parameter_support import remove_unsupported_parameters
 from quickapp.common.dial_request_fields import CONFIGURATION, CUSTOM_FIELDS
-from quickapp.common.form_utils import form_source_tool_name_before
+from quickapp.common.form_utils import form_source_tool_name_before, last_user_form_value_index
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.payload_logging import log_payload
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
@@ -91,9 +91,11 @@ class BaseDeploymentTool(StagedBaseTool):
         """
         if self.__form_value_sent:
             return None
-        source_tool = form_source_tool_name_before(
-            self.__messages_mixin.messages, len(self.__messages_mixin.messages)
-        )
+        messages = self.__messages_mixin.messages
+        cutoff = last_user_form_value_index(messages)
+        if cutoff is None:
+            return None
+        source_tool = form_source_tool_name_before(messages, cutoff)
         if source_tool != tool_config.open_ai_tool.function.name:
             return None
         for msg in reversed(self.__request_messages):

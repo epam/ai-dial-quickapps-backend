@@ -6,6 +6,7 @@ from quickapp.common.form_utils import (
     find_tool_conversation_mode,
     form_source_tool_name_before,
     is_resumable,
+    last_user_form_value_index,
 )
 
 
@@ -214,3 +215,29 @@ class TestAssistantSchemaMatching:
             _tool_with_schema("tc-1"),
         ]
         assert form_source_tool_name_before(msgs, len(msgs)) == "tool_a"
+
+
+class TestLastUserFormValueIndex:
+    def test_returns_last_user_with_form_value(self):
+        msgs = [
+            _user("a"),
+            Message.model_validate(
+                {"role": "user", "content": "b", "custom_content": {"form_value": {"x": 1}}}
+            ),
+            _user("c"),
+        ]
+        assert last_user_form_value_index(msgs) == 1
+
+    def test_none_when_no_form_value(self):
+        assert last_user_form_value_index([_user(), _user("x")]) is None
+
+    def test_skips_user_with_custom_content_but_no_form_value(self):
+        msgs = [
+            Message.model_validate(
+                {"role": "user", "content": "b", "custom_content": {"form_value": {"x": 1}}}
+            ),
+            Message.model_validate(
+                {"role": "user", "content": "c", "custom_content": {"state": {"k": 1}}}
+            ),
+        ]
+        assert last_user_form_value_index(msgs) == 0
