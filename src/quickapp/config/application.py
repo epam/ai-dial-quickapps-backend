@@ -10,6 +10,7 @@ from quickapp.common.base_config import (
     has_preview_marker,
     is_preview_model,
 )
+from quickapp.common.exceptions import InitializationIssueLevel
 from quickapp.common.feature_settings import FeatureSettings
 from quickapp.config.agent_settings import AgentSettings
 from quickapp.config.context import Context
@@ -34,6 +35,19 @@ class StageDisplayLevel(str, Enum):
     ERROR = "error"
     INFO = "info"
     DEBUG = "debug"
+
+
+class InitializationIssuesConfig(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    level: InitializationIssueLevel | None = Field(
+        default=None,
+        description=(
+            "Lowest issue level shown in the Initialization issues stage: warning=all issues; "
+            "error=errors and critical failures; critical=critical failures only. "
+            "Hidden issues are still logged. Unset defers to `DEFAULT_INITIALIZATION_ISSUES_LEVEL`."
+        ),
+    )
 
 
 class StageDisplayConfig(BaseModel):
@@ -215,6 +229,10 @@ class Features(BaseModel):
     stage_display: StageDisplayConfig = Field(
         default_factory=StageDisplayConfig,
         description="Controls which stage levels are rendered to the user.",
+    )
+    initialization_issues: InitializationIssuesConfig = Field(
+        default_factory=InitializationIssuesConfig,
+        description="Controls which issue levels the Initialization issues stage shows.",
     )
     dial_files: DialFilesConfig | None = Field(
         default_factory=DialFilesConfig,

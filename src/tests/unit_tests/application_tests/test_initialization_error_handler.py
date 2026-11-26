@@ -6,18 +6,25 @@ from aidial_sdk.chat_completion import Stage, Status
 from quickapp.common.exceptions import (
     ConfigResolutionException,
     HookInitializationException,
+    InitializationIssueLevel,
     OffloadConfigurationException,
     OrchestratorSystemPromptException,
     ProjectInstructionsException,
     SkillInitializationException,
+    ToolInitializationException,
 )
 from quickapp.core.application import _InitializationErrorHandler
 
 
-def _make_handler(stage: MagicMock, exceptions: list) -> _InitializationErrorHandler:
+def _make_handler(
+    stage: MagicMock,
+    exceptions: list,
+    level: InitializationIssueLevel = InitializationIssueLevel.WARNING,
+) -> _InitializationErrorHandler:
     return _InitializationErrorHandler(
         stage_provider=SimpleNamespace(get=lambda: stage),
         initialization_exceptions_provider=SimpleNamespace(get=lambda: exceptions),
+        level_provider=SimpleNamespace(get=lambda: level),
     )
 
 
@@ -79,6 +86,7 @@ class TestConfigResolutionExceptionRendering:
         handler = _InitializationErrorHandler(
             stage_provider=SimpleNamespace(get=lambda: stage),
             initialization_exceptions_provider=provider,
+            level_provider=SimpleNamespace(get=lambda: InitializationIssueLevel.WARNING),
         )
         handler.handle_initialization_issues()
         stage.open.assert_not_called()
@@ -109,9 +117,9 @@ class TestSkillInitializationWarningRendering:
     def test_warning_renders_under_warnings_subheader_and_keeps_completed(self):
         stage = MagicMock(spec=Stage)
         warning = SkillInitializationException(
-            reason="exceeds 64 characters",
-            url="prompts/bucket/long-name",
-            severity="warning",
+            reason="Could not list bundled files",
+            url="skills/bucket/no-listing",
+            level=InitializationIssueLevel.WARNING,
         )
         handler = _make_handler(stage, [warning])
 
@@ -119,8 +127,8 @@ class TestSkillInitializationWarningRendering:
 
         rendered = _stage_content(stage)
         assert "Warnings:" in rendered
-        assert "prompts/bucket/long-name" in rendered
-        assert "exceeds 64 characters" in rendered
+        assert "skills/bucket/no-listing" in rendered
+        assert "Could not list bundled files" in rendered
         assert "Errors:" not in rendered
         stage.close.assert_called_once_with(Status.COMPLETED)
 
@@ -131,7 +139,7 @@ class TestSkillInitializationWarningRendering:
         stage = MagicMock(spec=Stage)
         warning = SkillInitializationException(
             reason="At most 5 skills can be invoked per message; these were ignored: b, c",
-            severity="warning",
+            level=InitializationIssueLevel.WARNING,
         )
         handler = _make_handler(stage, [warning])
 
@@ -157,7 +165,7 @@ class TestSkillInitializationWarningRendering:
         stage = MagicMock(spec=Stage)
         error = SkillInitializationException(reason="boom", url="prompts/bucket/broken")
         warning = SkillInitializationException(
-            reason="bad format", url="prompts/bucket/iffy", severity="warning"
+            reason="bad format", url="prompts/bucket/iffy", level=InitializationIssueLevel.WARNING
         )
         handler = _make_handler(stage, [error, warning])
 
@@ -169,7 +177,7 @@ class TestSkillInitializationWarningRendering:
         assert rendered.index("Errors:") < rendered.index("Warnings:")
         assert "prompts/bucket/broken" in rendered
         assert "prompts/bucket/iffy" in rendered
-        # Both entries have is_hard=False — status stays COMPLETED.
+        # Neither entry is critical — status stays COMPLETED.
         stage.close.assert_called_once_with(Status.COMPLETED)
 
 
@@ -184,7 +192,7 @@ class TestOffloadConfigurationRendering:
         rendered = _stage_content(stage)
         assert "Large tool-response offload" in rendered
         assert "read_lines/search" in rendered
-        # is_hard=False — a lone offload issue keeps the stage COMPLETED.
+        # Not critical — a lone offload issue keeps the stage COMPLETED.
         stage.close.assert_called_once_with(Status.COMPLETED)
 
 
@@ -218,3 +226,96 @@ class TestProjectInstructionsRendering:
         assert "#### Project instructions" in rendered
         assert "PROJECT.md could not be loaded (DIAL Core returned 500)" in rendered
         stage.close.assert_called_once_with(Status.COMPLETED)
+
+
+def _mixed_issues() -> list:
+    return [
+        SkillInitializationException(
+            url="prompts/b/w", reason="a warning", level=InitializationIssueLevel.WARNING
+        ),
+        SkillInitializationException(url="prompts/b/e", reason="an error"),
+        ToolInitializationException(message="connection refused", tool_name="mcp"),
+    ]
+
+
+class TestLevelThreshold:
+    def test_default_warning_level_shows_everything(self):
+        stage = MagicMock(spec=Stage)
+
+        _make_handler(stage, _mixed_issues()).handle_initialization_issues()
+
+        rendered = _stage_content(stage)
+        assert "a warning" in rendered
+        assert "an error" in rendered
+        assert "connection refused" in rendered
+
+    def test_error_level_hides_warnings(self):
+        stage = MagicMock(spec=Stage)
+
+        _make_handler(
+            stage, _mixed_issues(), InitializationIssueLevel.ERROR
+        ).handle_initialization_issues()
+
+        rendered = _stage_content(stage)
+        assert "a warning" not in rendered
+        assert "an error" in rendered
+        assert "connection refused" in rendered
+
+    def test_critical_level_shows_only_hard_issues(self):
+        stage = MagicMock(spec=Stage)
+
+        _make_handler(
+            stage, _mixed_issues(), InitializationIssueLevel.CRITICAL
+        ).handle_initialization_issues()
+
+        rendered = _stage_content(stage)
+        assert "a warning" not in rendered
+        assert "an error" not in rendered
+        assert "connection refused" in rendered
+        stage.close.assert_called_once_with(Status.FAILED)
+
+    def test_stage_not_rendered_when_every_issue_is_hidden(self):
+        stage = MagicMock(spec=Stage)
+        warning = SkillInitializationException(
+            url="prompts/b/w", reason="w", level=InitializationIssueLevel.WARNING
+        )
+
+        _make_handler(
+            stage, [warning], InitializationIssueLevel.ERROR
+        ).handle_initialization_issues()
+
+        stage.open.assert_not_called()
+
+    def test_hidden_issues_are_logged(self, caplog):
+        stage = MagicMock(spec=Stage)
+
+        with caplog.at_level("INFO"):
+            _make_handler(
+                stage, _mixed_issues(), InitializationIssueLevel.CRITICAL
+            ).handle_initialization_issues()
+
+        assert "SkillInitializationException" in caplog.text
+        assert "prompts/b/w" in caplog.text
+        assert "prompts/b/e" in caplog.text
+        # Reasons are free text and stay out of the logs.
+        assert "a warning" not in caplog.text
+        assert "an error" not in caplog.text
+
+    def test_url_query_is_sanitized_in_log_and_stage(self, caplog):
+        url = "https://host/prompts/b/s?sig=secret"
+        warning = SkillInitializationException(
+            url=url, reason="w", level=InitializationIssueLevel.WARNING
+        )
+        error = SkillInitializationException(url=url, reason="e")
+        stage = MagicMock(spec=Stage)
+
+        with caplog.at_level("INFO"):
+            _make_handler(
+                stage, [warning, error], InitializationIssueLevel.ERROR
+            ).handle_initialization_issues()
+
+        rendered = _stage_content(stage)
+        assert "https://host/prompts/b/s" in caplog.text
+        assert "https://host/prompts/b/s" in rendered
+        assert "secret" not in caplog.text
+        assert "secret" not in rendered

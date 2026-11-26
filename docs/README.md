@@ -45,6 +45,7 @@ See [Feature Lifecycle](../README.md#feature-lifecycle) in the root README.
 | DIAL files tools | [CONFIGURATION — DIAL files](../CONFIGURATION.md#dial-files-configuration) | — | [dial_files_tools.md](./designs/dial_files_tools.md) |
 | Tool access filter | [CONFIGURATION — Tool access filter](../CONFIGURATION.md#tool-access-filter-configuration) | [agent.md](./agent.md#tool-access-filter) | [access_aware_tool_availability.md](./designs/access_aware_tool_availability.md) |
 | Stage display | [CONFIGURATION — Stage display](../CONFIGURATION.md#stage-display-configuration) | — | [stage_display_level.md](./designs/stage_display_level.md) |
+| Initialization issues level | [CONFIGURATION — Initialization issues](../CONFIGURATION.md#initialization-issues-configuration) | [agent.md](./agent.md#6-error-handling) | — |
 | Nested sub-stage propagation | [CONFIGURATION — Stage display](../CONFIGURATION.md#stage-display-configuration) | — | [sub-stage-propagation.md](./designs/sub-stage-propagation.md) |
 | Time awareness | [CONFIGURATION — Timestamp](../CONFIGURATION.md#timestamp-configuration) | [time_awareness.md](./time_awareness.md) | [time_awareness.md](./designs/time_awareness.md), [user_timezone.md](./designs/user_timezone.md) |
 | Resumable subagents | [CONFIGURATION — Conversation mode](../CONFIGURATION.md#conversation-mode) | — | [subagents_conversation_mode.md](./designs/subagents_conversation_mode.md) |

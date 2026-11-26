@@ -3,7 +3,7 @@ import logging
 
 from injector import inject
 
-from quickapp.common.exceptions import SkillInitializationException
+from quickapp.common.exceptions import InitializationIssueLevel, SkillInitializationException
 from quickapp.config.skill import DialSkillConfig
 from quickapp.skills.dial_resource._dial_skill_reader import DialSkillReader
 from quickapp.skills.dial_resource._dial_skills_client import SkillInventory, _DialSkillsClient
@@ -47,7 +47,7 @@ class DialSkillResolver(DialSkillResourceResolver):
         Mirrors ``DialPromptSkillResolver.resolve``: dedup by URL, fetch in
         parallel, dedup by name (first configured wins), and turn both per-URL
         failures and non-fatal warnings into ``SkillInitializationException``
-        entries distinguished by ``severity``.
+        entries distinguished by ``level``.
         """
         seen_urls: set[str] = set()
         unique_configs: list[DialSkillConfig] = []
@@ -74,7 +74,9 @@ class DialSkillResolver(DialSkillResourceResolver):
 
             for warning in result.warnings:
                 exceptions.append(
-                    SkillInitializationException(url=url, reason=warning, severity="warning")
+                    SkillInitializationException(
+                        url=url, reason=warning, level=InitializationIssueLevel.WARNING
+                    )
                 )
 
             if result.metadata.name in seen_names:
@@ -110,7 +112,7 @@ class DialSkillResolver(DialSkillResourceResolver):
 
     async def _fetch_one(self, config: DialSkillConfig) -> ResolvedSkill:
         manifest = await self._client.read_manifest(config.url)
-        parsed = parse_frontmatter(manifest, config.url)
+        metadata = parse_frontmatter(manifest, config.url)
 
         inventory, warnings = await self._list_files(config.url)
         block = _build_skill_files_block(inventory, self._client.max_files)
@@ -119,10 +121,10 @@ class DialSkillResolver(DialSkillResourceResolver):
         return ResolvedSkill(
             reader=self._reader,
             url=config.url,
-            metadata=parsed.metadata,
+            metadata=metadata,
             content=content,
             files=inventory.files,
-            warnings=[*parsed.warnings, *warnings],
+            warnings=warnings,
         )
 
     async def _list_files(self, url: str) -> tuple[SkillInventory, list[str]]:

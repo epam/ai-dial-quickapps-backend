@@ -60,8 +60,7 @@ Detailed instructions and guidelines for the agent...
 ## Metadata Fields
 
 Only a missing frontmatter, invalid YAML, a missing `name` or `description`, or an invalid `allowed-tools` format
-reject a skill. The other constraints below are recommendations: breaking them logs a warning, and the skill still
-loads.
+reject a skill. The other constraints below are Agent Skills spec recommendations; QuickApps doesn't check them.
 
 | Field           | Required | Description                                          | Constraints                                                                                        |
 |-----------------|----------|------------------------------------------------------|----------------------------------------------------------------------------------------------------|
@@ -121,9 +120,9 @@ optional features. The table below summarises what is and isn't supported.
 
 | Feature | Status | Notes |
 |---|---|---|
-| `SKILL.md` with YAML frontmatter | Supported | All standard frontmatter fields are parsed and validated. |
+| `SKILL.md` with YAML frontmatter | Supported | All standard frontmatter fields are parsed; only the structure is validated. |
 | Directory-based layout (`skill-name/SKILL.md`) | Supported | Directory name should match `name` in frontmatter; a mismatch only logs a warning. |
-| `name` validation (length, charset, consecutive hyphens) | Partial | Violations log a warning; the skill still loads. |
+| `name` validation (length, charset, consecutive hyphens) | Not supported | Not checked; the skill loads as is. |
 | `description`, `license`, `compatibility`, `metadata` | Supported | |
 | `allowed-tools` | Partial | Exposed in XML metadata but **not enforced** at runtime. |
 | Optional subdirectories (`scripts/`, `references/`, `assets/`) | Partial | Supported for [DIAL skill resources](#dial-skill-resources) (text files only). Predefined and DIAL-prompt skills read `SKILL.md` alone. |
@@ -168,8 +167,7 @@ The `url` field must be a relative path including the `prompts/` resource type p
 DIAL prompt skills are validated at request time using the same rules as predefined skills:
 
 - Must have YAML frontmatter delimited by `---`
-- `name` (required): max 64 chars, lowercase alphanumeric + hyphens (a violation only logs a warning)
-- `description` (required): max 1024 chars (a violation only logs a warning)
+- `name` and `description` are required (length and naming limits aren't checked)
 - Prompts with no content, empty content, or invalid frontmatter are silently skipped with a warning log
 
 ### Name Collision
@@ -322,7 +320,7 @@ the rest of the conversation. The model does not get to choose — a picked skil
   lets Core re-share the skill on every later turn and keeps the bundled files readable.
 - `content` is opaque. QuickApps never parses it, so the `/name` token is just text.
 - **Several skills per message**, up to `SKILL_INVOCATION_MAX_SKILLS_PER_MESSAGE` (default `5`); any
-  chip beyond the cap is ignored and reported as a warning in the initialization issues stage. Across
+  chip beyond the cap is ignored and reported as an error in the initialization issues stage. Across
   the whole conversation, at most `SKILL_INVOCATION_MAX_SKILLS` (default `10`) distinct picks stay
   resolved, newest first — the picks made on the message being answered are always kept, and the
   remaining budget goes to the next-newest older picks.
