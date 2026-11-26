@@ -1,16 +1,13 @@
-from typing import ClassVar
-
-from .initialization import InitializationException
+from .initialization import InitializationException, InitializationIssueLevel
 
 
 class OffloadConfigurationException(InitializationException):
     """Large tool-response offload is enabled but its required DIAL files
-    read-back tools are not exposed, so offload was disabled. Soft: the request
-    proceeds (large content stays inline); rendered as a warning in the
-    Initialization issues stage.
+    read-back tools are not exposed, so offload was disabled. The request proceeds
+    (large content stays inline).
     """
 
-    is_hard: ClassVar[bool] = False
+    level = InitializationIssueLevel.ERROR
 
     def __init__(self, missing_tools: list[str]):
         self.missing_tools = missing_tools

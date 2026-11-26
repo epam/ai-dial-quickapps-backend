@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock
 
-from quickapp.common.exceptions import ToolInitializationException
+from quickapp.common.exceptions import InitializationIssueLevel, ToolInitializationException
 from quickapp.config.web_fetch import WebFetchConfig
 from quickapp.web_tooling.web_tooling_module import WebToolingModule
 
@@ -71,7 +71,7 @@ class TestEgressGate:
         )
         assert len(errors) == 1
         assert isinstance(errors[0], ToolInitializationException)
-        assert errors[0].is_hard
+        assert errors[0].level == InitializationIssueLevel.CRITICAL
         assert errors[0].tool_name == "internal_web_fetch"
 
     def test_enabled_with_egress_enabled_has_no_initialization_error(self):
