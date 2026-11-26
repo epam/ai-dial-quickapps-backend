@@ -104,7 +104,6 @@ class _SkillInvocationInitializer(CompletionInitializer):
                     f"At most {self._settings.max_skills_per_message} skills can be"
                     f" invoked per message; these were ignored: {names}"
                 ),
-                severity="warning",
             )
         )
 
