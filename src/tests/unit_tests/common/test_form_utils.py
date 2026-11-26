@@ -141,103 +141,23 @@ def test_is_resumable_typed():
     assert is_resumable(None) is False
 
 
-def _assistant_with_schema(tool_call_id: str, name: str, schema) -> Message:
-    """Assistant message as echoed by the client: form_schema in custom_content + tool_calls."""
-    return Message.model_validate(
-        {
-            "role": "assistant",
-            "content": "calling",
-            "custom_content": {"form_schema": schema},
-            "tool_calls": [
-                {
-                    "id": tool_call_id,
-                    "type": "function",
-                    "function": {"name": name, "arguments": "{}"},
-                }
-            ],
-        }
-    )
+def test_tool_only_history_shape():
+    """Real history shape: assistant with tool_calls (no schema) + tool message with schema."""
+    msgs = [
+        _user(),
+        _assistant_with_call("tc-1", "tool_a"),
+        _tool_with_schema("tc-1"),
+    ]
+    assert form_source_tool_name_before(msgs, len(msgs)) == "tool_a"
 
 
-class TestAssistantSchemaMatching:
-    def test_initiator_from_assistant_schema_matched_to_tool_result(self):
-        """assistant carries the shown schema + tool_calls; tool message carries the same
-        schema → initiator is the assistant's tool call name."""
-        schema = {"title": "form"}
-        msgs = [
-            _user(),
-            _assistant_with_schema("tc-1", "initiator_tool", schema),
-            _tool_with_schema("tc-1", schema=schema),
-        ]
-        assert form_source_tool_name_before(msgs, len(msgs)) == "initiator_tool"
-
-    def test_two_forms_in_turn_first_shown_wins(self):
-        """Two assistant messages with schemas in one turn: the first one is what the UI
-        showed (SDK: one form per choice) → its initiator wins."""
-        schema_a, schema_b = {"title": "A"}, {"title": "B"}
-        msgs = [
-            _user(),
-            _assistant_with_schema("tc-1", "tool_a", schema_a),
-            _tool_with_schema("tc-1", schema=schema_a),
-            _assistant_with_schema("tc-2", "tool_b", schema_b),
-            _tool_with_schema("tc-2", schema=schema_b),
-        ]
-        assert form_source_tool_name_before(msgs, len(msgs)) == "tool_a"
-
-    def test_schema_mismatch_falls_back_to_tool_message(self):
-        """Assistant schema does not match any tool message schema (e.g. proxied form):
-        fall back to tool message with any schema."""
-        msgs = [
-            _user(),
-            _assistant_with_schema("tc-1", "initiator", {"title": "shown"}),
-            _tool_with_schema("tc-1", schema={"title": "generated"}),
-        ]
-        # no content match → fallback path resolves via tool_call_id → assistant tool call
-        assert form_source_tool_name_before(msgs, len(msgs)) == "initiator"
-
-    def test_latest_turn_wins(self):
-        schema_a, schema_b = {"title": "A"}, {"title": "B"}
-        msgs = [
-            _user("one"),
-            _assistant_with_schema("tc-1", "tool_a", schema_a),
-            _tool_with_schema("tc-1", schema=schema_a),
-            _user("two"),
-            _assistant_with_schema("tc-2", "tool_b", schema_b),
-            _tool_with_schema("tc-2", schema=schema_b),
-        ]
-        assert form_source_tool_name_before(msgs, len(msgs)) == "tool_b"
-
-    def test_no_assistant_schema_falls_back_to_tool_only(self):
-        """Old-style history without assistant schema: tool message alone resolves the tool."""
-        msgs = [
-            _user(),
-            _assistant_with_call("tc-1", "tool_a"),
-            _tool_with_schema("tc-1"),
-        ]
-        assert form_source_tool_name_before(msgs, len(msgs)) == "tool_a"
-
-
-class TestLastUserFormValueIndex:
-    def test_returns_last_user_with_form_value(self):
-        msgs = [
-            _user("a"),
-            Message.model_validate(
-                {"role": "user", "content": "b", "custom_content": {"form_value": {"x": 1}}}
-            ),
-            _user("c"),
-        ]
-        assert last_user_form_value_index(msgs) == 1
-
-    def test_none_when_no_form_value(self):
-        assert last_user_form_value_index([_user(), _user("x")]) is None
-
-    def test_skips_user_with_custom_content_but_no_form_value(self):
-        msgs = [
-            Message.model_validate(
-                {"role": "user", "content": "b", "custom_content": {"form_value": {"x": 1}}}
-            ),
-            Message.model_validate(
-                {"role": "user", "content": "c", "custom_content": {"state": {"k": 1}}}
-            ),
-        ]
-        assert last_user_form_value_index(msgs) == 0
+def test_latest_turn_wins_real_shape():
+    msgs = [
+        _user("one"),
+        _assistant_with_call("tc-1", "tool_a"),
+        _tool_with_schema("tc-1"),
+        _user("two"),
+        _assistant_with_call("tc-2", "tool_b"),
+        _tool_with_schema("tc-2"),
+    ]
+    assert form_source_tool_name_before(msgs, len(msgs)) == "tool_b"

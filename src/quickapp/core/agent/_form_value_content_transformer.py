@@ -6,6 +6,7 @@ from injector import inject
 
 from quickapp.common.abstract.base_transformer import MessagesTransformer
 from quickapp.common.form_utils import (
+    find_tool,
     find_tool_conversation_mode,
     form_source_tool_name_before,
     is_resumable,
@@ -50,7 +51,7 @@ class _FormValueContentTransformer(MessagesTransformer):
                 result.append(message)
                 continue
             source_tool = form_source_tool_name_before(messages, i)
-            tool = self._find_tool(source_tool)
+            tool = find_tool(self.__tools, source_tool)
             conversation_mode = find_tool_conversation_mode(self.__tools, source_tool)
             if is_resumable(conversation_mode):
                 result.append(message)
@@ -68,14 +69,6 @@ class _FormValueContentTransformer(MessagesTransformer):
         if injected:
             logger.debug("Injected form_value into content of %d message(s)", injected)
         return result
-
-    def _find_tool(self, tool_name: str | None) -> StagedBaseTool | None:
-        if tool_name is None:
-            return None
-        for tool in self.__tools:
-            if tool.openai_function_name() == tool_name:
-                return tool
-        return None
 
     @staticmethod
     def _propagate_to_content(tool: StagedBaseTool | None) -> bool:
