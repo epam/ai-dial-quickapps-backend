@@ -194,17 +194,6 @@
           "default": null,
           "description": "The configuration for the tool parameter in stage."
         },
-        "default": {
-          "anyOf": [
-            {},
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "The default value if value is not set",
-          "title": "Default"
-        },
         "type": {
           "const": "array",
           "title": "Type",
@@ -242,6 +231,17 @@
         "description": {
           "title": "Description",
           "type": "string"
+        },
+        "default": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The default value if value is not set",
+          "title": "Default"
         }
       },
       "required": [
@@ -265,17 +265,6 @@
           ],
           "default": null,
           "description": "The configuration for the tool parameter in stage."
-        },
-        "default": {
-          "anyOf": [
-            {},
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "The default value if value is not set",
-          "title": "Default"
         },
         "type": {
           "const": null,
@@ -306,17 +295,6 @@
           ],
           "default": null,
           "description": "The configuration for the tool parameter in stage."
-        },
-        "default": {
-          "anyOf": [
-            {},
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "The default value if value is not set",
-          "title": "Default"
         },
         "type": {
           "const": "object",
@@ -373,6 +351,17 @@
           ],
           "default": null,
           "title": "Required"
+        },
+        "default": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The default value if value is not set",
+          "title": "Default"
         }
       },
       "required": [
@@ -396,17 +385,6 @@
           ],
           "default": null,
           "description": "The configuration for the tool parameter in stage."
-        },
-        "default": {
-          "anyOf": [
-            {},
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "The default value if value is not set",
-          "title": "Default"
         },
         "type": {
           "enum": [
@@ -442,6 +420,17 @@
           ],
           "default": null,
           "title": "Enum"
+        },
+        "default": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The default value if value is not set",
+          "title": "Default"
         }
       },
       "required": [
@@ -1828,6 +1817,10 @@
           "$ref": "#/$defs/StageDisplayConfig",
           "description": "Controls which stage levels are rendered to the user."
         },
+        "initialization_issues": {
+          "$ref": "#/$defs/InitializationIssuesConfig",
+          "description": "Controls which issue levels the Initialization issues stage shows."
+        },
         "dial_files": {
           "anyOf": [
             {
@@ -2147,6 +2140,33 @@
       "title": "HookEvent",
       "type": "string"
     },
+    "InitializationIssueLevel": {
+      "enum": [
+        "warning",
+        "error",
+        "critical"
+      ],
+      "title": "InitializationIssueLevel",
+      "type": "string"
+    },
+    "InitializationIssuesConfig": {
+      "properties": {
+        "level": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/InitializationIssueLevel"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Lowest issue level shown in the Initialization issues stage: warning=all issues; error=errors and critical failures; critical=critical failures only. Hidden issues are still logged. Unset defers to `DEFAULT_INITIALIZATION_ISSUES_LEVEL`."
+        }
+      },
+      "title": "InitializationIssuesConfig",
+      "type": "object"
+    },
     "InjectionFrequency": {
       "enum": [
         "always",
@@ -2324,6 +2344,17 @@
         "description": {
           "title": "Description",
           "type": "string"
+        },
+        "default": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The default value if value is not set",
+          "title": "Default"
         }
       },
       "required": [
@@ -2409,6 +2440,17 @@
           ],
           "default": null,
           "title": "Required"
+        },
+        "default": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The default value if value is not set",
+          "title": "Default"
         }
       },
       "required": [
@@ -2455,6 +2497,17 @@
           ],
           "default": null,
           "title": "Enum"
+        },
+        "default": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The default value if value is not set",
+          "title": "Default"
         }
       },
       "required": [
@@ -3203,17 +3256,6 @@
           "default": null,
           "description": "The configuration for the tool parameter in stage."
         },
-        "default": {
-          "anyOf": [
-            {},
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "The default value if value is not set",
-          "title": "Default"
-        },
         "type": {
           "const": "array",
           "title": "Type",
@@ -3251,6 +3293,17 @@
         "description": {
           "title": "Description",
           "type": "string"
+        },
+        "default": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The default value if value is not set",
+          "title": "Default"
         }
       },
       "required": [
@@ -3278,17 +3331,6 @@
           ],
           "default": null,
           "description": "The configuration for the tool parameter in stage."
-        },
-        "default": {
-          "anyOf": [
-            {},
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "The default value if value is not set",
-          "title": "Default"
         },
         "type": {
           "const": null,
@@ -3358,17 +3400,6 @@
           "default": null,
           "description": "The configuration for the tool parameter in stage."
         },
-        "default": {
-          "anyOf": [
-            {},
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "The default value if value is not set",
-          "title": "Default"
-        },
         "type": {
           "const": "object",
           "title": "Type",
@@ -3424,6 +3455,17 @@
           ],
           "default": null,
           "title": "Required"
+        },
+        "default": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The default value if value is not set",
+          "title": "Default"
         }
       },
       "required": [
@@ -3451,17 +3493,6 @@
           ],
           "default": null,
           "description": "The configuration for the tool parameter in stage."
-        },
-        "default": {
-          "anyOf": [
-            {},
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "The default value if value is not set",
-          "title": "Default"
         },
         "type": {
           "enum": [
@@ -3497,6 +3528,17 @@
           ],
           "default": null,
           "title": "Enum"
+        },
+        "default": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The default value if value is not set",
+          "title": "Default"
         }
       },
       "required": [

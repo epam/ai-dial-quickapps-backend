@@ -11,7 +11,7 @@ class SkillResolution(BaseModel):
     """What one resolution pass produced, whatever source ran it.
 
     ``exceptions`` carries both per-URL failures and non-fatal warnings,
-    distinguished by ``severity`` — resolving is best-effort, so a bad entry
+    distinguished by ``level`` — resolving is best-effort, so a bad entry
     never costs the caller the good ones.
     """
 

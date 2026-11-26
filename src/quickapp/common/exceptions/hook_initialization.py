@@ -1,12 +1,12 @@
-from typing import ClassVar
+from quickapp.common.utils import fenced_code_block
 
-from .initialization import InitializationException
+from .initialization import InitializationException, InitializationIssueLevel
 
 
 class HookInitializationException(InitializationException):
     """Raised when a hook references a tool not found in the initialized tools list."""
 
-    is_hard: ClassVar[bool] = False
+    level = InitializationIssueLevel.ERROR
 
     def __init__(
         self, message: str, tool_name: str = "", toolset_name: str = "", details: str = ""
@@ -18,3 +18,8 @@ class HookInitializationException(InitializationException):
         self.tool_name = tool_name
         self.toolset_name = toolset_name
         self.details = details
+
+    @property
+    def user_facing_message(self) -> str:
+        message = f"**{self.tool_name}{self.toolset_name}**: {self}"
+        return f"{message}\n{fenced_code_block(self.details)}" if self.details else message

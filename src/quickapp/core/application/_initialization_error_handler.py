@@ -7,6 +7,7 @@ from quickapp.common.exceptions import (
     ConfigResolutionException,
     HookInitializationException,
     InitializationException,
+    InitializationIssueLevel,
     OffloadConfigurationException,
     OrchestratorSystemPromptException,
     ProjectInstructionsException,
@@ -14,7 +15,6 @@ from quickapp.common.exceptions import (
     SkillInitializationException,
     ToolInitializationException,
 )
-from quickapp.common.utils import fenced_code_block
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +30,11 @@ _CATASTROPHIC_HEADER = (
 )
 _PER_URL_ERRORS_HEADER = "> Errors:"
 _PER_URL_WARNINGS_HEADER = "> Warnings:"
+_LEVEL_ORDER = {
+    InitializationIssueLevel.WARNING: 0,
+    InitializationIssueLevel.ERROR: 1,
+    InitializationIssueLevel.CRITICAL: 2,
+}
 
 
 @inject
@@ -38,9 +43,11 @@ class _InitializationErrorHandler:
         self,
         stage_provider: ProviderOf[Stage],
         initialization_exceptions_provider: ProviderOf[list[InitializationException]],
+        level_provider: ProviderOf[InitializationIssueLevel],
     ):
         self.__initialization_exceptions_provider = initialization_exceptions_provider
         self.__stage_provider = stage_provider
+        self.__level_provider = level_provider
 
     def handle_initialization_issues(self) -> None:
         try:
@@ -52,6 +59,7 @@ class _InitializationErrorHandler:
             )
             exceptions = []
 
+        exceptions = self.__filter_by_level(exceptions)
         if not exceptions:
             return
 
@@ -65,33 +73,22 @@ class _InitializationErrorHandler:
         project_lines: list[str] = []
         for exc in exceptions:
             if isinstance(exc, OrchestratorSystemPromptException):
-                system_prompt_lines.append(f"- {exc}")
-            elif isinstance(exc, ToolInitializationException):
-                tool_lines.append(f"- **{exc.tool_name}{exc.toolset_name}**: {exc}")
-                if exc.details:
-                    tool_lines.append(fenced_code_block(exc.details))
+                system_prompt_lines.append(f"- {exc.user_facing_message}")
+            elif isinstance(exc, (ToolInitializationException, ConfigResolutionException)):
+                tool_lines.append(f"- {exc.user_facing_message}")
             elif isinstance(exc, HookInitializationException):
-                hook_lines.append(f"- **{exc.tool_name}{exc.toolset_name}**: {exc}")
-                if exc.details:
-                    hook_lines.append(fenced_code_block(exc.details))
+                hook_lines.append(f"- {exc.user_facing_message}")
             elif isinstance(exc, OffloadConfigurationException):
-                offload_lines.append(f"- {exc}")
+                offload_lines.append(f"- {exc.user_facing_message}")
             elif isinstance(exc, ProjectInstructionsException):
-                project_lines.append(f"- {exc}")
-            elif isinstance(exc, ConfigResolutionException):
-                tool_lines.append(f"- **template '{exc.template_name}'**: {exc}")
-                if exc.details:
-                    tool_lines.append(fenced_code_block(exc.details))
+                project_lines.append(f"- {exc.user_facing_message}")
             elif isinstance(exc, SkillCatastrophicInitializationException):
-                catastrophic_lines.append(f"- {exc.reason}")
+                catastrophic_lines.append(f"- {exc.user_facing_message}")
             elif isinstance(exc, SkillInitializationException):
-                # A skill issue that belongs to the message rather than to one URL
-                # (e.g. more skills invoked than a message may carry) has no url.
-                line = f"- {exc.reason}" if exc.url is None else f"- **{exc.url}**: {exc.reason}"
-                if exc.severity == "warning":
-                    per_url_warning_lines.append(line)
+                if exc.level == InitializationIssueLevel.WARNING:
+                    per_url_warning_lines.append(f"- {exc.user_facing_message}")
                 else:
-                    per_url_error_lines.append(line)
+                    per_url_error_lines.append(f"- {exc.user_facing_message}")
             else:
                 logger.warning(
                     "Unhandled InitializationException subclass %s; not rendered to stage",
@@ -122,7 +119,11 @@ class _InitializationErrorHandler:
         if project_lines:
             sections.append([_PROJECT_SECTION, *project_lines])
 
-        status = Status.FAILED if any(exc.is_hard for exc in exceptions) else Status.COMPLETED
+        status = (
+            Status.FAILED
+            if any(exc.level == InitializationIssueLevel.CRITICAL for exc in exceptions)
+            else Status.COMPLETED
+        )
         stage = self.__stage_provider.get()
         stage.open()
         try:
@@ -130,3 +131,23 @@ class _InitializationErrorHandler:
             stage.append_content("\n\n".join("\n".join(section) for section in sections))
         finally:
             stage.close(status)
+
+    def __filter_by_level(
+        self, exceptions: list[InitializationException]
+    ) -> list[InitializationException]:
+        if not exceptions:
+            return exceptions
+        level = self.__level_provider.get()
+        shown: list[InitializationException] = []
+        for exc in exceptions:
+            if _LEVEL_ORDER[exc.level] >= _LEVEL_ORDER[level]:
+                shown.append(exc)
+            else:
+                logger.info(
+                    "Initialization issue hidden below level '%s': %s (%s) %s",
+                    level.value,
+                    type(exc).__name__,
+                    exc.level.value,
+                    exc,
+                )
+        return shown

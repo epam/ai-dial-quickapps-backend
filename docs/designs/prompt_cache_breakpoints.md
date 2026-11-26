@@ -90,7 +90,7 @@ come back.
 | **A. Admin presets a request-level breakpoint in Core `defaults`** | Already possible with no QuickApps change, and it also caches the history. But the Bedrock adapter does not support it, and it applies to every caller of the deployment. It **composes** with this design: it takes the 1 slot we keep free. Our breakpoints use the default TTL, so the preset must too. |
 | **B. QuickApps sends a request-level breakpoint** | Same Bedrock gap. D's last-message breakpoint moves with the history the same way and works on every Claude adapter. |
 | **C. One explicit breakpoint on the system message** (the previous draft) | Superseded by D, which keeps it as the first priority. On its own it caches only tools + system. |
-| **D. Breakpoints on the system message, the last message and the last function tool** | **Chosen.** All Claude adapters support message and tool breakpoints. In a local test (Claude Sonnet 5.5, 5 turns of exactly 2 calls each, ~6.7k-token system prompt, 8 tools) it cut the cost by 66%, against 55% for C. The history is rewritten on every turn ([Known Issues](#known-issues)), so the first call of a turn misses the history entry and only the 2nd call reads it. With 1 call per turn, D costs more than C. |
+| **D. Breakpoints on the system message, the last message and the last function tool** | **Chosen.** All Claude adapters support message and tool breakpoints. In a local test (Claude Sonnet 5.5, 5 turns of exactly 2 calls each, ~6.7k-token system prompt, 8 tools) it cut the cost by 66%, against 55% for C. Measured before the `read_skill` pair was made stable: the history was rewritten on every turn, so the first call of a turn missed the history entry and only the 2nd call read it, and with 1 call per turn D cost more than C. Mechanisms that still rewrite the history are in [Known Issues](#known-issues). |
 
 The system-message breakpoint also caches the tools, because providers cache in the order
 `tools → system → messages`. The last-tool breakpoint keeps the tools cached when only the system prompt
@@ -136,8 +136,9 @@ writes a new entry for the new tool set. The next turn starts with the eager too
 
 **Trigger:** The user sends the next message within the cache TTL.
 **Behavior:** Today the replayed history changes on every turn ([Known Issues](#known-issues)), so the first
-call reads tools + system prompt and writes the history again. Once the history is stable, it would read the
-history up to the previous turn's last breakpoint.
+call reads the tools + system prompt, and reads the history up to the previous turn's last breakpoint as long
+as no pair in it changes (the file-transfer `read_skill` pair no longer does; the mechanisms listed in
+[Known Issues](#known-issues) still can).
 **Outcome:** Tools + system prompt are read. The history is written again once per turn, and read back only if
 the turn makes a 2nd call.
 
@@ -242,18 +243,13 @@ Documented in [docs/agent.md — Prompt caching](../agent.md#prompt-caching). Un
 - **Load concentration.** On a multi-upstream deployment with only `cacheSupported`, every conversation of an
   app has the same routing key. Core sends them all to the upstream that holds the entry while it lives, and
   falls back only when that upstream is unavailable. Watch rate limits on that upstream.
-- **The history misses on the first call of every turn.** Everything after the first user message changes on
-  every turn:
-  - Synthetic pairs with `APPEND_IF_CHANGED` (the file-transfer `read_skill` pair, config hooks with
-    `append_if_changed`) are found in the history and rebuilt in place.
-    `SyntheticToolCallInjector._inject_append_if_changed` calls `_enrich_state` even when the pair is identical.
-  - With `features.timestamp`, `_TimestampMetadataEnricher` stamps the rebuilt pair with a new
-    `response_timestamp`, and `_TimestampAnnotationTransformer` renders it as a new `[Timestamp: …]` line in
-    the tool content.
-  - Observed in a local test on Claude Sonnet 5.5: every turn's first call read exactly the tools + system entry. The
-    stored history does not show it, because the annotation is added when the request is built.
+- **The history can still miss on the first call of a turn.** An identical `APPEND_IF_CHANGED` pair (the
+  file-transfer `read_skill` pair, config hooks with `append_if_changed`) is left untouched by
+  `SyntheticToolCallInjector._inject_append_if_changed`, so it keeps the timestamp of the turn it first appeared
+  in and no longer changes the history. Before this, it was rebuilt and re-stamped every turn, so every turn's
+  first call read only the tools + system entry.
 
-  Other mechanisms rewrite the history too:
+  Other mechanisms still rewrite the history:
   - `_GetContentHistoryPolicy` rewrites `get_content` results when it saves history.
   - Hooks with a TTL `refresh_condition`, or with templated arguments, rewrite their synthetic pair in place.
   - Skill invocations, the file-transfer instruction, MCP eager resources and hooks are first inserted right
@@ -270,19 +266,11 @@ Documented in [docs/agent.md — Prompt caching](../agent.md#prompt-caching). Un
 
 - **A request-level breakpoint (option B).** The Bedrock adapter does not support it, and the last-message
   breakpoint already moves with the history.
-- **Making the history byte-stable across turns** ([Known Issues](#known-issues)). The first step is small:
-  `_inject_append_if_changed` returns `messages` unchanged when the found pair's `tool_calls` (call id, name,
-  rendered arguments) match the new ones, as its own comment says ("no-op when identical"). Pairs whose TTL
-  expiry or templated arguments changed are still rebuilt. Side effect: an unchanged pair keeps the timestamp
-  of the turn it first appeared in.
-  - A local trial of this change (same Claude Sonnet 5.5 dialog as row D) made every turn's first call read
-    the whole previous history: 77% cheaper than without breakpoints, against 66% without the fix. With it, a
-    single-call turn no longer pays the +25% history write; only the last call before the user leaves or
-    pauses past the TTL does.
-  - It changes the shared synthetic-injection mechanism (`append_if_changed` hooks and the file-transfer
-    `read_skill` pair), so it belongs in its own change. After it, update UC-5, the "Reused by" column and the
-    cost Known Issues.
-  - The other mechanisms need their own design.
+- **Making the history byte-stable across turns** — done for identical `append_if_changed` pairs
+  (`_inject_append_if_changed` returns `messages` unchanged when the call id and displayed arguments match).
+  Side effect: an unchanged pair keeps the timestamp of the turn it first appeared in. Pairs whose TTL expiry or
+  templated arguments changed are still rebuilt, and the other mechanisms in [Known Issues](#known-issues) need
+  their own design.
 - **Logging cache counters.** QuickApps reads only `prompt_tokens` and `completion_tokens`, so cache hits are
   not visible in its logs; the adapters return `cached_tokens` and `cache_write_tokens`. Logging those counts
   on "Model call completed" is a separate, small change. Until then, check hits in the provider's usage

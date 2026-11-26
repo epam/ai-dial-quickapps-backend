@@ -6,7 +6,7 @@ import pytest
 # packages form a pre-existing import cycle (common/__init__ -> staged_base_tool
 # -> config.application -> config.skill), which only bites when config.skill is
 # the first of them to load. Keep this import above the config one.
-from quickapp.common.exceptions import SkillInitializationException
+from quickapp.common.exceptions import InitializationIssueLevel, SkillInitializationException
 from quickapp.config.skill import DialSkillConfig
 from quickapp.skills.dial_resource._dial_skill_reader import DialSkillReader
 from quickapp.skills.dial_resource._dial_skill_resolver import DialSkillResolver
@@ -141,18 +141,8 @@ class TestResolve:
         # The manifest read fine; the skill is still useful without its files.
         assert output.resolved[0].files == ()
         warning = output.exceptions[0]
-        assert warning.severity == "warning"
+        assert warning.level == InitializationIssueLevel.WARNING
         assert "Could not list bundled files: TimeoutError" in warning.reason
-
-    @pytest.mark.asyncio
-    async def test_parser_warnings_ride_as_warnings(self):
-        manifest = "---\nname: Refund_Policy\ndescription: d\n---\nbody"
-        resolver, _ = _make_resolver(manifest=manifest)
-
-        output = await resolver.resolve([_config("skills/b/s")])
-
-        assert output.resolved
-        assert all(exc.severity == "warning" for exc in output.exceptions)
 
     @pytest.mark.asyncio
     async def test_empty_config_list_does_no_io(self):

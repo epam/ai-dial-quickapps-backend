@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from quickapp.common.exceptions import (
+    InitializationIssueLevel,
     SkillCatastrophicInitializationException,
     SkillInitializationException,
 )
@@ -104,7 +105,7 @@ class TestDialPromptSkillInitializer:
         exc = context.exceptions[0]
         assert isinstance(exc, SkillInitializationException)
         assert not isinstance(exc, SkillCatastrophicInitializationException)
-        assert exc.is_hard is False
+        assert exc.level == InitializationIssueLevel.ERROR
         assert exc.url == "prompts/b/broken"
 
     @pytest.mark.asyncio
@@ -125,5 +126,5 @@ class TestDialPromptSkillInitializer:
         assert len(context.exceptions) == 1
         exc = context.exceptions[0]
         assert isinstance(exc, SkillCatastrophicInitializationException)
-        assert exc.is_hard is True
+        assert exc.level == InitializationIssueLevel.CRITICAL
         assert "DIAL Core is down" in exc.reason

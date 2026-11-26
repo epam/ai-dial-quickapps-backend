@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from aidial_sdk.chat_completion import Message, Role
 
-from quickapp.common.exceptions import SkillInitializationException
+from quickapp.common.exceptions import InitializationIssueLevel, SkillInitializationException
 from quickapp.skills.invocation._invoked_skills_context import _InvokedSkillsContext
 from quickapp.skills.invocation._settings import SkillInvocationSettings
 from quickapp.skills.invocation._skill_invocation_initializer import _SkillInvocationInitializer
@@ -108,7 +108,7 @@ class TestInitialize:
         await initializer.initialize()
 
         assert len(context.exceptions) == 1
-        assert "Failed to resolve user skills" in str(context.exceptions[0])
+        assert "Failed to resolve user skills" in context.exceptions[0].reason
 
 
 class TestMultipleSkillsPerMessage:
@@ -126,14 +126,14 @@ class TestMultipleSkillsPerMessage:
         ]
 
     @pytest.mark.asyncio
-    async def test_extra_chips_over_the_cap_on_this_turn_are_reported_as_a_warning(self):
+    async def test_extra_chips_over_the_cap_on_this_turn_are_reported_as_an_error(self):
         initializer, _, context = _make(
             [_user("skills/b/a", "skills/b/z", "skills/b/k")], max_skills_per_message=2
         )
 
         await initializer.initialize()
 
-        assert context.exceptions[0].severity == "warning"
+        assert context.exceptions[0].level == InitializationIssueLevel.ERROR
         assert _reasons(context) == [
             "At most 2 skills can be invoked per message; these were ignored: k"
         ]
