@@ -116,10 +116,16 @@ Tool-initialization failures and skill-loading failures (invalid DIAL prompt fro
 duplicate names, predefined-vs-external name collisions, or a whole-subsystem resolver failure) share a
 common `InitializationException` hierarchy and flow through a single `list[InitializationException]`
 multiprovider. `_InitializationErrorHandler` renders one `"Initialization issues"` stage with per-feature
-sections (`#### Tool initialization`, `#### Skill loading`) and closes it `FAILED` if any exception marks
-itself hard (`is_hard=True`) — otherwise `COMPLETED`. Tool-init failures and whole-subsystem skill
-failures are hard; per-URL skill failures are soft. The request always proceeds; the close status is a
-UI cue.
+sections (`#### Tool initialization`, `#### Skill loading`). Each exception carries one `level`
+(`warning` / `error` / `critical`): a class default that an instance may override (only skills do, e.g.
+`warning` when a DIAL skill's bundled files can't be listed). Tool-init failures, orchestrator failures and
+whole-subsystem skill failures are `critical`; per-URL skill, hook, offload and project-instruction issues
+are `error`. The stage closes `FAILED` if any issue is `critical`, otherwise `COMPLETED`. `level` only
+drives display: whether the turn stops is decided by raising vs. recording the exception.
+
+Which issues the stage shows is set by `features.initialization_issues.level` (default:
+`DEFAULT_INITIALIZATION_ISSUES_LEVEL`). Issues below the threshold are logged instead; with none left,
+the stage isn't rendered.
 
 Failures that *abort* the turn take a different path: they are resolved into safe, user-facing text,
 stamped with an error reference correlated to server logs, and delivered through the DIAL error protocol

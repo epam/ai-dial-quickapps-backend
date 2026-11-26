@@ -1,13 +1,11 @@
-from typing import ClassVar
-
-from .initialization import InitializationException
+from .initialization import InitializationException, InitializationIssueLevel
 
 
 class ProjectInstructionsException(InitializationException):
-    """The project's PROJECT.md could not be loaded. Soft: the turn runs without the
-    project instructions; rendered as a warning in the Initialization issues stage."""
+    """The project's PROJECT.md could not be loaded. The turn runs without the
+    project instructions."""
 
-    is_hard: ClassVar[bool] = False
+    level = InitializationIssueLevel.ERROR
 
     def __init__(self, reason: str):
         self.reason = reason

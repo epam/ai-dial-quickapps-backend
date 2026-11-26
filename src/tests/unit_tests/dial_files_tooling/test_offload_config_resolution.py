@@ -1,6 +1,10 @@
 from unittest.mock import MagicMock
 
-from quickapp.common.exceptions import InitializationException, OffloadConfigurationException
+from quickapp.common.exceptions import (
+    InitializationException,
+    InitializationIssueLevel,
+    OffloadConfigurationException,
+)
 from quickapp.config.dial_files import DialFilesConfig
 from quickapp.dial_files_tooling.dial_files_tooling_module import DialFilesToolingModule
 
@@ -138,4 +142,4 @@ class TestOffloadInitializationExceptions:
 
     def test_exception_is_soft(self):
         exceptions = _exceptions(_make_app_config(enabled_tools=["write"]))
-        assert exceptions[0].is_hard is False
+        assert exceptions[0].level == InitializationIssueLevel.ERROR

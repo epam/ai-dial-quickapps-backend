@@ -3,27 +3,26 @@ import re
 import yaml
 
 from quickapp.skills.exceptions import SkillValidationError
-from quickapp.skills.skill_metadata import ParsedSkill, SkillMetadata
+from quickapp.skills.skill_metadata import SkillMetadata
 
 _FRONTMATTER_RE = re.compile(
     r"\A﻿?[ \t\r\n]*---[ \t\r]*\n(.*?)\n---[ \t\r]*(?:\n|\Z)",
     re.DOTALL,
 )
-_SKILL_NAME_RE = re.compile(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?$")
 _QUOTABLE_LINE_RE = re.compile(r"^([A-Za-z_][\w-]*):[ \t]+(.+\S)[ \t]*$")
 
 
-def parse_frontmatter(content: str, source_id: str) -> ParsedSkill:
-    """Parse YAML frontmatter delimited by ``---`` and return a ``ParsedSkill``.
+def parse_frontmatter(content: str, source_id: str) -> SkillMetadata:
+    """Parse YAML frontmatter delimited by ``---`` and return its ``SkillMetadata``.
 
-    Follows the Agent Skills client guide's "lenient with diagnostics" model:
-    cosmetic issues are recorded as warnings and the skill is still loaded;
-    only missing required fields and irrecoverable YAML errors raise.
+    Only structural problems reject a skill; the spec's length and naming
+    recommendations aren't checked.
 
     Raises:
         SkillValidationError: if the content has no frontmatter, the YAML is
             unparseable even after a quote-retry, the YAML is not a mapping,
-            or ``name`` / ``description`` are missing or empty.
+            ``allowed-tools`` has an invalid format, or ``name`` /
+            ``description`` are missing or empty.
 
     Args:
         content: The full skill content string.
@@ -33,10 +32,7 @@ def parse_frontmatter(content: str, source_id: str) -> ParsedSkill:
     if not match:
         raise SkillValidationError(source_id, "No YAML frontmatter found")
 
-    warnings: list[str] = []
-    parsed, yaml_warning = _parse_yaml(match.group(1), source_id)
-    if yaml_warning is not None:
-        warnings.append(yaml_warning)
+    parsed = _parse_yaml(match.group(1), source_id)
 
     if not isinstance(parsed, dict):
         raise SkillValidationError(source_id, "YAML frontmatter is not a dictionary")
@@ -56,49 +52,28 @@ def parse_frontmatter(content: str, source_id: str) -> ParsedSkill:
     if not name or not description:
         raise SkillValidationError(source_id, "Missing required fields (name/description)")
 
-    if len(name) > 64:
-        warnings.append(f"Skill name exceeds 64 characters: {name}")
-
-    if "--" in name or not _SKILL_NAME_RE.match(name):
-        warnings.append(
-            f"Skill name does not match recommended format: {name}"
-            " (lowercase letters, numbers, hyphens; no leading/trailing or consecutive hyphens)"
-        )
-
-    if len(description) > 1024:
-        warnings.append("Description exceeds 1024 characters")
-
-    compatibility = parsed.get("compatibility")
-    if compatibility is not None and len(compatibility) > 500:
-        warnings.append("Compatibility exceeds 500 characters")
-
-    metadata = SkillMetadata(
+    return SkillMetadata(
         name=name,
         description=description,
         license=parsed.get("license"),
-        compatibility=compatibility,
+        compatibility=parsed.get("compatibility"),
         metadata=parsed.get("metadata") or None,
         allowed_tools=parsed.get("allowed_tools"),
     )
-    return ParsedSkill(metadata=metadata, warnings=warnings)
 
 
-def _parse_yaml(text: str, source_id: str) -> tuple[object, str | None]:
+def _parse_yaml(text: str, source_id: str) -> object:
     """Parse YAML, retrying once with a quote-repair if the first attempt fails.
 
-    Returns ``(parsed, warning_or_none)``. Raises ``SkillValidationError`` if
-    the YAML can't be parsed even after the repair.
+    Raises ``SkillValidationError`` if the YAML can't be parsed even after the repair.
     """
     try:
-        return yaml.safe_load(text), None
+        return yaml.safe_load(text)
     except yaml.YAMLError as original_exc:
         repaired = _quote_unquoted_colons(text)
         if repaired != text:
             try:
-                return (
-                    yaml.safe_load(repaired),
-                    "YAML repaired by quoting value(s) with unescaped colons",
-                )
+                return yaml.safe_load(repaired)
             except yaml.YAMLError:
                 pass
         raise SkillValidationError(source_id, f"Failed to parse YAML frontmatter: {original_exc}")
