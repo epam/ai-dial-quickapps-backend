@@ -12,7 +12,7 @@ from aidial_sdk.chat_completion import CustomContent, Role
 from aidial_sdk.chat_completion.request import Attachment as SdkAttachment
 from injector import AssistedBuilder
 
-from quickapp.common import REQUEST_MESSAGES, StagedBaseTool, ToolCallResult
+from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.chat_completion_stream.argument_stream_presentation import ArgumentStreamMode
@@ -48,7 +48,6 @@ class BaseDeploymentTool(StagedBaseTool):
         dial_completion_service: DialCompletionService,
         attachment_resolver: AttachmentResolver,
         messages_mixin: MessagesMixin,
-        request_messages: REQUEST_MESSAGES,
         perf_timer: PerformanceTimer,
         stage_wrapper_builder: AssistedBuilder[DeploymentStageWrapper],
         propagate_sub_stages: bool = True,
@@ -74,7 +73,6 @@ class BaseDeploymentTool(StagedBaseTool):
                 "Use 'conversation_mode.resumable: true' instead."
             )
         self.__messages_mixin: MessagesMixin = messages_mixin
-        self.__request_messages: REQUEST_MESSAGES = request_messages
         # Tools are request-scoped: this flag lives for one request only, so form_value
         # is forwarded to at most one call of this tool per request.
         self.__form_value_sent = False
@@ -98,10 +96,14 @@ class BaseDeploymentTool(StagedBaseTool):
         source_tool = form_source_tool_name_before(messages, cutoff)
         if source_tool != tool_config.open_ai_tool.function.name:
             return None
-        for msg in reversed(self.__request_messages):
-            if msg.role == Role.USER and msg.custom_content is not None:
-                if msg.custom_content.form_value is not None:
-                    self.__form_value_sent = True
+        # last USER message carrying form_value (not just any custom_content)
+        for msg in reversed(messages):
+            if (
+                msg.role == Role.USER
+                and msg.custom_content is not None
+                and msg.custom_content.form_value is not None
+            ):
+                self.__form_value_sent = True
                 return msg.custom_content.form_value
         return None
 

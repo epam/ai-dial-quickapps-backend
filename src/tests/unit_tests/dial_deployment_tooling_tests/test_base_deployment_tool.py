@@ -106,7 +106,6 @@ def _build_tool(
         dial_completion_service=dial_completion_service,
         attachment_resolver=attachment_resolver,
         messages_mixin=_make_messages_mixin(messages),
-        request_messages=messages,
         perf_timer=MagicMock(),
         stage_wrapper_builder=MagicMock(),
         stage_display_level=StageDisplayLevel.INFO,
@@ -412,7 +411,6 @@ def _build_tool_with_config(
         dial_completion_service=MagicMock(),
         attachment_resolver=MagicMock(),
         messages_mixin=_make_messages_mixin(messages or []),
-        request_messages=messages or [],
         perf_timer=MagicMock(),
         stage_wrapper_builder=MagicMock(),
         stage_display_level=StageDisplayLevel.INFO,
@@ -565,7 +563,6 @@ def _build_tool_with_propagation(
         dial_completion_service=dial_completion_service,
         attachment_resolver=MagicMock(),
         messages_mixin=_make_messages_mixin(messages),
-        request_messages=messages,
         perf_timer=MagicMock(),
         stage_wrapper_builder=MagicMock(),
         stage_display_level=StageDisplayLevel.INFO,
@@ -893,7 +890,6 @@ def _build_tool_with_content_propagation(
         dial_completion_service=MagicMock(),
         attachment_resolver=MagicMock(),
         messages_mixin=_make_messages_mixin([]),
-        request_messages=[],
         perf_timer=MagicMock(),
         stage_wrapper_builder=MagicMock(),
         stage_display_level=StageDisplayLevel.INFO,
@@ -1166,6 +1162,35 @@ class TestFormValueSourceCutoff:
             _user_msg_with_form_value({"a": 1}),
             # same-request iteration: orchestrator called another tool which returned a form
             *_history_with_form_schema(tool_name="other_tool", tool_call_id="tc-2"),
+        ]
+        tool = _build_tool_with_propagation(messages)
+
+        assert tool._form_value_for_this_tool(tool.tool_config) == {"a": 1}
+
+
+class TestFormValueFromWorkingMessages:
+    def test_reads_form_value_from_messages_mixin_not_raw(self):
+        """After dropping request_messages, form_value is read from the working message
+        list (messages_mixin.messages) — last USER with form_value is not None."""
+        messages = [
+            *_history_with_form_schema(),
+            Message.model_validate(
+                {"role": "user", "content": "no value", "custom_content": {"state": {"k": 1}}}
+            ),
+            _user_msg_with_form_value({"a": 1}),
+        ]
+        tool = _build_tool_with_propagation(messages)
+
+        assert tool._form_value_for_this_tool(tool.tool_config) == {"a": 1}
+
+    def test_skips_trailing_user_without_form_value(self):
+        """Last USER has custom_content but no form_value; an earlier USER has it."""
+        messages = [
+            *_history_with_form_schema(),
+            _user_msg_with_form_value({"a": 1}),
+            Message.model_validate(
+                {"role": "user", "content": "later", "custom_content": {"state": {"k": 1}}}
+            ),
         ]
         tool = _build_tool_with_propagation(messages)
 
