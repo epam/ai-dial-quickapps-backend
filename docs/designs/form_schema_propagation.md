@@ -13,8 +13,8 @@ form returned by a subagent never reached the app's own answer, and the client h
 
 The reverse direction was equally broken. When a client submits a filled form, it sends the values back as
 `custom_content.form_value` on the user message. QuickApps had no concept of `form_value`: it was not
-forwarded to the deployment tool that produced the form unless that tool was resumable and the value rode
-along in tool history. So a non-resumable tool that asked the user for input via a form got no answer at all.
+forwarded to the deployment tool that produced the form. So a tool that asked the user for input via a form
+never got an answer.
 
 ## Design Goals
 
@@ -60,10 +60,10 @@ the result keeps the schema in `custom_content.form_schema`, so it stays in the 
 The latest assistant message in history carries `custom_content.form_schema` (echoed by the client — the
 schema the UI rendered); the tool message with the same schema resolves to the tool the orchestrator is
 about to call.
-**Behavior:** `BaseDeploymentTool._form_value_for_this_tool` matches the form's source tool (from history)
-against the tool being called, takes `form_value` from the last raw user message, and
-`DialCompletionService` attaches it to the final user message of the deployment request as
-`custom_content.form_value`. Additionally, `_build_assistant_message` copies `form_value` from tool
+**Behavior:** `BaseDeploymentTool._form_value_for_this_tool` matches the form's source tool (from history,
+cutoff at the last user message with `form_value`) against the tool being called, takes `form_value` from
+that message, and `DialCompletionService` attaches it to the final user message of the deployment request
+as `custom_content.form_value`. Additionally, `_build_assistant_message` copies `form_value` from tool
 messages into the reconstructed history's assistant messages.
 **Outcome:** The deployment receives the submitted values both in its conversation history and on the
 current request's user message.
@@ -169,17 +169,18 @@ carrying the same schema; the assistant's `tool_calls` give the initiator name;
   `custom_content`). Injection into all messages (not just the last) is deliberate: it keeps data and
   keeps the KV-cache prefix stable across turns.
 - `BaseDeploymentTool._form_value_for_this_tool` + `DialCompletionService.complete_request_async(form_value=...)`:
-  when the tool being called **is** the form's source, takes `form_value` from the last raw
-  request user message (`REQUEST_MESSAGES`, pre-scrub) and attaches it to the final user message of the
-  deployment request's `custom_content` (at most once per request). Separately, `_build_assistant_message`
-  copies `form_value` from tool messages into the reconstructed history's assistant messages.
+  when the tool being called **is** the form's source (resolved with the cutoff at the last user message
+  carrying `form_value`), takes `form_value` from that message in the working history and attaches it to
+  the final user message of the deployment request's `custom_content` (at most once per request).
+  Separately, `_build_assistant_message` copies `form_value` from tool messages into the reconstructed
+  history's assistant messages.
 
 **Owner:** `core/agent/` transformer chain + `dial_deployment_tooling/`.
 **Semantics:** the form is identified by content in history (the schema itself), not by state markers or
 client echo; each `form_value` goes either to its source tool's request or into the orchestrator's
 message content (if `propagate_form_value_to_content: true` on that tool).
-**Change:** new `common/form_utils.py`; new transformer + DI binding; `request_messages: REQUEST_MESSAGES`
-dependency on `BaseDeploymentTool`/`DeploymentTool`; `form_value` parameter on `complete_request_async`.
+**Change:** new `common/form_utils.py`; new transformer + DI binding; `form_value` parameter on
+`complete_request_async`.
 
 ---
 
@@ -199,13 +200,13 @@ dependency on `BaseDeploymentTool`/`DeploymentTool`; `form_value` parameter on `
   concurrent forms is a client/SDK limitation, not something QuickApps can fix server-side.
 - **Form validation server-side.** QuickApps forwards the schema and the submitted value verbatim; validating
   `form_value` against `form_schema` is the client's and the deployment's responsibility.
-- **Form state beyond one turn.** The *latest* tool message carrying `form_schema` wins; if the client submits
-  a form for an older tool after a newer form was shown, routing follows the latest one.
-- **Resumable `dial-deployment-simple` tools.** `find_tool_conversation_mode` matches source tools by
-  `open_ai_tool.function.name`, which only full `deployment-tool` entries have. A `dial-deployment-simple`
-  tool with `conversation_mode.resumable: true` is not matched, so its submitted `form_value` is treated as
-  non-resumable: injected into message content for the orchestrator instead of tool history. Matching simple
-  tools would require resolving `deployment_id` → tool name at transform time.
+- **Form state beyond one turn.** The latest turn segment carrying a `form_schema` wins (first schema within
+  it, matching what the client rendered); if the client submits a form for an older tool after a newer form
+  was shown, routing follows the latest one. The cutoff is the last user message carrying `form_value`, so
+  tool results produced later in the same request do not shadow the submitted form.
+- **Source-tool resolution for non-deployment tools.** `form_source_tool_name_before` resolves the tool name
+  from assistant tool calls in history; tools without an LLM-facing function name cannot be matched and are
+  treated as unknown source (no content injection unless the flag is set on a matched tool).
 
 ---
 
@@ -266,8 +267,8 @@ None. The new config field defaults to `null`, which preserves the old drop-at-t
 
 - `propagate_form_schema_to_choice: true` opts a tool into form propagation; existing manifests need no change.
 - `custom_content.form_value` on incoming messages is kept in `custom_content` (not scrubbed); it is
-  forwarded to resumable source tools via their request, and surfaced to the orchestrator as a
-  `<form_value>` content block for non-resumable sources.
+  forwarded to the form's source tool via its request, and surfaced to the orchestrator as a
+  `<form_value>` content block when the source tool has `propagate_form_value_to_content: true`.
 - `docs/generated-app-schema.json` regenerated; `CONFIGURATION.md` and the `docs/README.md` capability map
   updated.
 
@@ -282,7 +283,7 @@ None. The new config field defaults to `null`, which preserves the old drop-at-t
 | `common/chat_completion_stream/accumulation_stream_sink.py` | Forward normalized `form_schema` to the accumulator |
 | `common/tool_call_result.py` | `ToolCallResult.form_schema` field, serialized into the tool message's `custom_content.form_schema` (and restored by `tool_call_result_from_tool_message`) |
 | `dial_deployment_tooling/dial_completion_service.py` | Copy `form_schema` from deployment result into `ToolCallResult` |
-| `dial_deployment_tooling/base_deployment_tool.py` | Null `form_schema` unless flag set; `_form_value_for_this_tool` routes `form_value` from raw user message when this tool is the history-resolved form source and resumable; copy `form_value` into history assistant messages |
+| `dial_deployment_tooling/base_deployment_tool.py` | Null `form_schema` unless flag set; `_form_value_for_this_tool` routes `form_value` from the working history when this tool is the form source (cutoff at last user message with `form_value`); copy `form_value` into history assistant messages |
 | `dial_deployment_tooling/dial_completion_service.py` | `form_value` param on `complete_request_async`; attached to final user message `custom_content` |
 | `dial_deployment_tooling/_deployment_tool_initializer.py`, `dial_app_tooling/_dial_app_resolver.py` | Thread the flag onto synthetic deployment tools |
 | `core/agent/orchestrator.py` | `_send_form_schema` (first-wins guard); no state markers — source tool is recovered from history |
