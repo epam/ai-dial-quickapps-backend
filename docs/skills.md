@@ -271,7 +271,7 @@ The agent writes the `skill://<skill_name>/<path>` reference from `<skill_files>
 
 The model learns the syntax from the predefined skill `tool-call-skill-file-references`, injected on every
 conversation as a synthetic `read_skill` call. The code lives in `skills/file_reference/`;
-`file_transfer/` has no knowledge of skills and only offers the `FileSource` extension point it plugs into.
+`shared/file_transfer/` has no knowledge of skills and only offers the `FileSource` extension point it plugs into.
 Skills picked by the user in a message work the same way. Executing the file is the receiving tool's job.
 Design: [skill_script_references.md](designs/skill_script_references.md).
 

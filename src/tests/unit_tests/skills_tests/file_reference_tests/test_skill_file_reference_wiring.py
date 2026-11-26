@@ -6,9 +6,11 @@ from fastapi_injector import Injected, request_scope
 from injector import Binder, Module
 from starlette.testclient import TestClient
 
+from quickapp.common import StagedBaseTool
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.state_holder import StateHolder
+from quickapp.config.application import StageDisplayLevel
 from quickapp.dial_core_services.dial_downloader import DialDownloader
 from quickapp.shared.external_fetch.external_url_fetcher import ExternalUrlFetcher
 from quickapp.shared.file_transfer import FileSource, FileTransferModule
@@ -17,6 +19,7 @@ from quickapp.shared.file_transfer._file_prefix_handlers import FilePrefixHandle
 from quickapp.skills.file_reference._skill_file_source import _SkillFileSource
 from quickapp.skills.file_reference.skill_file_reference_module import SkillFileReferenceModule
 from quickapp.skills.registry._skills_registry import SkillsRegistry
+from quickapp.skills.registry._tool_configs import SKILL_READER_TOOL_NAME
 from quickapp.skills.registry.skills_module import SkillsModule
 from quickapp.skills.skills_di import skills_module
 from tests.unit_tests.common.common import create_test_app
@@ -25,6 +28,7 @@ from tests.unit_tests.common.common import create_test_app
 class _StubDialClientModule(Module):
     def configure(self, binder: Binder) -> None:
         binder.bind(AsyncDial, to=lambda: MagicMock(spec=AsyncDial), scope=request_scope)
+        binder.bind(StageDisplayLevel, to=StageDisplayLevel.INFO)
 
 
 def _make_client(modules: list[Module]) -> TestClient:
@@ -41,6 +45,15 @@ def _make_client(modules: list[Module]) -> TestClient:
         items: list[ToolArgumentTransformer] = Injected(list[ToolArgumentTransformer]),
     ) -> list[str]:
         return [type(t).__name__ for t in items]
+
+    @app.get("/read-skill-params")
+    async def read_skill_params(
+        tools: list[StagedBaseTool] = Injected(list[StagedBaseTool]),
+    ) -> dict:
+        reader = next(t for t in tools if t.name == SKILL_READER_TOOL_NAME)
+        return await reader._pre_process_params(
+            skill_name="s", file_path="skill://s/references/a.md"
+        )
 
     return TestClient(app)
 
@@ -59,6 +72,14 @@ class TestWiring:
         client = _make_client([SkillsModule(), SkillFileReferenceModule()])
 
         assert client.get("/transformers").json() == ["_SkillFileReferenceTransformer"]
+
+    def test_read_skill_receives_references_verbatim(self):
+        client = _make_client([SkillsModule(), SkillFileReferenceModule()])
+
+        assert client.get("/read-skill-params").json() == {
+            "skill_name": "s",
+            "file_path": "skill://s/references/a.md",
+        }
 
     def test_file_sources_are_empty_without_the_feature(self):
         client = _make_client([FileTransferModule()])

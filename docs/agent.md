@@ -694,7 +694,7 @@ individually, `app_factory` splices in two package-level arrays:
     injection. Owns `FileLoaderService` (scheme-aware bytes loader). The external-fetch security envelope —
     `ExternalUrlFetcher`, `ExternalFetchSettings`, `ExternalUrlFetchPolicyResolver` — lives in
     `shared/external_fetch/` and is bound by `ExternalFetchModule` (registered via the `shared_module` array) so
-    feature modules outside `file_transfer/` can consume it without an upward import. External egress is gated by
+    feature modules outside `shared/file_transfer/` can consume it without an upward import. External egress is gated by
     a two-tier policy: `EXTERNAL_URL_FETCH_ENABLED` (admin) and per-app `features.external_url_fetch.enabled`
     (builder), composed by `ExternalUrlFetchPolicyResolver`.
 12. **Attachment Processing Module**: `internal_attachments_available_context`, optional `internal_attachments_get_content`

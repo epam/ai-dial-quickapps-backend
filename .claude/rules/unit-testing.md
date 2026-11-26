@@ -17,7 +17,7 @@ unit_tests/
 ├── config_tests/          # Pydantic config validation, preview features
 ├── dial_core_services_tests/  # DIAL API client interactions
 ├── dial_deployment_tooling_tests/  # Deployment tool execution
-├── file_transfer_tests/   # File argument transformation
+├── shared/file_transfer_tests/  # File argument transformation (shared/file_transfer)
 ├── internal_tooling_tests/  # Python interpreter, display content
 ├── mcp_tool_tests/        # MCP protocol tools, connection management
 ├── rest_api_tooling_tests/  # REST API tool execution

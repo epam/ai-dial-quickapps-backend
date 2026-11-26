@@ -27,7 +27,6 @@ from quickapp.orchestrator_attachment_strategies.lazy_on_demand.lazy_on_demand_s
 from quickapp.predefined_tooling import PredefinedToolingModule
 from quickapp.rest_api_tooling import RestApiToolingModule
 from quickapp.shared import shared_module
-from quickapp.shared.file_transfer import FileTransferModule
 from quickapp.skills.dial_prompt.dial_prompt_skills_module import DialPromptSkillsModule
 from quickapp.skills.registry.skills_module import SkillsModule
 from quickapp.starters.starters_module import StartersModule
@@ -87,7 +86,6 @@ class TestApp(FastAPI):
                 StartersModule(),
                 ConfigurationSupportApiModule(),
                 DialCoreServicesModule(),
-                FileTransferModule(),
                 AttachmentProcessingModule(),
                 ToolDiscoveryModule(),
                 SkillsModule(),

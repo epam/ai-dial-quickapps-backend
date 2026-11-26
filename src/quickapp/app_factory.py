@@ -26,7 +26,6 @@ from quickapp.representation_tooling.representation_tooling_module import (
 )
 from quickapp.rest_api_tooling import RestApiToolingModule
 from quickapp.shared import shared_module
-from quickapp.shared.file_transfer import FileTransferModule
 from quickapp.skills.skills_di import skills_module
 from quickapp.starters.starters_module import StartersModule
 from quickapp.timestamp_tooling.timestamp_module import TimestampModule
@@ -53,7 +52,6 @@ class AppFactory:
             StartersModule(),
             ConfigurationSupportApiModule(),
             DialCoreServicesModule(),
-            FileTransferModule(),
             AttachmentProcessingModule(),
             LazyOnDemandStrategyModule(),
             # ToolDiscoveryModule is registered before skills_module so its tool_search prompt
