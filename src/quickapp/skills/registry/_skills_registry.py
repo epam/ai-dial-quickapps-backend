@@ -3,7 +3,9 @@ from pydantic import BaseModel, ConfigDict
 
 from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
 from quickapp.common.exceptions import InitializationException, SkillInitializationException
+from quickapp.skills.exceptions import SkillFileNotFoundError, SkillFilesNotSupportedError
 from quickapp.skills.registry._xml import generate_skills_xml
+from quickapp.skills.skill_file_url import build_skill_file_url, normalize_skill_file_path
 from quickapp.skills.skill_metadata import SkillMetadata
 from quickapp.skills.skills_provider import ResolvedSkill, SkillsProvider
 
@@ -92,3 +94,20 @@ class SkillsRegistry(PromptPartProvider):
             raise FileNotFoundError(f"Skill not found: {skill_name}")
 
         return await skill.read_file(file_path)
+
+    def resolve_file_url(self, skill_name: str, file_path: str) -> str:
+        """DIAL URL of a file bundled with *skill_name*.
+
+        The path must be a member of the skill's inventory, which rules out traversal,
+        encoded separators and hidden files the same way ``read_skill_file`` does.
+        """
+        skill = self._get_merged().entries.get(skill_name)
+        if skill is None:
+            raise FileNotFoundError(f"Skill not found: {skill_name}")
+        if skill.reader is None:
+            raise SkillFilesNotSupportedError(skill_name)
+
+        normalized = normalize_skill_file_path(file_path, skill_name)
+        if normalized not in skill.files:
+            raise SkillFileNotFoundError(skill_name, file_path, skill.files)
+        return build_skill_file_url(skill.url, normalized)

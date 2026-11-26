@@ -47,7 +47,8 @@ Cross-cutting shared code lives in `common/` (a flat utility bag). Three package
 registering each entry separately: `core/` exposes `core_module` (the app's central modules —
 `AppModule` + `AgentModule`), `shared/` exposes `shared_module` (cross-cutting utility modules with
 their own DI wiring; e.g. `ExternalFetchModule` in `shared/external_fetch/` and `HomePathModule`
-(the shared agent-home path resolver) in `shared/home_path/`, `DeploymentClientModule` (the unpinned
+(the shared agent-home path resolver) in `shared/home_path/`, `FileTransferModule` (the `file:` argument
+transformer and `FileLoaderService`) in `shared/file_transfer/`, `DeploymentClientModule` (the unpinned
 `DEPLOYMENT_AZURE_CLIENT` provider) in `shared/deployment_client/`, and `UserAccessModule` (the per-user tool
 access filter) in `shared/user_access/`), and `skills/` exposes `skills_module`
 (the skills registry plus one module per skill source).
@@ -74,9 +75,9 @@ Request → HTTP endpoint (`application/`) → Config resolution → Tool initia
 3. **MCP** (`mcp_tooling/`) — Model Context Protocol servers
 4. **Internal** (`internal_tooling/`) — Built-in Python tools (pandas, plotly, etc.)
 
-### File Transfer (`file_transfer/`)
+### File Transfer (`shared/file_transfer/`)
 
-`FileLoaderService` (in `file_transfer/`), `ExternalUrlFetcher` (in `shared/external_fetch/`), and `DialFilePromoter`
+`FileLoaderService` (in `shared/file_transfer/`), `ExternalUrlFetcher` (in `shared/external_fetch/`), and `DialFilePromoter`
 (in `dial_core_services/`) together resolve any URL the agent encounters (DIAL or external) into bytes or a durable
 DIAL file. External egress is gated by a two-tier policy: the admin `EXTERNAL_URL_FETCH_ENABLED` env switch and the
 per-app `features.external_url_fetch.enabled` field. The deployment-attachment path is capability-aware via
@@ -94,7 +95,9 @@ Core's `/v2/skills` API — a folder with `SKILL.md` plus bundled text files the
 `SkillsRegistry` merges all three per request and owns precedence (predefined > dial-prompt > dial-skill).
 A user can also invoke one of their own skills from a message (`skills/invocation/`): the
 `custom_content.skills[*]` chips are resolved per request, registered ahead of every agent source, and
-injected as a synthetic `read_skill` pair.
+injected as a synthetic `read_skill` pair. A bundled file can be handed to a tool as a
+`skill://<name>/<path>` reference behind a `file:` prefix (`skills/file_reference/`); `shared/file_transfer/` stays
+skill-agnostic and only exposes the `FileSource` extension point.
 
 The DI module array lives in `skills/skills_di.py`, not in `skills/__init__.py`, so the contract package
 never imports its own sources: `quickapp.skills` pulls in only the leaf contract modules and is safe to
@@ -119,7 +122,7 @@ See `CODESTYLE.md` for full details. Key rules:
 - **DI**: Constructor injection only — never instantiate services directly across module boundaries.
 - **Types**: Always add type hints. Use modern generics: `list[str]`, `dict[str, int]`, `str | None`.
 - **Data containers**: Use Pydantic `BaseModel` (not `@dataclass`) for value objects; use `model_config = ConfigDict(frozen=True)` when immutability is wanted.
-- **Visibility**: `_` prefix for all internal attributes/methods.
+- **Visibility**: `_` prefix for all internal attributes/methods. Never import from another package's `_`-prefixed module in production code; import from the package (re-export in its `__init__.py` if needed). Tests are exempt.
 - **Logging**: Use `logging` module; never `print()`. Logs carry structure, not content — never log message bodies, tool-call arguments, response bodies, header values, or URL query strings at any level. Route payload detail through `common.payload_logging.log_payload` (gated by `LOG_PAYLOADS`) and sanitize URLs with `common.url_sanitization.sanitize_url`. See `CODESTYLE.md` §9.
 - **Imports**: stdlib → third-party → local, explicit only (no `*` imports). Absolute imports only — never relative (`from .x import`, `from ..x import`), including in `__init__.py`.
 

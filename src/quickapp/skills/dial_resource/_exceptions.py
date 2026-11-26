@@ -1,4 +1,7 @@
-class DialSkillFileReadError(Exception):
+from quickapp.skills.exceptions import SkillFileReadError
+
+
+class DialSkillFileReadError(SkillFileReadError):
     """Raised when a file of a DIAL skill resource cannot be read.
 
     The message is rendered verbatim to the model (via the ``read_skill`` tool)
