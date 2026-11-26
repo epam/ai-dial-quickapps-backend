@@ -118,7 +118,7 @@ class DialSkillResolver(DialSkillResourceResolver):
         metadata = parse_frontmatter(manifest, config.url)
 
         inventory, warnings = await self._list_files(config.url)
-        block = _build_skill_files_block(parsed.metadata.name, inventory, self._client.max_files)
+        block = _build_skill_files_block(metadata.name, inventory, self._client.max_files)
         content = f"{manifest.rstrip()}\n\n{block}\n" if block else manifest
 
         return ResolvedSkill(
