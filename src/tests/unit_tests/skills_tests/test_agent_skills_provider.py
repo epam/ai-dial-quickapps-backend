@@ -10,7 +10,7 @@ from quickapp.skills.exceptions import SkillValidationError
 from quickapp.skills.frontmatter import parse_frontmatter
 from quickapp.skills.registry._xml import generate_skills_xml
 from quickapp.skills.registry.agent_skills_provider import AgentSkillsProvider
-from quickapp.skills.skill_metadata import ParsedSkill, SkillMetadata
+from quickapp.skills.skill_metadata import SkillMetadata
 
 # ---------------------------------------------------------------------------
 # parse_frontmatter unit tests
@@ -35,10 +35,7 @@ class TestParseFrontmatter:
             "---\n"
             "Body content\n"
         )
-        result = parse_frontmatter(content, "my-skill")
-        assert isinstance(result, ParsedSkill)
-        assert result.warnings == []
-        meta = result.metadata
+        meta = parse_frontmatter(content, "my-skill")
         assert isinstance(meta, SkillMetadata)
         assert meta.name == "my-skill"
         assert meta.description == "A test skill"
@@ -57,31 +54,6 @@ class TestParseFrontmatter:
         with pytest.raises(SkillValidationError):
             parse_frontmatter(content, "test")
 
-    def test_name_exceeds_64_chars_warns(self):
-        long_name = "a" * 65
-        content = f"---\nname: {long_name}\ndescription: desc\n---\nBody\n"
-        result = parse_frontmatter(content, "test")
-        assert result.metadata.name == long_name
-        assert any("exceeds 64 characters" in w for w in result.warnings)
-
-    def test_consecutive_hyphens_warns(self):
-        content = "---\nname: my--skill\ndescription: desc\n---\nBody\n"
-        result = parse_frontmatter(content, "test")
-        assert result.metadata.name == "my--skill"
-        assert any("does not match recommended format" in w for w in result.warnings)
-
-    def test_leading_hyphen_warns(self):
-        content = "---\nname: -my-skill\ndescription: desc\n---\nBody\n"
-        result = parse_frontmatter(content, "test")
-        assert result.metadata.name == "-my-skill"
-        assert any("does not match recommended format" in w for w in result.warnings)
-
-    def test_trailing_hyphen_warns(self):
-        content = "---\nname: my-skill-\ndescription: desc\n---\nBody\n"
-        result = parse_frontmatter(content, "test")
-        assert result.metadata.name == "my-skill-"
-        assert any("does not match recommended format" in w for w in result.warnings)
-
     def test_invalid_yaml_raises(self):
         content = "---\n: [invalid yaml\n---\nBody\n"
         with pytest.raises(SkillValidationError):
@@ -95,7 +67,7 @@ class TestParseFrontmatter:
     def test_allowed_tools_as_string_normalized_to_list(self):
         content = "---\nname: my-skill\ndescription: desc\nallowed-tools: tool1 tool2\n---\nBody\n"
         result = parse_frontmatter(content, "test")
-        assert result.metadata.allowed_tools == ["tool1", "tool2"]
+        assert result.allowed_tools == ["tool1", "tool2"]
 
     def test_allowed_tools_as_list_kept(self):
         content = (
@@ -103,23 +75,7 @@ class TestParseFrontmatter:
             "allowed-tools:\n  - tool1\n  - tool2\n---\nBody\n"
         )
         result = parse_frontmatter(content, "test")
-        assert result.metadata.allowed_tools == ["tool1", "tool2"]
-
-    def test_description_exceeds_1024_chars_warns(self):
-        long_desc = "x" * 1025
-        content = f"---\nname: my-skill\ndescription: {long_desc}\n---\nBody\n"
-        result = parse_frontmatter(content, "test")
-        assert result.metadata.description == long_desc
-        assert any("Description exceeds 1024" in w for w in result.warnings)
-
-    def test_compatibility_exceeds_500_chars_warns(self):
-        long_compat = "x" * 501
-        content = (
-            f"---\nname: my-skill\ndescription: desc\n" f"compatibility: {long_compat}\n---\nBody\n"
-        )
-        result = parse_frontmatter(content, "test")
-        assert result.metadata.compatibility == long_compat
-        assert any("Compatibility exceeds 500" in w for w in result.warnings)
+        assert result.allowed_tools == ["tool1", "tool2"]
 
     def test_no_frontmatter_raises(self):
         content = "Just some text without frontmatter"
@@ -138,27 +94,27 @@ class TestParseFrontmatter:
     def test_bom_prefixed_parses(self):
         content = "﻿---\nname: my-skill\ndescription: desc\n---\nBody\n"
         result = parse_frontmatter(content, "test")
-        assert result.metadata.name == "my-skill"
+        assert result.name == "my-skill"
 
     def test_leading_whitespace_parses(self):
         content = "   \n---\nname: my-skill\ndescription: desc\n---\nBody\n"
         result = parse_frontmatter(content, "test")
-        assert result.metadata.name == "my-skill"
+        assert result.name == "my-skill"
 
     def test_leading_blank_line_parses(self):
         content = "\n---\nname: my-skill\ndescription: desc\n---\nBody\n"
         result = parse_frontmatter(content, "test")
-        assert result.metadata.name == "my-skill"
+        assert result.name == "my-skill"
 
     def test_closing_fence_at_eof_parses(self):
         content = "---\nname: my-skill\ndescription: desc\n---"
         result = parse_frontmatter(content, "test")
-        assert result.metadata.name == "my-skill"
+        assert result.name == "my-skill"
 
     def test_crlf_line_endings_parse(self):
         content = "---\r\nname: my-skill\r\ndescription: desc\r\n---\r\nBody\r\n"
         result = parse_frontmatter(content, "test")
-        assert result.metadata.name == "my-skill"
+        assert result.name == "my-skill"
 
     # ---- YAML quote-retry ----------------------------------------------
 
@@ -171,8 +127,7 @@ class TestParseFrontmatter:
             "Body\n"
         )
         result = parse_frontmatter(content, "test")
-        assert result.metadata.description == "Use when: the user asks about PDFs"
-        assert any("YAML repaired" in w for w in result.warnings)
+        assert result.description == "Use when: the user asks about PDFs"
 
     def test_unrecoverable_yaml_still_raises(self):
         # `description: With: colon` triggers the quote-repair, but `: [broken`

@@ -3,7 +3,7 @@
 - **User-facing:** [CONFIGURATION - Tool-call result offload](../../CONFIGURATION.md#tool-call-result-offload)
 - **Approved:** 2026-05-25
 - **Dependencies:**
-  - [DIAL Files Tools](dial_files_tools.md) — provides the `internal_file_read_lines` / `internal_file_search` tools the LLM uses to read offloaded content back on demand. This is a **hard dependency**: an offloaded response is unreadable without these tools. Offload is implemented as a **sub-feature of DIAL Files Tools** — its config nests under `features.dial_files` and its wiring lives in `DialFilesToolingModule` (see Components 3 & 5), so it cannot be configured without the dependency.
+  - [DIAL Files Tools](dial_files_tools.md) — provides the `internal_file_read_lines` / `internal_file_search` tools the LLM uses to read offloaded content back on demand. This is a **hard dependency**: an offloaded response is unreadable without these tools. Offload has its own config section, `features.tool_call_result_offload`, but its wiring lives in `DialFilesToolingModule` (see Components 3 & 5), and it turns itself off when `read_lines` / `search` are not exposed.
 - **Related:** [Issue #64](https://github.com/epam/ai-dial-quickapps-backend/issues/64)
 
 ## Problem Statement
@@ -125,7 +125,7 @@ return results
 
 **What:** First concrete implementation of `ToolCallResultProcessor`. Detects oversized responses (by size only, regardless of content type) and offloads them.
 
-**Module:** `src/quickapp/dial_files_tooling/` — offload is a **sub-feature of DIAL Files Tools**, not a standalone module. The processor (`_offload_processor.py`) and its resolved-config dataclass (`_offload_config.py`) live alongside the file tools, and `DialFilesToolingModule` owns all the wiring (see Component 5).
+**Module:** `src/quickapp/dial_files_tooling/` — offload has no standalone module. The processor (`_offload_processor.py`) and its resolved-config dataclass (`_offload_config.py`) live alongside the file tools, and `DialFilesToolingModule` owns all the wiring (see Component 5).
 
 **Algorithm:**
 
@@ -161,17 +161,18 @@ flowchart TD
 - `size_threshold: int` — byte threshold (compared against `len(result.content.encode("utf-8"))`); default `40_000` (≈ 40 KB; see _Threshold calibration_ in Design Decisions)
 - `excluded_tools: set[str]` — default `set()` (empty). **Additional** tools to exempt from offloading, on top of the mandatory read-back exclusion (see below). The DIAL Files read-back tools (`internal_file_read_lines`, `internal_file_read_chars`, `internal_file_search`) are **always** excluded regardless of this value, so a large read-back slice is never re-offloaded into a recursive loop — that guard is not configurable. Because they cannot be re-offloaded, the tools bound their own output instead (see [DIAL Files Tools](dial_files_tools.md), "Bounded read-back output").
 
-**Per-app override (explicit `enabled` flag, nested under DIAL Files):** Offload config is nested **inside** `DialFilesConfig` as `features.dial_files.tool_call_result_offload`, a non-optional `ToolCallResultOffloadConfig` (a `default_factory` always yields an instance). Enablement is the explicit `enabled: bool` flag — `enabled: false` turns offload off for one app while still carrying its `size_threshold` / `excluded_tools` overrides. Nesting under `dial_files` makes offload structurally a sub-feature: there is no way to configure offload without engaging DIAL Files, so a globally-default-on optimization can no longer collide with the per-app-opt-in `dial_files` dependency.
+**Per-app override (`features.tool_call_result_offload`):** Offload config is its own `features` section, a non-optional `ToolCallResultOffloadConfig` (a `default_factory` always yields an instance). It is not preview-gated, so offload is on by default in prod. Enablement is the explicit `enabled: bool` flag — `enabled: false` turns offload off for one app while still carrying its `size_threshold` / `excluded_tools` overrides.
 
 - `enabled` defaults from `TOOL_CALL_RESULT_OFFLOAD__ENABLED_BY_DEFAULT` when not set.
 - `size_threshold` / `excluded_tools` are overridable per-app; each defaults from the matching env var when not set.
-- Offload still requires `features.dial_files` itself to be present (DIAL Files remains presence-based): an app with no `dial_files` block gets no offload regardless of `enabled`.
+- A `null` `features` section resolves to the env defaults, like the file tools do.
+- **Deprecated location.** `features.dial_files.tool_call_result_offload` (the earlier, preview-only home) is still accepted. A `Features` model validator copies it into `features.tool_call_result_offload` at parse time when the new field is not set explicitly, and logs a deprecation warning. The new field wins when both are set.
 
 Config resolution happens **once per request** in `DialFilesToolingModule._provide_offload_config` (a request-scoped `@provider`), producing a `ResolvedOffloadConfig` dataclass. `ToolCallResultOffloadProcessor` receives only the resolved config — it has no knowledge of `ApplicationConfig` or the dial-files coupling.
 
-**Read-back availability gate (hard dependency).** The provider checks `app_config.features.dial_files` **presence directly** (not the defaulted `DialFilesConfig()` produced by `_provide_dial_files_config`, which would otherwise re-enable offload when the feature is absent). Offload is disabled when `features.dial_files` is absent, when its `tool_call_result_offload.enabled` is `false`, **or** when `enabled_tools` is a list that omits `read_lines` or `search`. Checking the *resolved tool set* is essential: an app can enable the files module but restrict `enabled_tools` to, say, `["write"]`, in which case offloading would produce a notice pointing at tools the LLM cannot call. Folding this gate into `ResolvedOffloadConfig.enabled` keeps the processor ignorant of the coupling.
+**Read-back availability gate (hard dependency).** Offload is disabled when `features.tool_call_result_offload.enabled` is `false` **or** when the resolved `dial_files.enabled_tools` (`DialFilesConfig.expanded_tools`, all tools by default) omits `read_lines` or `search`. Checking the *resolved tool set* is essential: an app can enable the files module but restrict `enabled_tools` to, say, `["write"]`, in which case offloading would produce a notice pointing at tools the LLM cannot call. Folding this gate into `ResolvedOffloadConfig.enabled` keeps the processor ignorant of the coupling.
 
-The restricted-`enabled_tools` disable is **surfaced to the user**, not silent: a sibling `@multiprovider` on `DialFilesToolingModule` contributes an `OffloadConfigurationException` (a soft `InitializationException`) when offload is `enabled` but the read-back tools are missing. It returns `[]` when `dial_files` is absent or offload is `enabled: false` — those mean offload was never requested, so there is nothing to warn about. `_InitializationErrorHandler` renders the exception as a warning line in the shared **"Initialization issues"** stage (`Status.COMPLETED`, since the exception is soft — the request still proceeds).
+The restricted-`enabled_tools` disable is **surfaced to the user**, not silent: a sibling `@multiprovider` on `DialFilesToolingModule` contributes an `OffloadConfigurationException` (a soft `InitializationException`) when offload is `enabled` but the read-back tools are missing. It returns `[]` when offload is `enabled: false` — that means offload was never requested, so there is nothing to warn about. `_InitializationErrorHandler` renders the exception as a warning line in the shared **"Initialization issues"** stage (`Status.COMPLETED`, since the exception is soft — the request still proceeds).
 
 **Order:** `0` (default). `ToolCallResultSizeLimitProcessor` (`order = 10`, all tools) runs right after it as a backstop: a result still longer than `TOOL_CALL_RESULT_LIMIT__MAX_CHARS` (default 80000) characters (offload disabled, tool excluded, or upload failed) is replaced by a "response too large" error, so it never reaches the LLM context. `size_threshold` is validated to stay at or below that limit. See [DIAL Files Tools](dial_files_tools.md).
 
@@ -185,21 +186,21 @@ Specified separately in [DIAL Files Tools](dial_files_tools.md). Relevant facts 
 
 - The read-back tools are named `internal_file_read_lines`, `internal_file_read_chars` and `internal_file_search`; these names are always in `ToolCallResultOffloadProcessor`'s resolved `excluded_tools` (a mandatory, non-overridable exclusion folded in by `_provide_offload_config`) so read-back results are never re-offloaded.
 - Both tools address files by `path`, which may be a path relative to the agent's home dir **or** an absolute `files/...` URL. Offloaded files live under `files/{bucket}/offloaded-responses/`, outside the agent home dir, so the LLM reads them back via the absolute URL carried in the notice.
-- They are wired by `DialFilesToolingModule` (generally available; all tools exposed by default), which **also owns the offload wiring** (see Component 5). Offload has a **hard dependency** on these tools being exposed: when they are not, it self-disables. Because offload config nests under `dial_files`, offload cannot exist without the module that provides read-back.
+- They are wired by `DialFilesToolingModule` (generally available; all tools exposed by default), which **also owns the offload wiring** (see Component 5). Offload has a **hard dependency** on these tools being exposed: when they are not, it self-disables. The file tools are on by default, so offload works out of the box.
 
 ---
 
 ### Component 5: `DialFilesToolingModule` (DI wiring — offload folded in)
 
-**What:** Offload has **no standalone module**. `DialFilesToolingModule` (which already wires the file tools) also owns the offload wiring, reflecting that offload is a sub-feature of DIAL Files. On top of binding the file tools, it:
+**What:** Offload has **no standalone module**. Its config is a standalone `features` section, but `DialFilesToolingModule` (which already wires the read-back tools) also owns the offload wiring. On top of binding the file tools, it:
 
 - Binds `ToolCallResultOffloadProcessor` (request-scoped).
-- Provides a request-scoped `ResolvedOffloadConfig` via `_provide_offload_config`, reading `features.dial_files.tool_call_result_offload` **and applying the read-back availability gate** — forcing `enabled = False` when `features` is null (an absent or `null` `dial_files` block resolves to the default config at parse time, so it does not disable offload), the offload section's `enabled` flag is `false`, or `read_lines` / `search` are not in the resolved `enabled_tools`.
+- Provides a request-scoped `ResolvedOffloadConfig` via `_provide_offload_config`, reading `features.tool_call_result_offload` (env defaults when `features` is null) **and applying the read-back availability gate** — forcing `enabled = False` when the section's `enabled` flag is `false` or `read_lines` / `search` are not in the resolved `enabled_tools`.
 - Provides the processor into the `list[ToolCallResultProcessor]` multiprovider (`_provide_offload_processors`).
-- Contributes an `OffloadConfigurationException` via `_provide_initialization_exceptions` → `list[InitializationException]` when offload is `enabled` but read-back tools are missing. Returns `[]` when offload is disabled (null `features` / `enabled: false` / preview off).
-- `ToolCallResultOffloadSettings` (pydantic-settings) is read directly by `DialFilesConfig`'s field defaults; it is not bound in the container.
+- Contributes an `OffloadConfigurationException` via `_provide_initialization_exceptions` → `list[InitializationException]` when offload is `enabled` but read-back tools are missing. Returns `[]` when offload is `enabled: false`.
+- `ToolCallResultOffloadSettings` (pydantic-settings, `config/tool_call_result_offload.py`) is read directly by `ToolCallResultOffloadConfig`'s field defaults; it is not bound in the container.
 
-**Preview gating:** `DialFilesToolingModule` itself is generally available. Only the nested `features.dial_files.tool_call_result_offload` field is a `PreviewField`: when preview is off it is nullified and offload resolves to disabled, while the file tools stay available.
+**Preview gating:** none. Both `DialFilesToolingModule` and `features.tool_call_result_offload` are generally available.
 
 **Owner:** `src/quickapp/dial_files_tooling/dial_files_tooling_module.py`
 
@@ -293,7 +294,7 @@ sequenceDiagram
 | Failure | Behavior |
 |---------|----------|
 | Upload to DIAL storage fails | **Fail-open**: log warning, return original `ToolCallResult` unchanged. |
-| Read-back tools not exposed (`features.dial_files` absent, offload `enabled: false`, or `enabled_tools` excludes `read_lines`/`search`) | Offload **self-disables** at config resolution: `ResolvedOffloadConfig.enabled = False`. Large content stays inline. When offload is `enabled` but `enabled_tools` is restricted, the disable is surfaced as a warning (`OffloadConfigurationException`) in the "Initialization issues" stage (`Status.COMPLETED`). When `dial_files` is absent or offload is `enabled: false`, offload was never requested → no warning. |
+| Offload off (`enabled: false`) or read-back tools not exposed (`enabled_tools` excludes `read_lines`/`search`) | Offload **self-disables** at config resolution: `ResolvedOffloadConfig.enabled = False`. Large content stays inline. When offload is `enabled` but `enabled_tools` is restricted, the disable is surfaced as a warning (`OffloadConfigurationException`) in the "Initialization issues" stage (`Status.COMPLETED`). When offload is `enabled: false`, offload was never requested → no warning. |
 | Invalid range / bad input to DIAL files tools | `InvalidToolCallParameterException` → existing `FallbackProcessor` returns tool-call error to LLM. |
 | File URL missing or unreachable during read-back | Same as above — tool returns a meaningful error the LLM can act on. |
 | LLM requests a huge slice | Result is not re-offloaded (tool in `excluded_tools`). Large content goes to the LLM context directly — expected self-correction. Optional: log a warning for monitoring. |
@@ -328,18 +329,15 @@ TOOL_CALL_RESULT_OFFLOAD__EXCLUDED_TOOLS=["internal_file_read_lines","internal_f
 ```json
 {
   "features": {
-    "dial_files": {
-      "enabled_tools": "all",
-      "tool_call_result_offload": {
-        "enabled": true,
-        "size_threshold": 20000
-      }
+    "tool_call_result_offload": {
+      "enabled": true,
+      "size_threshold": 20000
     }
   }
 }
 ```
 
-Offload is nested inside `features.dial_files` and toggled by its `enabled` flag: `enabled: false` turns it off (while still carrying `size_threshold` / `excluded_tools`); when `enabled` is omitted it falls back to `TOOL_CALL_RESULT_OFFLOAD__ENABLED_BY_DEFAULT`. The example lowers the threshold for one app while `excluded_tools` falls back to the env default. Because the section lives under `dial_files`, an app cannot enable offload without also enabling the read-back tools — and an app with no `dial_files` block gets no offload and **no warning**.
+Offload is toggled by its `enabled` flag: `enabled: false` turns it off (while still carrying `size_threshold` / `excluded_tools`); when `enabled` is omitted it falls back to `TOOL_CALL_RESULT_OFFLOAD__ENABLED_BY_DEFAULT`. The example lowers the threshold for one app while `excluded_tools` falls back to the env default. If the app restricts `dial_files.enabled_tools` so that `read_lines` or `search` is missing, offload is turned off and a warning is shown.
 
 ### LLM-visible notice (example content the LLM sees after offload)
 
@@ -379,9 +377,9 @@ None. Existing tool responses smaller than the threshold pass through unchanged.
 ### Non-breaking changes
 
 - New optional DI binding `list[ToolCallResultProcessor]`. Defaults to an empty list when no module provides processors — confirmed by the baseline empty `@multiprovider` in `agent/agent_module.py`.
-- Offload is **preview-gated** by `ENABLE_PREVIEW_FEATURES` (the nested `tool_call_result_offload` field). When disabled (the production default today), that config is nullified and offload resolves to disabled, so the LLM sees no change. The file tools themselves are not preview-gated.
-- **Toggled by `enabled` under `dial_files`.** Offload is on when `features.dial_files.tool_call_result_offload.enabled` is `true` (an app that sets it to `false`, or omits `dial_files` entirely, gets no offload). The `enabled` default is governed by `TOOL_CALL_RESULT_OFFLOAD__ENABLED_BY_DEFAULT`.
-- **Hard dependency on DIAL Files Tools.** Offload cannot be configured without `dial_files`, and self-disables when `enabled_tools` excludes `read_lines`/`search`. No broken intermediate state: either offload + read-back both work, or content stays inline.
+- Offload is **on by default** and not preview-gated. It is toggled by `features.tool_call_result_offload.enabled`, whose default is governed by `TOOL_CALL_RESULT_OFFLOAD__ENABLED_BY_DEFAULT`.
+- `features.dial_files.tool_call_result_offload` is **deprecated**; it is still honored when the new field is not set.
+- **Hard dependency on DIAL Files Tools.** Offload self-disables (with a warning) when `enabled_tools` excludes `read_lines`/`search`. No broken intermediate state: either offload + read-back both work, or content stays inline.
 
 ---
 
@@ -403,7 +401,9 @@ DIAL files tool files are listed in [DIAL Files Tools](dial_files_tools.md).
 |------|--------|
 | `agent/tool_executor.py` | Inject `list[ToolCallResultProcessor]`, sort by `order` in constructor, apply chain after enrichers |
 | `agent/agent_module.py` | Add baseline empty `@multiprovider` for `list[ToolCallResultProcessor]` |
-| `config/dial_files.py` | Add `ToolCallResultOffloadSettings`, `ToolCallResultOffloadConfig` (with `enabled` flag), and the `tool_call_result_offload` field on `DialFilesConfig` |
+| `config/tool_call_result_offload.py` | `ToolCallResultOffloadSettings`, `ToolCallResultOffloadConfig` (with `enabled` flag) |
+| `config/application.py` | `Features.tool_call_result_offload` field; migration of the deprecated `dial_files.tool_call_result_offload` |
+| `config/dial_files.py` | Deprecated `tool_call_result_offload` field on `DialFilesConfig` |
 | `dial_files_tooling/dial_files_tooling_module.py` | Bind the processor; add `_provide_offload_config`, `_provide_offload_processors`, `_provide_initialization_exceptions`, and the read-back gate helper |
 
 ### Removed
@@ -420,7 +420,7 @@ DIAL files tool files are listed in [DIAL Files Tools](dial_files_tools.md).
 
 ### Tests
 
-- Unit: `src/tests/unit_tests/dial_files_tooling/` — `test_offload_processor.py` covers threshold / exclusion / fail-open branches for `ToolCallResultOffloadProcessor`; `test_offload_config_resolution.py` covers the read-back availability gate and the initialization-exception surface (offload self-disables and stays silent when `dial_files` or the offload section is absent; disables with a warning when `enabled_tools` excludes `read_lines`/`search`). Other DIAL files tool tests are covered in their own design.
+- Unit: `src/tests/unit_tests/dial_files_tooling/` — `test_offload_processor.py` covers threshold / exclusion / fail-open branches for `ToolCallResultOffloadProcessor`; `test_offload_config_resolution.py` covers the read-back availability gate and the initialization-exception surface (offload follows env defaults when `features` is null; stays silent when `enabled: false`; disables with a warning when `enabled_tools` excludes `read_lines`/`search`). `test_dial_files_config.py` covers default-on without preview, the env threshold, and migration of the deprecated `dial_files.tool_call_result_offload`. Other DIAL files tool tests are covered in their own design.
 - Integration: end-to-end case with a large REST response in the existing integration suite; recursive-read-back case (covered via the DIAL files tools' exclusion, UC-2).
 
 ---
@@ -442,7 +442,7 @@ Read-back relies on `internal_file_read_lines` + `internal_file_search` from [DI
 - **An offloaded response without read-back is broken behaviour.** The notice tells the LLM to call read-back tools; if those tools are absent, the LLM is handed a pointer it cannot follow and the content is simply lost from its reach. Failing closed (stay inline) is strictly safer than failing open here.
 - **Why gate on the resolved tool set, not the module flag.** `DialFilesToolingModule` can be wired while `features.dial_files.enabled_tools` restricts the exposed tools (e.g. `["write"]`). Checking module presence alone would miss this case. The gate therefore inspects the resolved tool set for both `read_lines` and `search`.
 - **Why fold the gate into `ResolvedOffloadConfig.enabled`.** It keeps `ToolCallResultOffloadProcessor` oblivious to the coupling — the processor only ever reads `enabled`. The cross-module knowledge lives in one request-scoped provider (`_provide_offload_config`), evaluated once per request.
-- **Why surface the disable as a chat-stage warning, not a server log.** A misconfiguration the operator can't see is a misconfiguration that never gets fixed. Emitting an `OffloadConfigurationException` through the existing `list[InitializationException]` multiprovider reuses the established "Initialization issues" stage rather than inventing a one-off surface. It is **soft** (`is_hard=False`): the request proceeds with offload disabled, and the stage stays `COMPLETED` — a warning, not a failure.
+- **Why surface the disable as a chat-stage warning, not a server log.** A misconfiguration the operator can't see is a misconfiguration that never gets fixed. Emitting an `OffloadConfigurationException` through the existing `list[InitializationException]` multiprovider reuses the established "Initialization issues" stage rather than inventing a one-off surface. Its level is `error`: the request proceeds with offload disabled, and the stage stays `COMPLETED` — only a `critical` issue fails it.
 
 ---
 

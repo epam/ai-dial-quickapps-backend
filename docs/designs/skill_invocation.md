@@ -167,7 +167,7 @@ which is what makes bundled files and later turns work for free (goals 4 and 7).
     - a skill the user can read → shared read-only with the per-request key;
     - a skill the user can't read → `403` for the whole request.
   - **One skill per message.** The field is an array, but QuickApps loads only its **first** entry. Any others are
-    ignored: on the message being answered they are reported as a warning-severity initialization issue naming them,
+    ignored: on the message being answered they are reported as an error-level initialization issue naming them,
     and on earlier turns they are only logged, so the stage does not repeat an issue the user can no longer act on.
     Identical entries on one message count once.
   - `url` is the only field QuickApps reads. Anything else (`title`, say) passes Core and is ignored, so the client
@@ -450,7 +450,7 @@ differently — see [Known Gaps](#known-gaps).
 | Picked URL the app also declares | Same content, one entry; the user's copy wins by order |
 | The same URL picked again later | The first pick stands: no new pair, no stage, and its position under the cap is **not** refreshed, so a re-picked old skill can still age out |
 | The user edits a picked skill mid-conversation | The model keeps the manifest from the turn that first picked it; a later `read_skill` of a bundled file returns the current file |
-| More than one entry on one message | Only the first is loaded. The rest are ignored — reported as a warning on the message being answered, logged on earlier turns. Identical entries count once |
+| More than one entry on one message | Only the first is loaded. The rest are ignored — reported as an error on the message being answered, logged on earlier turns. Identical entries count once |
 | Over `SKILL_INVOCATION_MAX_SKILLS` in the conversation | The oldest picks stop being registered; their manifests stay in history; their names return "not found" |
 | A dropped pick's files are read later | Its turn-1 manifest is still in history advertising `<skill_files>`, but its name no longer resolves, so `read_skill(name, path)` answers "not found" with no explanation of why. A rough edge of the cap, not engineered around |
 | DIAL Core outage | Every picked skill gets an error result or drops out; the agent's own skills are unaffected; request served |

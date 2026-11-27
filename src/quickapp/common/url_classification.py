@@ -112,6 +112,11 @@ def classify_url(url: str, dial_base_url: str) -> UrlScheme:
     return UrlScheme.EXTERNAL
 
 
+def is_dial_storage_path(url: str) -> bool:
+    """Whether ``url`` is a relative DIAL storage path: ``files/...`` or ``projects/...``."""
+    return url.startswith(("files/", "projects/"))
+
+
 def unsupported_scheme_error(url: str, parameter_name: str) -> InvalidToolCallParameterException:
     """Build the canonical "URL scheme not supported" exception.
 

@@ -27,7 +27,6 @@ class ConfigurableParameter(BaseModel):
         default=None,
         description="The configuration for the tool parameter in stage.",
     )
-    default: Any | None = Field(default=None, description="The default value if value is not set")
 
 
 class JsonSchemaConst(BaseModel):
@@ -41,6 +40,7 @@ class JsonSchemaSimpleType(BaseModel):
     ]
     description: str | None = None
     enum: list[Any] | None = None
+    default: Any | None = Field(default=None, description="The default value if value is not set")
 
 
 class JsonSchemaObject(BaseModel):
@@ -54,6 +54,7 @@ class JsonSchemaObject(BaseModel):
     ]
     description: str
     required: list[str] | None = None
+    default: Any | None = Field(default=None, description="The default value if value is not set")
 
 
 class JsonSchemaArray(BaseModel):
@@ -63,6 +64,7 @@ class JsonSchemaArray(BaseModel):
         Field(discriminator='type'),
     ]
     description: str
+    default: Any | None = Field(default=None, description="The default value if value is not set")
 
 
 JsonSchemaObject.model_rebuild()
@@ -218,6 +220,36 @@ def remove_const_schema_params(open_ai_tool: OpenAiToolConfig) -> OpenAiToolConf
     }
     remove_schema_params(parameters, removed)
     return tool_copy
+
+
+_JSON_SCHEMA_TYPES: tuple[type[BaseModel], ...] = (
+    JsonSchemaSimpleType,
+    JsonSchemaObject,
+    JsonSchemaArray,
+    JsonSchemaConst,
+)
+
+
+def _json_schema_fields(param: BaseModel) -> set[str]:
+    """Fields of the JSON Schema class a parameter inherits from.
+
+    QuickApps-only settings (stage display, REST parameter location) live on subclasses,
+    so they are not among them.
+    """
+    for schema_type in _JSON_SCHEMA_TYPES:
+        if isinstance(param, schema_type):
+            return set(schema_type.model_fields)
+    raise TypeError(f"Unsupported tool parameter type: {type(param).__name__}")
+
+
+def to_llm_tool_dict(open_ai_tool: OpenAiToolConfig) -> OpenAiToolConfigDict:
+    """Dump a tool for the model, keeping only the JSON Schema part of each parameter."""
+    tool_dict = open_ai_tool.model_dump(mode="json", exclude_none=True)
+    tool_dict["function"]["parameters"]["properties"] = {
+        name: param.model_dump(mode="json", exclude_none=True, include=_json_schema_fields(param))
+        for name, param in open_ai_tool.function.parameters.properties.items()
+    }
+    return tool_dict
 
 
 class BaseTool(BaseModel):

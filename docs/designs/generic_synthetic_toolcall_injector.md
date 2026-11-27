@@ -79,7 +79,7 @@ holds. The condition is evaluated inside `get_content()`, which returns `None` t
 ```python
 class InjectionFrequency(StrEnum):
     ALWAYS            = "always"             # always append a new pair at END; accumulates across turns
-    APPEND_IF_CHANGED = "append_if_changed"  # inject after first USER on first call; replace in place if content unchanged (re-stamps call_id); append at END if content changed
+    APPEND_IF_CHANGED = "append_if_changed"  # inject after first USER on first call; leave untouched if call_id and displayed arguments are unchanged, replace in place if only the call_id (TTL) or rendered arguments changed; append at END if content changed
 ```
 
 Injection position is implicit in the frequency mode — there is no separate `InjectionPosition`
@@ -158,7 +158,7 @@ The base `transform` implementation is a two-stage dispatcher:
 | Frequency | Private method | Behavior |
 |---|---|---|
 | `ALWAYS` | `_inject_always` | Fetches content; uses a random `call_id`; appends at **END**. |
-| `APPEND_IF_CHANGED` | `_inject_append_if_changed` | Fetches content; computes `call_id` via `make_call_id(tool, args, content)`. If a pair with matching tool+args+content already exists, **replaces it in place** (re-stamps call_id — e.g. updates TTL expiry). If content changed, appends at **END**. On first injection inserts **after the first USER message**. |
+| `APPEND_IF_CHANGED` | `_inject_append_if_changed` | Fetches content; computes `call_id` via `make_call_id(tool, args, content)`. If a pair with matching tool+args+content already exists and its call_id and displayed arguments are unchanged, **returns the messages untouched** (enrichers do not re-run, so the original timestamp is kept and the prefix stays byte-stable); if only the call_id changed (e.g. TTL expiry) or the rendered arguments changed, **replaces it in place**. If content changed, appends at **END**. On first injection inserts **after the first USER message**. |
 
 All methods return messages unchanged if `get_content()` returns `None`. All fall back to
 appending at END when no USER message exists.
@@ -386,7 +386,7 @@ class VersionedSkillInjector(SyntheticToolCallInjector):
 ### `common/synthetic_injection/` (new package)
 - `__init__.py`
 - `_injection_enums.py` — `InjectionFrequency` (`ALWAYS`, `APPEND_IF_CHANGED`)
-- `synthetic_tool_call_injector.py` — `SyntheticToolCallInjector`; exposes `make_call_id`, `_make_call_id_prefix`, `_parse_call_id_ttl_expiry` as overridable hooks; `APPEND_IF_CHANGED` replaces existing pairs in place when content is unchanged
+- `synthetic_tool_call_injector.py` — `SyntheticToolCallInjector`; exposes `make_call_id`, `_make_call_id_prefix`, `_parse_call_id_ttl_expiry` as overridable hooks; `APPEND_IF_CHANGED` leaves an identical pair untouched and replaces it in place only when its call_id (TTL) or rendered arguments changed
 - `staged_tool_synthetic_injector.py` — `StagedToolSyntheticInjector`
 
 ### `application/_messages_setup.py`

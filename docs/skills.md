@@ -60,8 +60,7 @@ Detailed instructions and guidelines for the agent...
 ## Metadata Fields
 
 Only a missing frontmatter, invalid YAML, a missing `name` or `description`, or an invalid `allowed-tools` format
-reject a skill. The other constraints below are recommendations: breaking them logs a warning, and the skill still
-loads.
+reject a skill. The other constraints below are Agent Skills spec recommendations; QuickApps doesn't check them.
 
 | Field           | Required | Description                                          | Constraints                                                                                        |
 |-----------------|----------|------------------------------------------------------|----------------------------------------------------------------------------------------------------|
@@ -121,9 +120,9 @@ optional features. The table below summarises what is and isn't supported.
 
 | Feature | Status | Notes |
 |---|---|---|
-| `SKILL.md` with YAML frontmatter | Supported | All standard frontmatter fields are parsed and validated. |
+| `SKILL.md` with YAML frontmatter | Supported | All standard frontmatter fields are parsed; only the structure is validated. |
 | Directory-based layout (`skill-name/SKILL.md`) | Supported | Directory name should match `name` in frontmatter; a mismatch only logs a warning. |
-| `name` validation (length, charset, consecutive hyphens) | Partial | Violations log a warning; the skill still loads. |
+| `name` validation (length, charset, consecutive hyphens) | Not supported | Not checked; the skill loads as is. |
 | `description`, `license`, `compatibility`, `metadata` | Supported | |
 | `allowed-tools` | Partial | Exposed in XML metadata but **not enforced** at runtime. |
 | Optional subdirectories (`scripts/`, `references/`, `assets/`) | Partial | Supported for [DIAL skill resources](#dial-skill-resources) (text files only). Predefined and DIAL-prompt skills read `SKILL.md` alone. |
@@ -168,8 +167,7 @@ The `url` field must be a relative path including the `prompts/` resource type p
 DIAL prompt skills are validated at request time using the same rules as predefined skills:
 
 - Must have YAML frontmatter delimited by `---`
-- `name` (required): max 64 chars, lowercase alphanumeric + hyphens (a violation only logs a warning)
-- `description` (required): max 1024 chars (a violation only logs a warning)
+- `name` and `description` are required (length and naming limits aren't checked)
 - Prompts with no content, empty content, or invalid frontmatter are silently skipped with a warning log
 
 ### Name Collision
@@ -236,18 +234,46 @@ description: How to handle refund requests, by region.
 Determine the customer's region, then read the matching reference file.
 
 <skill_files>
-references/eu-rules.md
-references/us-rules.md
+skill://refund-policy/references/eu-rules.md
+skill://refund-policy/references/us-rules.md
 </skill_files>
 ```
 
-The agent then opens one with `read_skill(skill_name="refund-policy", file_path="references/eu-rules.md")`
-— one request to DIAL Core per file, and only for files it actually asks for. Repeat reads within a
-request are served from memory.
+Each file is shown as a ready-to-copy `skill://<skill_name>/<path>` reference. The agent then opens one
+with `read_skill(skill_name="refund-policy", file_path="skill://refund-policy/references/eu-rules.md")`
+— the bare path `references/eu-rules.md` is accepted too — one request to DIAL Core per file, and only for
+files it actually asks for. Repeat reads within a request are served from memory.
 
 A path is readable **only if it appears in that skill's `<skill_files>` block**. Anything else — a
 traversal attempt, a hidden file, a path the model invented — is refused, and the error hands the
 inventory back so the agent can correct itself.
+
+### Passing a Bundled File to a Tool
+
+A bundled file — typically a script — can be handed to another tool without passing through the model.
+The agent writes the `skill://<skill_name>/<path>` reference from `<skill_files>` behind a `file:` prefix:
+
+| Tool parameter | Value |
+|---|---|
+| MCP parameter with `"dial_url": true` | `file:url::skill://data-cleanup/scripts/clean.py` |
+| `code`, "the python code to run" | `file:text::skill://data-cleanup/scripts/clean.py` |
+| "base64-encoded file" | `file:base64::skill://data-cleanup/scripts/clean.py` (`file:data::` for a data URI) |
+
+- **By link (`url`).** QuickApps rewrites the reference to the file's DIAL URL
+  (`skills/<bucket>/<path>/files/<file_path>`) and, for a `dial_url` parameter of a `dial-mcp` toolset, grants
+  that toolset read access to the **skill root** — DIAL Core rejects a grant on a single file inside a skill.
+  Several files of one skill cost one grant. The MCP server then downloads the file itself; see
+  [file_transfer.md](./file_transfer.md#mcp-specific-dial_url-permission-grants) for what the server must do.
+- **By content (`text`, `base64`, `data`).** The file is read through the skill's reader, so the inventory
+  check, `DIAL_SKILLS_FILE_MAX_BYTES` and the UTF-8 requirement apply.
+- A reference to a file outside the inventory, an unknown skill, or a skill without bundled files (predefined
+  and dial-prompt skills) is rejected with a parameter error that lists the skill's available files.
+
+The model learns the syntax from the predefined skill `tool-call-skill-file-references`, injected on every
+conversation as a synthetic `read_skill` call. The code lives in `skills/file_reference/`;
+`shared/file_transfer/` has no knowledge of skills and only offers the `FileSource` extension point it plugs into.
+Skills picked by the user in a message work the same way. Executing the file is the receiving tool's job.
+Design: [skill_script_references.md](designs/skill_script_references.md).
 
 ### Which Files Are Advertised
 
@@ -322,7 +348,7 @@ the rest of the conversation. The model does not get to choose — a picked skil
   lets Core re-share the skill on every later turn and keeps the bundled files readable.
 - `content` is opaque. QuickApps never parses it, so the `/name` token is just text.
 - **Several skills per message**, up to `SKILL_INVOCATION_MAX_SKILLS_PER_MESSAGE` (default `5`); any
-  chip beyond the cap is ignored and reported as a warning in the initialization issues stage. Across
+  chip beyond the cap is ignored and reported as an error in the initialization issues stage. Across
   the whole conversation, at most `SKILL_INVOCATION_MAX_SKILLS` (default `10`) distinct picks stay
   resolved, newest first — the picks made on the message being answered are always kept, and the
   remaining budget goes to the next-newest older picks.

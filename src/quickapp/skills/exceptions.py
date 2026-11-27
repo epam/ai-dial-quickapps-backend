@@ -10,6 +10,14 @@ class SkillValidationError(Exception):
         super().__init__(f"Skill validation failed for '{source_id}': {reason}")
 
 
+class SkillFileReadError(Exception):
+    """Raised when a file of a skill exists but its content cannot be read.
+
+    Transport, size-cap and decoding failures of a skill source derive from this, so
+    callers can tell them apart from programming errors. The message is written for the model.
+    """
+
+
 class SkillFilesNotSupportedError(FileNotFoundError):
     """Raised when a ``file_path`` is asked of a skill source that has no files.
 

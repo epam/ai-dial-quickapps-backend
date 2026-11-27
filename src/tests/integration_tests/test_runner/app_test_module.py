@@ -12,7 +12,6 @@ from quickapp.dial_app_tooling import DialAppToolingModule
 from quickapp.dial_core_services.dial_core_services_module import DialCoreServicesModule
 from quickapp.dial_deployment_tooling import DialDeploymentToolingModule
 from quickapp.dial_files_tooling.dial_files_tooling_module import DialFilesToolingModule
-from quickapp.file_transfer import FileTransferModule
 from quickapp.internal_tooling.internal_tooling_module import InternalToolModule
 from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_client import (
     _PyInterpreterClient,
@@ -87,7 +86,6 @@ class TestApp(FastAPI):
                 StartersModule(),
                 ConfigurationSupportApiModule(),
                 DialCoreServicesModule(),
-                FileTransferModule(),
                 AttachmentProcessingModule(),
                 ToolDiscoveryModule(),
                 SkillsModule(),

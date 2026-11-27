@@ -116,10 +116,16 @@ Tool-initialization failures and skill-loading failures (invalid DIAL prompt fro
 duplicate names, predefined-vs-external name collisions, or a whole-subsystem resolver failure) share a
 common `InitializationException` hierarchy and flow through a single `list[InitializationException]`
 multiprovider. `_InitializationErrorHandler` renders one `"Initialization issues"` stage with per-feature
-sections (`#### Tool initialization`, `#### Skill loading`) and closes it `FAILED` if any exception marks
-itself hard (`is_hard=True`) — otherwise `COMPLETED`. Tool-init failures and whole-subsystem skill
-failures are hard; per-URL skill failures are soft. The request always proceeds; the close status is a
-UI cue.
+sections (`#### Tool initialization`, `#### Skill loading`). Each exception carries one `level`
+(`warning` / `error` / `critical`): a class default that an instance may override (only skills do, e.g.
+`warning` when a DIAL skill's bundled files can't be listed). Tool-init failures, orchestrator failures and
+whole-subsystem skill failures are `critical`; per-URL skill, hook, offload and project-instruction issues
+are `error`. The stage closes `FAILED` if any issue is `critical`, otherwise `COMPLETED`. `level` only
+drives display: whether the turn stops is decided by raising vs. recording the exception.
+
+Which issues the stage shows is set by `features.initialization_issues.level` (default:
+`DEFAULT_INITIALIZATION_ISSUES_LEVEL`). Issues below the threshold are logged instead; with none left,
+the stage isn't rendered.
 
 Failures that *abort* the turn take a different path: they are resolved into safe, user-facing text,
 stamped with an error reference correlated to server logs, and delivered through the DIAL error protocol
@@ -193,14 +199,14 @@ by every hit).
   deployments whose adapter caches.
 - **Prefix below the model minimum** (512–4,096 tokens depending on the model) is silently not cached. No
   workaround.
-- **The history misses on the first call of every turn.** Synthetic pairs with `append_if_changed` (the
-  file-transfer `read_skill` pair, config hooks) are rebuilt in place each turn, and with `features.timestamp`
-  each rebuild gets a new `[Timestamp: …]` line, so everything after the first user message changes. Later
-  calls of the turn hit. Workaround: `PROMPT_CACHE_BREAKPOINTS_ENABLED=false`.
-- **Writes cost more.** On Claude, cached tokens written for the first time cost 1.25×. Because of the miss
-  above, a turn with a single model call (no tool call) writes the history and never reads it back, so it pays
-  25% more on the history. Turns with 2 or more calls pay less; it breaks even when about 26–28% of turns make
-  a 2nd call. Workaround: `PROMPT_CACHE_BREAKPOINTS_ENABLED=false`.
+- **The history can still miss on the first call of a turn.** An identical `append_if_changed` pair (the
+  file-transfer `read_skill` pair, config hooks) is left untouched and keeps its original timestamp, but hooks
+  with a TTL refresh or templated arguments, and `_GetContentHistoryPolicy`, still rewrite history. Later calls
+  of the turn hit. Workaround: `PROMPT_CACHE_BREAKPOINTS_ENABLED=false`.
+- **Writes cost more.** On Claude, cached tokens written for the first time cost 1.25×. When the history
+  does miss, a turn with a single model call (no tool call) writes the history and never reads it back, so it
+  pays 25% more on the history. Turns with 2 or more calls pay less; it breaks even when about 26–28% of turns
+  make a 2nd call. Workaround: `PROMPT_CACHE_BREAKPOINTS_ENABLED=false`.
 - **One miss when the tools change:** a `tool_search` load, a different client tool set, or the first file
   attachment (which turns on `available_context`, and with `lazy_on_demand` the get-content tool).
 - **One miss when only the system prompt changes:** an inbound system message with
@@ -641,6 +647,7 @@ The module is always registered; it is a no-op unless the app sets
 the `internal_file_*` tools speak). The relative form is resolved under the agent home to a `files/` URL
 via the shared `HomePathResolver` (see the Dependency Injection section) and then follows the DIAL
 passthrough path, so the model can hand a file-tool path straight to `internal_attachments_get_content`.
+DIAL deployment tools resolve relative `attachment_urls` the same way (`AttachmentResolver`).
 
 The orchestrator deployment metadata feed (`_OrchestratorDeploymentInitializer`, `OrchestratorCapabilities`,
 `OrchestratorDeploymentCacheService`) lives in `src/quickapp/core/agent/` as a shared facility for any future
@@ -687,7 +694,7 @@ individually, `app_factory` splices in two package-level arrays:
     injection. Owns `FileLoaderService` (scheme-aware bytes loader). The external-fetch security envelope —
     `ExternalUrlFetcher`, `ExternalFetchSettings`, `ExternalUrlFetchPolicyResolver` — lives in
     `shared/external_fetch/` and is bound by `ExternalFetchModule` (registered via the `shared_module` array) so
-    feature modules outside `file_transfer/` can consume it without an upward import. External egress is gated by
+    feature modules outside `shared/file_transfer/` can consume it without an upward import. External egress is gated by
     a two-tier policy: `EXTERNAL_URL_FETCH_ENABLED` (admin) and per-app `features.external_url_fetch.enabled`
     (builder), composed by `ExternalUrlFetchPolicyResolver`.
 12. **Attachment Processing Module**: `internal_attachments_available_context`, optional `internal_attachments_get_content`

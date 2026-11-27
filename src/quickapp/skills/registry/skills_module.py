@@ -41,6 +41,9 @@ class SkillsModule(Module):
                 tool_config=SKILL_READER_TOOL_CONFIG,
                 name=SKILL_READER_TOOL_NAME,
                 description=SKILL_READER_TOOL_CONFIG.open_ai_tool.function.description,
+                # read_skill takes `skill://` references verbatim; the global transformers
+                # would rewrite them to storage URLs before the tool runs.
+                argument_transformers=[],
             )
         ]
 

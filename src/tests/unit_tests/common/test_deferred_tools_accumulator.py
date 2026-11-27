@@ -140,6 +140,20 @@ class TestRegisterDeferredTools:
         assert "query" in properties
         assert "api_key" not in properties
 
+    def test_definition_hides_quickapps_param_settings(self):
+        """QuickApps-only parameter settings (here the REST `parameter_info`) are not JSON
+        Schema, so strict model endpoints reject them; the definition must not carry them.
+        """
+        context = DeferredToolsAccumulator()
+        tool_config = _make_rest_api_tool_with_const_param()
+        context.register_deferred_tools(_make_toolset(), [_make_staged_tool(tool_config)])
+
+        definition = context.get_definition("test_tool")
+
+        assert definition is not None
+        query = definition["function"]["parameters"]["properties"]["query"]
+        assert query == {"type": "string", "description": "Query param"}
+
     def test_definition_applies_enrich_openai_tool_schema(self):
         """The per-tool enrich_openai_tool_schema hook runs for deferred tools too."""
 

@@ -28,6 +28,12 @@ def _make_fetcher(fetch_result: FetchedBytes | Exception | None = None) -> WebCo
 
 class TestFetchExternal:
     @pytest.mark.asyncio
+    async def test_project_url_rejected_as_dial_storage(self):
+        fetcher = _make_fetcher()
+        with pytest.raises(WebContentFetchError, match="DIAL storage"):
+            await fetcher.fetch_external("projects/b/P/files/context/a.md")
+
+    @pytest.mark.asyncio
     async def test_external_url_fetched(self):
         fetched = FetchedBytes(data=b"hello", content_type="text/plain", filename="a.txt")
         fetcher = _make_fetcher(fetched)

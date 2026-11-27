@@ -3,28 +3,31 @@ import logging
 
 from injector import inject
 
-from quickapp.common.exceptions import SkillInitializationException
+from quickapp.common.exceptions import InitializationIssueLevel, SkillInitializationException
 from quickapp.config.skill import DialSkillConfig
 from quickapp.skills.dial_resource._dial_skill_reader import DialSkillReader
 from quickapp.skills.dial_resource._dial_skills_client import SkillInventory, _DialSkillsClient
 from quickapp.skills.dial_resource._exceptions import describe_exception
 from quickapp.skills.frontmatter import parse_frontmatter
+from quickapp.skills.skill_file_url import format_skill_reference
 from quickapp.skills.skill_resolver import DialSkillResourceResolver, SkillResolution
 from quickapp.skills.skills_provider import ResolvedSkill
 
 logger = logging.getLogger(__name__)
 
 
-def _build_skill_files_block(inventory: SkillInventory, max_files: int) -> str:
+def _build_skill_files_block(skill_name: str, inventory: SkillInventory, max_files: int) -> str:
     """Render the ``<skill_files>`` inventory appended to a skill's manifest.
 
+    Each file is shown as a ready-to-copy ``skill://<name>/<path>`` reference.
     Paths are emitted verbatim — deliberately not XML-escaped. Escaping would
     advertise `references/user's-guide.md` as `user&apos;s-guide.md`, a name no
     lookup resolves.
     """
     if not inventory.files:
         return ""
-    block = "\n".join(("<skill_files>", *inventory.files, "</skill_files>"))
+    references = (format_skill_reference(skill_name, path) for path in inventory.files)
+    block = "\n".join(("<skill_files>", *references, "</skill_files>"))
     if inventory.truncated:
         block += f"\nNote: file listing truncated at {max_files} entries."
     return block
@@ -47,7 +50,7 @@ class DialSkillResolver(DialSkillResourceResolver):
         Mirrors ``DialPromptSkillResolver.resolve``: dedup by URL, fetch in
         parallel, dedup by name (first configured wins), and turn both per-URL
         failures and non-fatal warnings into ``SkillInitializationException``
-        entries distinguished by ``severity``.
+        entries distinguished by ``level``.
         """
         seen_urls: set[str] = set()
         unique_configs: list[DialSkillConfig] = []
@@ -74,7 +77,9 @@ class DialSkillResolver(DialSkillResourceResolver):
 
             for warning in result.warnings:
                 exceptions.append(
-                    SkillInitializationException(url=url, reason=warning, severity="warning")
+                    SkillInitializationException(
+                        url=url, reason=warning, level=InitializationIssueLevel.WARNING
+                    )
                 )
 
             if result.metadata.name in seen_names:
@@ -110,19 +115,19 @@ class DialSkillResolver(DialSkillResourceResolver):
 
     async def _fetch_one(self, config: DialSkillConfig) -> ResolvedSkill:
         manifest = await self._client.read_manifest(config.url)
-        parsed = parse_frontmatter(manifest, config.url)
+        metadata = parse_frontmatter(manifest, config.url)
 
         inventory, warnings = await self._list_files(config.url)
-        block = _build_skill_files_block(inventory, self._client.max_files)
+        block = _build_skill_files_block(metadata.name, inventory, self._client.max_files)
         content = f"{manifest.rstrip()}\n\n{block}\n" if block else manifest
 
         return ResolvedSkill(
             reader=self._reader,
             url=config.url,
-            metadata=parsed.metadata,
+            metadata=metadata,
             content=content,
             files=inventory.files,
-            warnings=[*parsed.warnings, *warnings],
+            warnings=warnings,
         )
 
     async def _list_files(self, url: str) -> tuple[SkillInventory, list[str]]:

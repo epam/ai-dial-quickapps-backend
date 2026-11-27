@@ -17,6 +17,7 @@ from quickapp.common.tool_names import (
 )
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.dial_files import DialFilesConfig
+from quickapp.config.tool_call_result_offload import ToolCallResultOffloadConfig
 from quickapp.config.tools.internal import InternalTool
 from quickapp.dial_files_tooling._copy_file_tool import _CopyFileTool
 from quickapp.dial_files_tooling._delete_file_tool import _DeleteFileTool
@@ -167,19 +168,11 @@ class DialFilesToolingModule(Module):
     @request_scope
     @provider
     def _provide_offload_config(self, app_config: ApplicationConfig) -> ResolvedOffloadConfig:
-        # Offload is a dial-files sub-feature. An absent or null `dial_files` block is
-        # already resolved to the default config at parse time (so the preview gate has
-        # been applied to it); the only way to get None here is a null `features`
-        # section. Read the parsed config — not a runtime-built `DialFilesConfig()` —
-        # which would bypass the preview gate.
-        cfg = app_config.features.dial_files if app_config.features else None
-        if cfg is None:
-            # `features` is null: nothing was parsed, so offload stays off.
-            return ResolvedOffloadConfig(
-                enabled=False, size_threshold=0, excluded_tools=frozenset()
-            )
-        offload = cfg.tool_call_result_offload
-        if offload is None or not offload.enabled:
+        # A null `features` section follows the env defaults, like the file tools do.
+        # The deprecated `dial_files.tool_call_result_offload` is migrated at parse time.
+        features = app_config.features
+        offload = features.tool_call_result_offload if features else ToolCallResultOffloadConfig()
+        if not offload.enabled:
             return ResolvedOffloadConfig(
                 enabled=False, size_threshold=0, excluded_tools=frozenset()
             )
@@ -188,7 +181,7 @@ class DialFilesToolingModule(Module):
         # not exposed, so the LLM is never handed a pointer it cannot follow. The
         # missing tools are carried on the resolved config so the warning provider
         # can reuse this single resolution instead of re-deriving it.
-        missing = self._missing_read_back_tools(cfg)
+        missing = self._missing_read_back_tools(self._effective_config(app_config))
         return ResolvedOffloadConfig(
             enabled=not missing,
             size_threshold=offload.size_threshold,
