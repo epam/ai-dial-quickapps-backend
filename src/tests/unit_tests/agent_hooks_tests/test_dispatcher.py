@@ -39,6 +39,10 @@ def _dispatcher(hooks: list[ToolCallHookConfig], handlers: dict[str, MagicMock])
     return HookDispatcher(make_provider(SimpleNamespace(hooks=hooks)), registry)
 
 
+async def _run_event(dispatcher: HookDispatcher) -> list[HookResult]:
+    return await dispatcher.run_all(dispatcher.hooks_for(HookEvent.ON_REQUEST_START), _CONTEXT)
+
+
 async def _slow(context: Any) -> HookResult:
     await asyncio.sleep(5)
     return _result("slow")
@@ -152,7 +156,7 @@ class TestDispatch:
         }
         dispatcher = _dispatcher(hooks, handlers)
 
-        results = await dispatcher.dispatch(HookEvent.ON_REQUEST_START, _CONTEXT)
+        results = await _run_event(dispatcher)
 
         assert [r.hook_name for r in results] == ["first", "second"]
         handlers["other-event"].run.assert_not_awaited()
@@ -173,7 +177,7 @@ class TestDispatch:
         dispatcher = _dispatcher(
             [_hook("a"), _hook("b")], {"a": _recording("a"), "b": _recording("b")}
         )
-        await dispatcher.dispatch(HookEvent.ON_REQUEST_START, _CONTEXT)
+        await _run_event(dispatcher)
 
         assert order == ["start-a", "end-a", "start-b", "end-b"]
 
@@ -185,7 +189,7 @@ class TestDispatch:
             "failed": _handler(side_effect=RuntimeError("boom")),
             "ok": _handler(_result("ok")),
         }
-        results = await _dispatcher(hooks, handlers).dispatch(HookEvent.ON_REQUEST_START, _CONTEXT)
+        results = await _run_event(_dispatcher(hooks, handlers))
         assert [r.hook_name for r in results] == ["ok"]
 
     @pytest.mark.asyncio
@@ -193,4 +197,25 @@ class TestDispatch:
         dispatcher = HookDispatcher(
             make_provider(SimpleNamespace(hooks=None)), MagicMock(spec=HookHandlerRegistry)
         )
-        assert await dispatcher.dispatch(HookEvent.ON_REQUEST_START, _CONTEXT) == []
+        assert await _run_event(dispatcher) == []
+
+
+class TestHooksForAndRunAll:
+    def test_hooks_for_returns_only_the_events_hooks_in_order(self) -> None:
+        hooks = [_hook("a"), _hook("b", "on_completion"), _hook("c")]
+        dispatcher = _dispatcher(hooks, {})
+        assert [h.name for h in dispatcher.hooks_for(HookEvent.ON_REQUEST_START)] == ["a", "c"]
+
+    def test_hooks_for_without_hooks_is_empty(self) -> None:
+        dispatcher = HookDispatcher(
+            make_provider(SimpleNamespace(hooks=None)), MagicMock(spec=HookHandlerRegistry)
+        )
+        assert dispatcher.hooks_for(HookEvent.ON_COMPLETION) == []
+
+    @pytest.mark.asyncio
+    async def test_run_all_runs_exactly_the_given_hooks(self) -> None:
+        hooks = [_hook("a"), _hook("b")]
+        handlers = {"a": _handler(_result("a")), "b": _handler(_result("b"))}
+        results = await _dispatcher(hooks, handlers).run_all([hooks[1]], _CONTEXT)
+        assert [r.hook_name for r in results] == ["b"]
+        handlers["a"].run.assert_not_awaited()

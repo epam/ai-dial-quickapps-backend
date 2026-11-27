@@ -3,7 +3,13 @@ from pydantic import ValidationError
 
 from quickapp.common.synthetic_injection.injection_enums import InjectionFrequency
 from quickapp.config.application import ApplicationConfig
-from quickapp.config.hooks import HookConfig, HookEvent, ToolCallHookConfig, TTLRefreshCondition
+from quickapp.config.hooks import (
+    HookConfig,
+    HookEvent,
+    HookExecution,
+    ToolCallHookConfig,
+    TTLRefreshCondition,
+)
 from tests.unit_tests.common.common import create_app_configuration
 
 
@@ -80,6 +86,36 @@ class TestToolCallHookConfig:
         cfg = HookConfig.model_validate(data)
         assert isinstance(cfg, ToolCallHookConfig)
         assert cfg.tool_name == "my_tool"
+
+    def test_execution_defaults_to_blocking(self):
+        cfg = ToolCallHookConfig(event=HookEvent.ON_COMPLETION, tool_name="t")
+        assert cfg.execution is HookExecution.BLOCKING
+        assert cfg.model_dump()["execution"] == "blocking"
+
+    def test_execution_background_parses_from_dict(self):
+        cfg = ToolCallHookConfig.model_validate(
+            {"event": "on_completion", "tool_name": "t", "execution": "background"}
+        )
+        assert cfg.execution is HookExecution.BACKGROUND
+
+    def test_execution_rejects_unknown_value(self):
+        with pytest.raises(ValidationError, match="execution"):
+            ToolCallHookConfig.model_validate(
+                {"event": "on_completion", "tool_name": "t", "execution": "async"}
+            )
+
+    def test_background_rejected_for_request_start(self):
+        with pytest.raises(ValidationError, match="only supported for event 'on_completion'"):
+            ToolCallHookConfig.model_validate(
+                {"event": "on_request_start", "tool_name": "t", "execution": "background"}
+            )
+
+    def test_blocking_is_accepted_for_request_start(self):
+        # A dumped config always carries the default, so it must validate again.
+        cfg = ToolCallHookConfig.model_validate(
+            {"event": "on_request_start", "tool_name": "t", "execution": "blocking"}
+        )
+        assert cfg.execution is HookExecution.BLOCKING
 
 
 class TestApplicationConfigHooksField:

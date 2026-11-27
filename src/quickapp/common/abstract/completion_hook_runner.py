@@ -2,7 +2,9 @@ from abc import ABC, abstractmethod
 
 
 class CompletionHookRunner(ABC):
-    """Runs blocking ``on_completion`` hooks after the orchestrator loop finished normally.
+    """Runs ``on_completion`` hooks after the orchestrator loop finished normally.
+
+    Blocking hooks are awaited; background ones are handed off and may outlive the request.
 
     Implementations must not raise ``Exception``: a failing hook never fails the request.
     ``asyncio.CancelledError`` must propagate.

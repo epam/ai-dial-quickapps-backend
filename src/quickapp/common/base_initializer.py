@@ -11,10 +11,14 @@ class InitializerType(str, Enum):
     startup = "startup"
 
 
-# The BaseInitializer class is an interface for components that handle asynchronous initialization
-# before the agent is created. All instances of this class are invoked by _QuickAppCompletion
-# before the BaseAgent implementation is instantiated. This allows dynamic data to be injected
-# into the dependency container, making it accessible to classes involved in the agent creation process.
+# The BaseInitializer class is an interface for components that handle asynchronous initialization.
+# The InitializerType decides when an implementation runs:
+# - completion: per request, invoked by _QuickAppCompletion before the BaseAgent implementation is
+#   instantiated, so dynamic data can be injected into the dependency container for the classes
+#   involved in the agent creation process;
+# - configuration: per request, once the app configuration is resolved;
+# - startup: once, when the application starts.
+# Teardown at application stop is a separate contract: BaseFinalizer.
 class BaseInitializer(ABC):
 
     # Lower values run earlier. Default 0 means "no preference"; ties are

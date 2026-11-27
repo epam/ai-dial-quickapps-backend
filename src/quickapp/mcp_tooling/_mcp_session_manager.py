@@ -55,7 +55,9 @@ class _MCPSessionManager:
 
     Request-scoped: one manager instance per request. It self-registers its
     teardown with :class:`RequestAsyncCloseRegistry`, which the orchestrator
-    flushes in its ``_persisting_state()`` ``finally`` block.
+    flushes in its ``_persisting_state()`` ``finally`` block. If work that outlives the
+    request is still using the sessions, the registry hands the teardown over to that
+    work's owner, which runs it once the work finishes.
     """
 
     def __init__(self, async_close_registry: RequestAsyncCloseRegistry) -> None:

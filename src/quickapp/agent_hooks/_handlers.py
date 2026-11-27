@@ -13,7 +13,7 @@ from quickapp.common.synthetic_injection.staged_tool_lookup import (
 )
 from quickapp.common.utils import sanitize_toolname
 from quickapp.config.application import StageDisplayLevel
-from quickapp.config.hooks import HookConfig, ToolCallHookConfig
+from quickapp.config.hooks import HookConfig, HookExecution, ToolCallHookConfig
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +55,13 @@ class ToolCallHookHandler(HookHandler):
         if tool is None:
             return None
 
-        result = await tool.arun(_PROBE_CALL_ID, stage_level=StageDisplayLevel.DEBUG, **rendered)
+        if self._config.execution is HookExecution.BACKGROUND:
+            # The single stage-less call: it may run after the response closed.
+            result = await tool.arun_in_background(_PROBE_CALL_ID, **rendered)
+        else:
+            result = await tool.arun(
+                _PROBE_CALL_ID, stage_level=StageDisplayLevel.DEBUG, **rendered
+            )
         return HookResult(
             hook_name=hook_name,
             content=result.content,

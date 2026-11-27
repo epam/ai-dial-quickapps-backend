@@ -11,7 +11,7 @@ This guide describes how that works at runtime. Fields and examples are in
 flowchart LR
     A[Request] --> B["on_request_start hooks<br/>(result injected into history)"]
     B --> C[Orchestrator loop<br/>LLM calls and tools]
-    C -->|finished normally| D["on_completion hooks<br/>(result discarded)"]
+    C -->|finished normally| D["on_completion hooks<br/>(result discarded;<br/>blocking awaited, background not)"]
     C -->|external tool calls| E[Response closed]
     D --> E
 ```
@@ -19,7 +19,7 @@ flowchart LR
 | Event | When | Result |
 |-------|------|--------|
 | `on_request_start` | Before the first LLM call of the request | Injected into the conversation as a synthetic tool-call pair |
-| `on_completion` | After the orchestrator loop ended normally, before the response is closed | Discarded; the hook exists for its side effect |
+| `on_completion` | After the orchestrator loop ended normally. `blocking` hooks finish before the response is closed; `background` hooks do not hold it open (beyond a short hold period) | Discarded; the hook exists for its side effect |
 
 `on_completion` does not fire when the turn ends with external tool calls handed back to the client.
 
@@ -42,11 +42,52 @@ flowchart LR
 
 ## `on_completion`
 
-- Runs inside the request, after the final answer is streamed and before the response is closed, so
-  per-request MCP sessions are still open and the hook can reuse them.
-- Hooks run **sequentially in manifest order**. The response stays open until they finish, so the delay is
-  bounded by the sum of their timeouts.
+- Runs after the final answer is streamed. `blocking` hooks (the default) run before the response is closed,
+  so per-request MCP sessions are still open and the hook can reuse them.
+- `blocking` hooks run **sequentially in manifest order**. The response stays open until they finish, so the
+  delay is bounded by the sum of their timeouts.
 - The result is not added to the conversation and not stored, so the next turn does not see it.
+- A hook with `"execution": "background"` does not delay the response; see [Background hooks](#background-hooks).
+
+### Background hooks
+
+`"execution": "background"` (valid on `on_completion` only; the default is `"blocking"`) is for side effects
+nobody waits for, such as saving memory.
+
+- **Not delayed by the hook itself:** the response closes without waiting for the hook to finish. It stays
+  open for up to `BACKGROUND_HOOKS_RESPONSE_HOLD_SECONDS` (3 s by default) so the hook's call can reach DIAL Core
+  first (a call that starts after the response closed is rejected with 401). A hook that finishes sooner adds
+  no more than its own run time.
+- **Response delay for slow hooks:** every turn that has a hook slower than the hold period is held for the
+  whole period before the response closes. For a long memory save that is the normal case, not a worst case:
+  expect the stream to end up to 3 s (by default) after the answer.
+- **Order:** background hooks start before blocking ones, so manifest order is not guaranteed between the two
+  kinds. Blocking hooks still run in manifest order among themselves.
+- **Output:** none. No stage is shown (not even for an error; the one exception is a hook rejected over the
+  limit, see Best-effort), nothing is added to the conversation, and
+  usage statistics do not include the hook. Failures and timeouts are only logged.
+- **Best-effort:** a replica restart loses running hooks (shutdown waits up to
+  `BACKGROUND_HOOKS_SHUTDOWN_GRACE_SECONDS` first). At most `BACKGROUND_HOOKS_MAX_CONCURRENT` run per
+  process; once more than `BACKGROUND_HOOKS_WARN_THRESHOLD` (40 by default) are running, each newly
+  started hook is logged with a warning. A hook over the limit is not run: an error is logged and the response
+  shows a failed stage for it, so its side effect (for example a memory save) is known to be lost.
+- **No read-your-writes:** a background write of turn N may not be visible to a recall at turn N+1. Keep
+  such hooks `blocking`.
+- **No sign-in prompt:** the user's request is over, so an MCP toolset that answers 401 or an external-service
+  sign-in challenge is not retried; the hook fails and is logged. A 401 can also come back when the result is
+  returned although the work finished.
+- **Per-request MCP sessions** stay open until the hook ends, bounded by its `timeout_seconds`.
+
+```json
+{
+  "kind": "tool_call",
+  "event": "on_completion",
+  "execution": "background",
+  "timeout_seconds": 120,
+  "toolset_name": "AppMemory",
+  "tool_name": "save_memory"
+}
+```
 
 ## Hook context
 
@@ -181,5 +222,6 @@ The platform delivers the result correctly and the model can quote it when asked
 
 - [CONFIGURATION — Hooks](../CONFIGURATION.md#hooks-configuration) — fields, templates, examples
 - [Design: hook context and lifecycle events](./designs/hook_context_and_lifecycle_events.md) — rationale and
-  Phase 2 (background execution, hook-level `condition`, role-filtered message lists)
+  hook-level `condition` and role-filtered message lists (Phase 2)
+- [Design: background hooks](./designs/background_hooks.md) — `execution: background`
 - [Design: tools hidden from the model](./designs/tools_hidden_from_model.md)

@@ -866,12 +866,14 @@ model) see [docs/hooks.md](docs/hooks.md); the design is in
 | `tool_name`         | Yes      | String | Tool name within the toolset (or exact function name) | - |
 | `arguments`         | No       | Object | Arguments forwarded to the tool. Rendered as a [JSON-e](https://json-e.js.org) template against the hook context, see [Argument templates](#hook-argument-templates) | `{}` |
 | `name`              | No       | String | Optional hook label used in logs | `null` |
+| `execution`         | No       | String | `"blocking"` awaits the hook before the response closes; `"background"` runs it without delaying the response (no result, no stage, failures only logged). `"background"` is valid for `on_completion` only. See [Background hooks](docs/hooks.md#background-hooks) | `blocking` |
 | `timeout_seconds`   | No       | Number | Per-hook timeout (`> 0`). A hook that times out is logged and skipped. Defaults: 15 s for `on_request_start`, 30 s for `on_completion` | `null` |
 | `frequency`         | No       | String | `on_request_start` only: `"always"` or `"append_if_changed"` | `append_if_changed` |
 | `refresh_condition` | No       | Object | `on_request_start` only: optional TTL refresh (`{"kind":"ttl","ttl_minutes":N}`). Cannot be combined with templated `arguments` | `null` |
 
 `frequency` and `refresh_condition` describe how the injected message pair is kept in the history, so they
-are rejected for `on_completion`. An `on_completion` hook runs for its side effect only: the tool result is
+are rejected for `on_completion`. `execution: background` is rejected for `on_request_start`, whose result
+the model needs before it answers. An `on_completion` hook runs for its side effect only: the tool result is
 discarded and is never shown to the user or added to the conversation. A failing or timed-out hook never
 fails the request: the error is logged and the hook is skipped.
 
@@ -1906,6 +1908,11 @@ behave the same. Use `true` only for apps that make no sense outside a project.
 | `DIAL_API_VERSION`                         | `2025-01-01-preview`                                            | No       | API version for DIAL Core API                                                                                |
 | `APP_SCHEMA_ID`                            | `https://mydial.epam.com/custom_application_schemas/quickapps2` | No       | Full application type schema `$id` emitted in the generated app schema. When unset, the built-in default is used. |
 | `DIAL_INTERACTIVE_LOGIN_TIMEOUT_SECONDS`   | `120.0`                                                         | No       | Wall-clock timeout (seconds) waiting for the user to complete interactive sign-in when an MCP toolset returns 401 / an external-service sign-in challenge. See [docs/agent.md](./agent.md) (Interactive login). |
+| **Background hooks**                       |                                                                 |          |                                                                                                              |
+| `BACKGROUND_HOOKS_MAX_CONCURRENT`          | `50`                                                            | No       | Maximum `execution: background` hooks running at once in one process. A hook over the limit is rejected: logged at ERROR level and shown to the user as a failed stage. See [docs/hooks.md](docs/hooks.md#background-hooks). |
+| `BACKGROUND_HOOKS_WARN_THRESHOLD`          | `40`                                                            | No       | Running background hooks above which each newly started hook is logged with a warning. Must be below `BACKGROUND_HOOKS_MAX_CONCURRENT`. |
+| `BACKGROUND_HOOKS_RESPONSE_HOLD_SECONDS`   | `3.0`                                                           | No       | At most how long the response stays open after a turn so background hooks' calls can reach DIAL Core (a call arriving after the response closed gets a 401). Fast hooks end the wait early. |
+| `BACKGROUND_HOOKS_SHUTDOWN_GRACE_SECONDS`  | `30.0`                                                          | No       | On shutdown, how long to wait for running background hooks before cancelling them. Keep it below the pod's termination grace period (Kubernetes default: 30 s), or the drain is killed partway. |
 | **Proxy**                                  |                                                                 |          |                                                                                                              |
 | `PROXY_LANGUAGE_HEADER`                    | `accept-language`                                               | No       | Name of the incoming HTTP request header that carries the locale for UI display (stage name localization). Override when a reverse proxy rewrites the standard `Accept-Language` header before forwarding the request. |
 | **Logging**                                |                                                                 |          |                                                                                                              |
