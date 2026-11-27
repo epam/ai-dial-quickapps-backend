@@ -102,3 +102,50 @@ async def test_mcp_toolset_carries_tools_config(monkeypatch: pytest.MonkeyPatch)
     assert context.resolved_mcp_toolsets[0].tools_config == {
         "search": MCPToolConfig(fixed_arguments={"project_key": "DIAL"})
     }
+
+
+@pytest.mark.asyncio
+async def test_mcp_branch_warns_when_both_form_flags_set(caplog: pytest.LogCaptureFixture):
+    toolset = DialAppToolSet(
+        name="app",
+        deployment_id="dep",
+        propagate_form_schema_to_choice=True,
+        propagate_form_value_to_content=False,
+    )
+    resolver, _, _, _ = make_resolver(toolsets=[toolset], metadata=make_metadata(mcp=True))
+
+    with caplog.at_level("WARNING", logger="quickapp.dial_app_tooling._dial_app_resolver"):
+        await resolver.resolve()
+
+    warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+    assert any("propagate_form_schema_to_choice" in w and "'app'" in w for w in warnings)
+    assert any("propagate_form_value_to_content" in w and "'app'" in w for w in warnings)
+
+
+@pytest.mark.asyncio
+async def test_mcp_branch_warns_only_for_set_form_flag(caplog: pytest.LogCaptureFixture):
+    toolset = DialAppToolSet(
+        name="app",
+        deployment_id="dep",
+        propagate_form_schema_to_choice=True,
+    )
+    resolver, _, _, _ = make_resolver(toolsets=[toolset], metadata=make_metadata(mcp=True))
+
+    with caplog.at_level("WARNING", logger="quickapp.dial_app_tooling._dial_app_resolver"):
+        await resolver.resolve()
+
+    warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+    assert any("propagate_form_schema_to_choice" in w for w in warnings)
+    assert not any("propagate_form_value_to_content" in w for w in warnings)
+
+
+@pytest.mark.asyncio
+async def test_mcp_branch_no_form_warning_when_flags_unset(caplog: pytest.LogCaptureFixture):
+    toolset = DialAppToolSet(name="app", deployment_id="dep")
+    resolver, _, _, _ = make_resolver(toolsets=[toolset], metadata=make_metadata(mcp=True))
+
+    with caplog.at_level("WARNING", logger="quickapp.dial_app_tooling._dial_app_resolver"):
+        await resolver.resolve()
+
+    warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+    assert not any("propagate_form" in w for w in warnings)

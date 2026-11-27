@@ -128,6 +128,14 @@ class _DialAppResolver(CompletionInitializer):
                 "branch (resumable sessions apply only to the chat-completion deployment tool).",
                 resolve_localized(toolset.name),
             )
+        for field_name in ("propagate_form_schema_to_choice", "propagate_form_value_to_content"):
+            if getattr(toolset, field_name) is not None:
+                logger.warning(
+                    "%s set on DialAppToolSet '%s' is ignored on the MCP branch (form propagation "
+                    "applies only to the chat-completion deployment tool).",
+                    field_name,
+                    resolve_localized(toolset.name),
+                )
         url = f"{self.__dial_settings.url}/v1/deployments/{toolset.deployment_id}/mcp"
         api_key = self.__api_key_provider.get()
         mcp_toolset = MCPToolSet(
