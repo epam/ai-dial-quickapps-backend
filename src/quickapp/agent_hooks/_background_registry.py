@@ -3,14 +3,24 @@ import logging
 from collections.abc import Awaitable, Callable, Coroutine, Sequence
 
 from injector import inject
+from pydantic import BaseModel, ConfigDict
 
 from quickapp.agent_hooks._background_hook_settings import BackgroundHookSettings
-from quickapp.common.base_initializer import ShutdownInitializer
+from quickapp.common.base_finalizer import BaseFinalizer
 from quickapp.common.request_async_close_registry import RequestAsyncCloseRegistry
 
 logger = logging.getLogger(__name__)
 
 HookJob = tuple[str, Coroutine[object, object, object]]
+
+
+class StartResult(BaseModel):
+    """Outcome of ``BackgroundHookRegistry.start``: the running tasks and the rejected hook names."""
+
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+
+    tasks: list[asyncio.Task[object]]
+    rejected: list[str]
 
 
 @inject
@@ -28,15 +38,16 @@ class BackgroundHookRegistry:
 
     def start(
         self, jobs: Sequence[HookJob], close_registry: RequestAsyncCloseRegistry
-    ) -> list[asyncio.Task[object]]:
+    ) -> StartResult:
         """Start the jobs of one request and take over that request's teardown.
 
-        Jobs beyond the concurrency limit are dropped with a warning. When none is accepted,
-        the teardown stays with the request.
+        Jobs beyond the concurrency limit are rejected (logged at ERROR, named in the result).
+        Jobs that start above the warning threshold are logged with a warning. When none is
+        accepted, the teardown stays with the request.
         """
-        accepted = self._admit(jobs)
+        accepted, rejected = self._admit(jobs)
         if not accepted:
-            return []
+            return StartResult(tasks=[], rejected=rejected)
 
         release = close_registry.hand_off()
         tasks: list[asyncio.Task[object]] = []
@@ -49,21 +60,38 @@ class BackgroundHookRegistry:
         supervisor = asyncio.create_task(self._supervise(tasks, release), name="background-hooks")
         self._supervisors.add(supervisor)
         supervisor.add_done_callback(self._supervisors.discard)
-        return tasks
+        return StartResult(tasks=tasks, rejected=rejected)
 
-    def _admit(self, jobs: Sequence[HookJob]) -> list[HookJob]:
-        """Keep the jobs that fit under the concurrency limit; close and log the rest."""
-        free = max(self._settings.max_concurrent - len(self._hook_tasks), 0)
-        accepted, dropped = list(jobs[:free]), list(jobs[free:])
-        for name, coroutine in dropped:
-            coroutine.close()
-            logger.warning(
-                "Background hook %r dropped: %d already running (limit %d)",
-                name,
-                len(self._hook_tasks),
-                self._settings.max_concurrent,
-            )
-        return accepted
+    def _admit(self, jobs: Sequence[HookJob]) -> tuple[list[HookJob], list[str]]:
+        """Split the jobs into those that fit under the limit and the names of the rest."""
+        running = len(self._hook_tasks)
+        limit = self._settings.max_concurrent
+        threshold = self._settings.warn_threshold
+        accepted: list[HookJob] = []
+        rejected: list[str] = []
+        for name, coroutine in jobs:
+            if running >= limit:
+                coroutine.close()
+                rejected.append(name)
+                logger.error(
+                    "Background hook %r rejected: %d already running (limit %d)",
+                    name,
+                    running,
+                    limit,
+                )
+                continue
+            running += 1
+            accepted.append((name, coroutine))
+            if running > threshold:
+                logger.warning(
+                    "Background hook pool is filling up: %d running after starting %r "
+                    "(warning threshold %d, limit %d)",
+                    running,
+                    name,
+                    threshold,
+                    limit,
+                )
+        return accepted, rejected
 
     @staticmethod
     async def _supervise(
@@ -75,12 +103,27 @@ class BackgroundHookRegistry:
             await release()
 
     async def shutdown(self) -> None:
-        pending = {task for task in self._supervisors if not task.done()}
-        if not pending:
-            return
+        """Wait up to the grace period for running hooks, then cancel what is left.
+
+        Groups started while draining are picked up too: the snapshot is retaken until none is
+        pending or the grace period is spent.
+        """
         grace = self._settings.shutdown_grace_seconds
-        logger.info("Draining %d background hook group(s), up to %.0fs", len(pending), grace)
-        _, unfinished = await asyncio.wait(pending, timeout=grace)
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + grace
+        logged = False
+        while pending := {task for task in self._supervisors if not task.done()}:
+            if not logged:
+                logger.info(
+                    "Draining %d background hook group(s), up to %.0fs", len(pending), grace
+                )
+                logged = True
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                break
+            await asyncio.wait(pending, timeout=remaining)
+
+        unfinished = {task for task in self._supervisors if not task.done()}
         if unfinished:
             logger.warning(
                 "Cancelling %d background hook group(s) that did not finish in time",
@@ -92,11 +135,11 @@ class BackgroundHookRegistry:
 
 
 @inject
-class _BackgroundHookShutdown(ShutdownInitializer):
+class _BackgroundHookShutdown(BaseFinalizer):
     """Drains background hooks when the application stops."""
 
     def __init__(self, registry: BackgroundHookRegistry) -> None:
         self._registry = registry
 
-    async def initialize(self) -> None:
+    async def finalize(self) -> None:
         await self._registry.shutdown()

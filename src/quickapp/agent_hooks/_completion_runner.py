@@ -1,10 +1,11 @@
 import asyncio
 import logging
 
+from aidial_sdk.chat_completion import Choice, Status
 from injector import inject
 
 from quickapp.agent_hooks._background_hook_settings import BackgroundHookSettings
-from quickapp.agent_hooks._background_registry import BackgroundHookRegistry
+from quickapp.agent_hooks._background_registry import BackgroundHookRegistry, StartResult
 from quickapp.agent_hooks._context_factory import HookContextFactory
 from quickapp.agent_hooks._dispatcher import HookDispatcher
 from quickapp.agent_hooks._handlers import hook_display_name
@@ -31,7 +32,9 @@ class _CompletionHookRunner(CompletionHookRunner):
         background_registry: BackgroundHookRegistry,
         close_registry: RequestAsyncCloseRegistry,
         settings: BackgroundHookSettings,
+        choice: Choice,
     ) -> None:
+        self._choice = choice
         self._settings = settings
         self._context_factory = context_factory
         self._dispatcher = dispatcher
@@ -45,21 +48,51 @@ class _CompletionHookRunner(CompletionHookRunner):
         context = self._context_factory.completion(
             iteration_count=iteration_count, total_tool_calls=total_tool_calls
         )
-        loop = asyncio.get_running_loop()
-        deadline = loop.time() + self._settings.response_hold_seconds
+        background, blocking = self._split_by_execution(hooks)
+        deadline = self._hold_deadline()
 
-        background = [h for h in hooks if h.execution is HookExecution.BACKGROUND]
         started = self._start_background(background, context)
-        await self._dispatcher.run_all(
-            [h for h in hooks if h.execution is HookExecution.BLOCKING], context
-        )
-        if started:
-            await asyncio.wait(started, timeout=max(deadline - loop.time(), 0))
+        self._report_rejected(started.rejected)
+        await self._dispatcher.run_all(blocking, context)
+        await self._hold_for(started.tasks, deadline)
 
-    def _start_background(
-        self, hooks: list[HookConfig], context: HookContext
-    ) -> list[asyncio.Task[object]]:
+    @staticmethod
+    def _split_by_execution(hooks: list[HookConfig]) -> tuple[list[HookConfig], list[HookConfig]]:
+        background = [h for h in hooks if h.execution is HookExecution.BACKGROUND]
+        blocking = [h for h in hooks if h.execution is not HookExecution.BACKGROUND]
+        return background, blocking
+
+    def _hold_deadline(self) -> float:
+        return asyncio.get_running_loop().time() + self._settings.response_hold_seconds
+
+    @staticmethod
+    async def _hold_for(started: list[asyncio.Task[object]], deadline: float) -> None:
+        """Keep the response open until the background hooks finish or the deadline passes.
+
+        The tasks are not cancelled when the wait times out: they keep running after the response.
+        """
+        if not started:
+            return
+        remaining = max(deadline - asyncio.get_running_loop().time(), 0)
+        await asyncio.wait(started, timeout=remaining)
+
+    def _start_background(self, hooks: list[HookConfig], context: HookContext) -> StartResult:
+        # prepare_hook resolves each handler here, inside the request, so the tasks need not.
         jobs = [
-            (hook_display_name(hook), self._dispatcher.run_hook(hook, context)) for hook in hooks
+            (hook_display_name(hook), self._dispatcher.prepare_hook(hook, context))
+            for hook in hooks
         ]
         return self._background_registry.start(jobs, self._close_registry)
+
+    def _report_rejected(self, names: list[str]) -> None:
+        """Show each hook the pool refused as a failed stage, so the user knows it did not run."""
+        for name in names:
+            try:
+                with self._choice.create_stage(f"Hook {name}") as stage:
+                    stage.append_content(
+                        "The background hook was not started: too many background hooks are "
+                        "already running. Its work was skipped."
+                    )
+                    stage.close(Status.FAILED)
+            except Exception:
+                logger.exception("Could not report the rejected background hook %r", name)

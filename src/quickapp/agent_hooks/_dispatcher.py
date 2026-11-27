@@ -1,10 +1,11 @@
 import asyncio
 import logging
 import time
+from collections.abc import Coroutine
 
 from injector import ProviderOf, inject
 
-from quickapp.agent_hooks._handlers import HookHandlerRegistry, hook_display_name
+from quickapp.agent_hooks._handlers import HookHandler, HookHandlerRegistry, hook_display_name
 from quickapp.common.hook_context.context import HookContext, HookResult
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.hooks import HookConfig, HookEvent
@@ -35,12 +36,36 @@ class HookDispatcher:
         self._app_config_provider = app_config_provider
         self._registry = registry
 
+    def prepare_hook(
+        self, hook: HookConfig, context: HookContext
+    ) -> Coroutine[object, object, HookResult | None]:
+        """Resolve the hook's handler now and return the coroutine that runs it.
+
+        Resolution touches request-scoped objects, so it happens here, in the caller's request,
+        instead of on the first step of a task that may be scheduled later. A resolution failure
+        is logged and the returned coroutine yields ``None``.
+        """
+        handler: HookHandler | None = None
+        try:
+            handler = self._registry.handler_for(hook)
+        except Exception:
+            logger.exception(
+                "Hook %r failed (event=%s) - skipping", hook_display_name(hook), hook.event.value
+            )
+        return self._execute(hook, handler, context)
+
     async def run_hook(self, hook: HookConfig, context: HookContext) -> HookResult | None:
+        return await self.prepare_hook(hook, context)
+
+    async def _execute(
+        self, hook: HookConfig, handler: HookHandler | None, context: HookContext
+    ) -> HookResult | None:
+        if handler is None:
+            return None
         name = hook_display_name(hook)
         timeout = _resolve_timeout(hook)
         started = time.monotonic()
         try:
-            handler = self._registry.handler_for(hook)
             result = await asyncio.wait_for(handler.run(context), timeout)
             if result is not None:
                 logger.debug(

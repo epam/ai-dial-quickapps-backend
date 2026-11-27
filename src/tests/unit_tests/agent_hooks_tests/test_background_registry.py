@@ -12,13 +12,19 @@ from quickapp.agent_hooks._background_registry import (
     _BackgroundHookShutdown,
 )
 from quickapp.agent_hooks.agent_hooks_module import AgentHooksModule
-from quickapp.common.base_initializer import ShutdownInitializer
+from quickapp.common.base_finalizer import BaseFinalizer
 from quickapp.common.request_async_close_registry import RequestAsyncCloseRegistry
 
 
-def _registry(max_concurrent: int = 50, grace: float = 30.0) -> BackgroundHookRegistry:
+def _registry(
+    max_concurrent: int = 50, grace: float = 30.0, warn: int | None = None
+) -> BackgroundHookRegistry:
     return BackgroundHookRegistry(
-        BackgroundHookSettings(max_concurrent=max_concurrent, shutdown_grace_seconds=grace)
+        BackgroundHookSettings(
+            max_concurrent=max_concurrent,
+            warn_threshold=min(40, max_concurrent - 1) if warn is None else warn,
+            shutdown_grace_seconds=grace,
+        )
     )
 
 
@@ -60,7 +66,7 @@ class TestStart:
         gate = asyncio.Event()
         registry = _registry()
 
-        tasks = registry.start([("a", _wait_for(gate))], close_registry)
+        tasks = registry.start([("a", _wait_for(gate))], close_registry).tasks
         await close_registry.aclose_all()
         await _settle()
         assert calls == []
@@ -105,7 +111,7 @@ class TestStart:
         close_registry = _close_registry(calls)
         registry = _registry()
 
-        tasks = registry.start([("a", _boom())], close_registry)
+        tasks = registry.start([("a", _boom())], close_registry).tasks
         await asyncio.gather(*tasks, return_exceptions=True)
         await registry.shutdown()
         assert calls == []  # the request still needs its resources
@@ -122,12 +128,13 @@ class TestStart:
         dropped: Coroutine[Any, Any, object] = _wait_for(gate)
 
         with caplog.at_level(logging.WARNING):
-            tasks = registry.start(
+            result = registry.start(
                 [("kept", _wait_for(gate)), ("extra", dropped)], _close_registry([])
             )
 
-        assert len(tasks) == 1
-        assert "'extra' dropped" in caplog.text
+        assert len(result.tasks) == 1
+        assert result.rejected == ["extra"]
+        assert [r.levelname for r in caplog.records if "'extra' rejected" in r.message] == ["ERROR"]
         assert dropped.cr_frame is None  # closed, never awaited
         gate.set()
         await registry.shutdown()
@@ -138,20 +145,21 @@ class TestStart:
         registry = _registry(max_concurrent=1)
         registry.start([("first", _wait_for(gate))], _close_registry([]))
 
-        tasks = registry.start([("second", _wait_for(gate))], _close_registry([]))
+        result = registry.start([("second", _wait_for(gate))], _close_registry([]))
 
-        assert tasks == []
+        assert result.tasks == []
+        assert result.rejected == ["second"]
         gate.set()
         await registry.shutdown()
 
     @pytest.mark.asyncio
     async def test_slot_is_free_again_once_a_hook_finished(self) -> None:
         registry = _registry(max_concurrent=1)
-        first = registry.start([("first", _wait_for(_set_event()))], _close_registry([]))
+        first = registry.start([("first", _wait_for(_set_event()))], _close_registry([])).tasks
         await asyncio.gather(*first)
         await _settle()
 
-        second = registry.start([("second", _wait_for(_set_event()))], _close_registry([]))
+        second = registry.start([("second", _wait_for(_set_event()))], _close_registry([])).tasks
 
         assert len(second) == 1
         await registry.shutdown()
@@ -161,7 +169,7 @@ class TestStart:
         calls: list[str] = []
         close_registry = _close_registry(calls)
 
-        assert _registry().start([], close_registry) == []
+        assert _registry().start([], close_registry).tasks == []
         await close_registry.aclose_all()
 
         assert calls == ["closed"]
@@ -193,7 +201,7 @@ class TestShutdown:
         gate = asyncio.Event()
         registry = _registry(grace=5.0)
         close_registry = _close_registry(calls)
-        tasks = registry.start([("a", _wait_for(gate))], close_registry)
+        tasks = registry.start([("a", _wait_for(gate))], close_registry).tasks
         await close_registry.aclose_all()
 
         asyncio.get_running_loop().call_later(0.05, gate.set)
@@ -209,7 +217,7 @@ class TestShutdown:
         calls: list[str] = []
         registry = _registry(grace=0.05)
         close_registry = _close_registry(calls)
-        tasks = registry.start([("stuck", _wait_for(asyncio.Event()))], close_registry)
+        tasks = registry.start([("stuck", _wait_for(asyncio.Event()))], close_registry).tasks
         await close_registry.aclose_all()
 
         with caplog.at_level(logging.WARNING):
@@ -227,7 +235,7 @@ class TestShutdown:
         registry.start([("stuck", _wait_for(asyncio.Event()))], close_registry)
         await close_registry.aclose_all()
 
-        await _BackgroundHookShutdown(registry).initialize()
+        await _BackgroundHookShutdown(registry).finalize()
 
         assert calls == ["closed"]
 
@@ -239,7 +247,7 @@ class TestWiring:
         assert injector.get(BackgroundHookRegistry) is injector.get(BackgroundHookRegistry)
 
     @pytest.mark.asyncio
-    async def test_shutdown_initializers_resolve_through_di_and_drain_the_registry(self) -> None:
+    async def test_finalizers_resolve_through_di_and_drain_the_registry(self) -> None:
         injector = Injector([AgentHooksModule()])
         registry = injector.get(BackgroundHookRegistry)
         calls: list[str] = []
@@ -248,9 +256,84 @@ class TestWiring:
         await close_registry.aclose_all()
         registry._settings.shutdown_grace_seconds = 0.05
 
-        initializers = injector.get(list[ShutdownInitializer])
+        initializers = injector.get(list[BaseFinalizer])
         for initializer in initializers:
-            await initializer.initialize()
+            await initializer.finalize()
 
         assert any(isinstance(i, _BackgroundHookShutdown) for i in initializers)
         assert calls == ["closed"]
+
+
+class TestShutdownPicksUpLateGroups:
+    @pytest.mark.asyncio
+    async def test_group_started_while_draining_is_awaited(self) -> None:
+        registry = _registry(grace=2.0)
+        calls: list[str] = []
+        first_gate, second_gate = asyncio.Event(), asyncio.Event()
+        first_close = _close_registry(calls)
+        registry.start([("first", _wait_for(first_gate))], first_close)
+        await first_close.aclose_all()
+
+        async def _late() -> None:
+            await asyncio.sleep(0.05)
+            second_close = _close_registry(calls)
+            registry.start([("second", _wait_for(second_gate))], second_close)
+            await second_close.aclose_all()
+            first_gate.set()
+            await asyncio.sleep(0.05)
+            second_gate.set()
+
+        late = asyncio.create_task(_late())
+        await registry.shutdown()
+        await late
+
+        assert calls == ["closed", "closed"]
+
+
+class TestThresholds:
+    @pytest.mark.asyncio
+    async def test_no_warning_up_to_the_threshold(self, caplog: pytest.LogCaptureFixture) -> None:
+        gate = asyncio.Event()
+        registry = _registry(max_concurrent=5, warn=2)
+
+        with caplog.at_level(logging.WARNING):
+            registry.start([("a", _wait_for(gate)), ("b", _wait_for(gate))], _close_registry([]))
+
+        assert caplog.records == []
+        gate.set()
+        await registry.shutdown()
+
+    @pytest.mark.asyncio
+    async def test_warns_for_each_hook_started_above_the_threshold(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        gate = asyncio.Event()
+        registry = _registry(max_concurrent=5, warn=1)
+
+        with caplog.at_level(logging.WARNING):
+            result = registry.start(
+                [("a", _wait_for(gate)), ("b", _wait_for(gate)), ("c", _wait_for(gate))],
+                _close_registry([]),
+            )
+
+        assert len(result.tasks) == 3
+        warned = [r.message for r in caplog.records if r.levelname == "WARNING"]
+        assert len(warned) == 2
+        assert "'b'" in warned[0] and "'c'" in warned[1]
+        gate.set()
+        await registry.shutdown()
+
+    @pytest.mark.asyncio
+    async def test_hooks_over_the_limit_are_rejected_after_the_ones_that_fit(self) -> None:
+        gate = asyncio.Event()
+        registry = _registry(max_concurrent=2, warn=1)
+
+        result = registry.start(
+            [("a", _wait_for(gate)), ("b", _wait_for(gate)), ("c", _wait_for(gate))],
+            _close_registry([]),
+        )
+
+        assert len(result.tasks) == 2
+        assert result.rejected == ["c"]
+        gate.set()
+        await registry.shutdown()

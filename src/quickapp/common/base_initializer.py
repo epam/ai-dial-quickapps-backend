@@ -9,7 +9,6 @@ class InitializerType(str, Enum):
     completion = "completion"
     configuration = "configuration"
     startup = "startup"
-    shutdown = "shutdown"
 
 
 # The BaseInitializer class is an interface for components that handle asynchronous initialization.
@@ -18,8 +17,8 @@ class InitializerType(str, Enum):
 #   instantiated, so dynamic data can be injected into the dependency container for the classes
 #   involved in the agent creation process;
 # - configuration: per request, once the app configuration is resolved;
-# - startup: once, when the application starts;
-# - shutdown: once, when the application stops.
+# - startup: once, when the application starts.
+# Teardown at application stop is a separate contract: BaseFinalizer.
 class BaseInitializer(ABC):
 
     # Lower values run earlier. Default 0 means "no preference"; ties are
@@ -35,7 +34,6 @@ class BaseInitializer(ABC):
 CompletionInitializer = Annotated[BaseInitializer, InitializerType.completion]
 ConfigurationInitializer = Annotated[BaseInitializer, InitializerType.configuration]
 StartupInitializer = Annotated[BaseInitializer, InitializerType.startup]
-ShutdownInitializer = Annotated[BaseInitializer, InitializerType.shutdown]
 
 
 async def invoke_initializers(injector: Injector, initializer_type: InitializerType) -> None:

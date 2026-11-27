@@ -54,14 +54,23 @@ flowchart LR
 `"execution": "background"` (valid on `on_completion` only; the default is `"blocking"`) is for side effects
 nobody waits for, such as saving memory.
 
-- **Not delayed:** the response closes without waiting for the hook to finish. It stays open for at most
-  3 seconds (`BACKGROUND_HOOKS_RESPONSE_HOLD_SECONDS`) so the hook's call can reach DIAL Core first (a call that starts after the response closed is
-  rejected with 401). A fast hook adds no delay.
-- **Output:** none. No stage is shown (not even for an error), nothing is added to the conversation, and
+- **Not delayed by the hook itself:** the response closes without waiting for the hook to finish. It stays
+  open for up to `BACKGROUND_HOOKS_RESPONSE_HOLD_SECONDS` (3 s by default) so the hook's call can reach DIAL Core
+  first (a call that starts after the response closed is rejected with 401). A hook that finishes sooner adds
+  no more than its own run time.
+- **Response delay for slow hooks:** every turn that has a hook slower than the hold period is held for the
+  whole period before the response closes. For a long memory save that is the normal case, not a worst case:
+  expect the stream to end up to 3 s (by default) after the answer.
+- **Order:** background hooks start before blocking ones, so manifest order is not guaranteed between the two
+  kinds. Blocking hooks still run in manifest order among themselves.
+- **Output:** none. No stage is shown (not even for an error; the one exception is a hook rejected over the
+  limit, see Best-effort), nothing is added to the conversation, and
   usage statistics do not include the hook. Failures and timeouts are only logged.
 - **Best-effort:** a replica restart loses running hooks (shutdown waits up to
   `BACKGROUND_HOOKS_SHUTDOWN_GRACE_SECONDS` first). At most `BACKGROUND_HOOKS_MAX_CONCURRENT` run per
-  process; the rest are skipped with a warning.
+  process; once more than `BACKGROUND_HOOKS_WARN_THRESHOLD` (40 by default) are running, each newly
+  started hook is logged with a warning. A hook over the limit is not run: an error is logged and the response
+  shows a failed stage for it, so its side effect (for example a memory save) is known to be lost.
 - **No read-your-writes:** a background write of turn N may not be visible to a recall at turn N+1. Keep
   such hooks `blocking`.
 - **No sign-in prompt:** the user's request is over, so an MCP toolset that answers 401 or an external-service

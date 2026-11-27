@@ -2,9 +2,10 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from aidial_sdk.chat_completion import Status
 
 from quickapp.agent_hooks._background_hook_settings import BackgroundHookSettings
-from quickapp.agent_hooks._background_registry import BackgroundHookRegistry
+from quickapp.agent_hooks._background_registry import BackgroundHookRegistry, StartResult
 from quickapp.agent_hooks._completion_runner import _CompletionHookRunner
 from quickapp.agent_hooks._context_factory import HookContextFactory
 from quickapp.agent_hooks._dispatcher import HookDispatcher
@@ -21,9 +22,14 @@ class _Harness:
             h for h in hooks or [] if h.event == event
         ]
         self.dispatcher.run_all = AsyncMock(return_value=[])
-        self.dispatcher.run_hook = AsyncMock(return_value=None)
+
+        async def _noop() -> None:
+            return None
+
+        self.dispatcher.prepare_hook.side_effect = lambda hook, context: _noop()
         self.registry = MagicMock(spec=BackgroundHookRegistry)
-        self.registry.start.return_value = []
+        self.registry.start.return_value = StartResult(tasks=[], rejected=[])
+        self.choice = MagicMock()
         self.close_registry = RequestAsyncCloseRegistry()
         self.runner = _CompletionHookRunner(
             self.factory,
@@ -31,6 +37,7 @@ class _Harness:
             self.registry,
             self.close_registry,
             BackgroundHookSettings(response_hold_seconds=hold),
+            self.choice,
         )
 
 
@@ -104,7 +111,7 @@ class TestCompletionHookRunner:
             order.append("start")
             for _, coroutine in jobs:
                 coroutine.close()
-            return []
+            return StartResult(tasks=[], rejected=[])
 
         async def _run_all(hooks, context):
             order.append("run_all")
@@ -121,7 +128,7 @@ class TestCompletionHookRunner:
     async def test_response_waits_at_most_the_hold_period_for_background_hooks(self) -> None:
         h = _Harness([_completion("bg", "background")], hold=0.05)
         stuck = asyncio.create_task(asyncio.sleep(10))
-        h.registry.start.return_value = [stuck]
+        h.registry.start.return_value = StartResult(tasks=[stuck], rejected=[])
         started = asyncio.get_running_loop().time()
 
         try:
@@ -134,7 +141,9 @@ class TestCompletionHookRunner:
     @pytest.mark.asyncio
     async def test_fast_background_hook_does_not_hold_the_response(self) -> None:
         h = _Harness([_completion("bg", "background")], hold=5.0)
-        h.registry.start.return_value = [asyncio.create_task(asyncio.sleep(0))]
+        h.registry.start.return_value = StartResult(
+            tasks=[asyncio.create_task(asyncio.sleep(0))], rejected=[]
+        )
         started = asyncio.get_running_loop().time()
 
         await h.runner.run(iteration_count=1, total_tool_calls=0)
@@ -145,7 +154,7 @@ class TestCompletionHookRunner:
     async def test_hold_period_is_measured_from_the_start_not_after_blocking_hooks(self) -> None:
         h = _Harness([_completion("bg", "background"), _completion("inline")], hold=0.3)
         stuck = asyncio.create_task(asyncio.sleep(10))
-        h.registry.start.return_value = [stuck]
+        h.registry.start.return_value = StartResult(tasks=[stuck], rejected=[])
 
         async def _slow_blocking(hooks, context):
             await asyncio.sleep(0.6)
@@ -161,3 +170,65 @@ class TestCompletionHookRunner:
             assert asyncio.get_running_loop().time() - started < 0.75
         finally:
             stuck.cancel()
+
+    @pytest.mark.asyncio
+    async def test_handlers_are_resolved_before_the_tasks_are_started(self) -> None:
+        h = _Harness([_completion("bg", "background")])
+        order: list[str] = []
+        h.dispatcher.prepare_hook.side_effect = lambda hook, context: (
+            order.append("prepare"),
+            asyncio.sleep(0),
+        )[1]
+
+        def _start(jobs, close_registry):
+            order.append("start")
+            for _, coroutine in jobs:
+                coroutine.close()
+            return StartResult(tasks=[], rejected=[])
+
+        h.registry.start.side_effect = _start
+
+        await h.runner.run(iteration_count=1, total_tool_calls=0)
+
+        assert order == ["prepare", "start"]
+
+
+class TestSplitByExecution:
+    def test_splits_preserving_manifest_order(self) -> None:
+        a, b, c = _completion("a"), _completion("b", "background"), _completion("c")
+
+        background, blocking = _CompletionHookRunner._split_by_execution([a, b, c])
+
+        assert background == [b]
+        assert blocking == [a, c]
+
+
+class TestRejectedHooks:
+    @pytest.mark.asyncio
+    async def test_rejected_hook_is_shown_as_a_failed_stage(self) -> None:
+        h = _Harness([_completion("bg", "background")])
+        h.registry.start.return_value = StartResult(tasks=[], rejected=["bg"])
+
+        await h.runner.run(iteration_count=1, total_tool_calls=0)
+
+        h.choice.create_stage.assert_called_once_with("Hook bg")
+        stage = h.choice.create_stage.return_value.__enter__.return_value
+        stage.close.assert_called_once_with(Status.FAILED)
+
+    @pytest.mark.asyncio
+    async def test_stage_failure_does_not_fail_the_run_or_skip_blocking_hooks(self) -> None:
+        h = _Harness([_completion("bg", "background"), _completion("inline")])
+        h.registry.start.return_value = StartResult(tasks=[], rejected=["bg"])
+        h.choice.create_stage.side_effect = RuntimeError("closed choice")
+
+        await h.runner.run(iteration_count=1, total_tool_calls=0)
+
+        h.dispatcher.run_all.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_no_stage_when_nothing_was_rejected(self) -> None:
+        h = _Harness([_completion("bg", "background")])
+
+        await h.runner.run(iteration_count=1, total_tool_calls=0)
+
+        h.choice.create_stage.assert_not_called()

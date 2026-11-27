@@ -38,8 +38,9 @@ problem to every tool author and does not help with third-party MCP or REST tool
 **Trigger:** An `on_completion` hook with `execution: background` calls the memory `save` tool.
 **Behavior:** The call is started and accepted by DIAL Core before the response closes; the response then closes
 without waiting for the save to finish.
-**Outcome:** The user sees the stream end right after the answer. The save completes in the background; a failure
-is only logged.
+**Outcome:** The save completes in the background; a failure is only logged. A save that finishes within the hold
+period adds no more than its run time; a slower one holds the stream open for the whole hold period (3 s by
+default) after the answer, which is the normal case for a long save.
 
 ### UC-2: Hook that calls another application
 
@@ -127,14 +128,12 @@ Follows the parent design's Phasing rule 4. `HookDispatcher` knows nothing about
 Background hooks therefore start before blocking ones and overlap with them, so their calls reach Core while the
 per-request key is certainly valid.
 
-**Lookup timing.** `run_hook` resolves the hook's handler and tools on the task's first step, not at scheduling
-time. This is safe because the runner never returns before that step has run: it awaits the blocking hooks and then
-waits up to the hold period for the background tasks, all inside the request. The design relies on this
-assumption; a seam that returned right after starting the tasks would have to resolve the handler first.
+**Lookup timing.** `HookDispatcher.prepare_hook` resolves the hook's handler and tools synchronously, inside the
+request, and returns the coroutine that runs it. The registry's task therefore never touches request-scoped objects
+on its first step, and the design does not depend on event-loop ordering (`asyncio.wait(..., timeout=0)`).
 
 **Request-scoped objects.** `fastapi_injector` drops the request-scope cache when the response ends, so any
-request-scoped lookup made after that raises `KeyError`. The handler and its tools are looked up on the task's first step (see "Lookup timing"), which is
-guaranteed to run inside the request; from then on the tool holds what it needs. Tools must not resolve
+request-scoped lookup made after that raises `KeyError`. The handler and its tools are looked up before the task is created (see "Lookup timing"), inside the request; from then on the tool holds what it needs. Tools must not resolve
 request-scoped dependencies lazily inside `arun`; a tool that did would work inside the hold window and fail
 afterwards.
 
@@ -144,8 +143,10 @@ afterwards.
 request's `RequestAsyncCloseRegistry`:
 
 - **Bounded concurrency.** At most `BACKGROUND_HOOKS_MAX_CONCURRENT` (default 50) hooks run per process. A hook
-  that does not fit is skipped with a warning (best-effort; dropping protects the process, and the loss is
-  visible in logs). If nothing is accepted, the teardown stays with the request.
+  that does not fit is rejected: an ERROR is logged and the runner shows a failed stage for it while the response
+  is still open (dropping protects the process, and the user can see the loss). Above
+  `BACKGROUND_HOOKS_WARN_THRESHOLD` (default 40, below the limit) each newly started hook is logged with a warning,
+  an early signal to raise the limit. If nothing is accepted, the teardown stays with the request.
 - **Hand-off of teardown.** `RequestAsyncCloseRegistry` counts shares of the teardown. The request holds one;
   `hand_off()` takes one more and returns a callable that releases it (once). The closers run when the *last* share
   is released, whether that is the request's `aclose_all()` or the background registry's release after the request's
@@ -172,7 +173,9 @@ The parent design's single change point is `ToolCallHookHandler`. For a `backgro
 `tool.arun_in_background(...)` instead of the hidden DEBUG-stage call. This is a separate method rather than a
 flag on `arun`, so a tool argument can never collide with a control parameter. `arun_in_background`:
 
-- builds **no stage**, not even an error stage, so nothing touches the response choice (which may be closed). A
+- builds **no stage**, not even an error stage, so nothing touches the response choice (which may be closed). The
+  one exception is outside the call: a hook rejected over the concurrency limit gets a failed stage, created by the
+  runner while the response is still open (§4). A
   DIAL deployment tool called without a stage has no parent stage, so its nested-application stage deltas have no
   destination on the outer choice either;
 - sets a context flag (`is_background_execution()`) for the duration of the call. `InteractiveLoginService`
@@ -207,6 +210,19 @@ The prototype wrote into the closed choice (`Trying to create stage to a closed 
 `create_stage` sites with a `Choice.closed` check. With the stage-less call (§6) no hook code touches the choice
 after the request, and the orchestrator's own writes (usage statistics, execution-time stage) run inside the
 choice's `with` block, so the guards cannot fire and are not part of this change.
+
+## Known Risks
+
+- **Loss over the concurrency limit.** A background hook that does not fit under
+  `BACKGROUND_HOOKS_MAX_CONCURRENT` is not run, and whatever it should have written (for example a memory) is lost.
+  It is now visible: an ERROR in the logs and a failed stage for the user, and the warning threshold gives an early
+  signal. Size the limit for peak load and alert on the warning. Possible follow-ups: queue instead of reject, or
+  fall back to running the hook as `blocking`.
+- **Dependence on Core's key behaviour.** The design relies on an observed, undocumented behaviour: Core issues the
+  child key for a hook's call only while the user's request is still open (see the experiment above). Holding the
+  response open for a few seconds is how we make sure the call arrives in time. Core may change this, and on a slow
+  Core the call can still arrive late and get 401. A stable fix needs a supported mechanism in Core (an "accepted"
+  signal or key lifetime extension).
 
 ## Out of Scope
 

@@ -18,7 +18,7 @@ from quickapp.agent_hooks._hook_tool_registry import HookToolRegistry
 from quickapp.common.abstract.base_transformer import MessagesTransformer
 from quickapp.common.abstract.completion_hook_runner import CompletionHookRunner
 from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher
-from quickapp.common.base_initializer import ShutdownInitializer
+from quickapp.common.base_finalizer import BaseFinalizer
 from quickapp.common.exceptions import InitializationException
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.hooks import HookEvent, ToolCallHookConfig
@@ -61,9 +61,7 @@ class AgentHooksModule(Module):
         return [runner]
 
     @multiprovider
-    def _provide_shutdown_initializers(
-        self, shutdown: _BackgroundHookShutdown
-    ) -> list[ShutdownInitializer]:
+    def _provide_finalizers(self, shutdown: _BackgroundHookShutdown) -> list[BaseFinalizer]:
         return [shutdown]
 
     @multiprovider
