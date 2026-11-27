@@ -15,6 +15,7 @@ class NormalizedCustomContent(BaseModel):
     attachments: list[Attachment]
     stage_entries: list[tuple[int, dict[str, Any]]]
     state: dict[str, Any] | None
+    form_schema: dict[str, Any] | None = None
 
 
 class NormalizedChoiceDelta(BaseModel):

@@ -1012,3 +1012,208 @@ async def test_pre_process_params_llm_kwargs_do_not_replace_static_tools():
     assert result["tools"] == [
         {"type": "static_function", "static_function": {"name": "web_search"}}
     ]
+
+
+@pytest.mark.asyncio
+async def test_extract_preserves_response_form_value():
+    """TOOL message with custom_content.form_value → AssistantMessageParam carries form_value."""
+    messages: list[Message] = [
+        Message(role=Role.USER, content=StrictStr("Hello")),
+        _make_assistant_with_tool_calls(
+            [
+                _make_tool_call("tc1", "my_tool", "continue"),
+            ]
+        ),
+        _make_tool_result(
+            "tc1",
+            "partial result",
+            custom_content=CustomContent.model_validate(
+                {"state": {"k": 1}, "form_value": {"field": "val"}}
+            ),
+        ),
+    ]
+
+    tool = _build_tool(messages)
+    history = await tool._extract_tool_history("my_tool")
+
+    assert len(history) == 2
+    cc = history[1]["custom_content"]
+    assert cc["form_value"] == {"field": "val"}
+    assert cc["state"] == {"k": 1}
+
+
+def _history_with_form_schema(tool_name="test_tool", tool_call_id="tc-1", schema=None):
+    """assistant(tool_call) + tool(result with form_schema) pair."""
+    assistant = Message.model_validate(
+        {
+            "role": "assistant",
+            "content": "calling",
+            "tool_calls": [
+                {
+                    "id": tool_call_id,
+                    "type": "function",
+                    "function": {"name": tool_name, "arguments": "{}"},
+                }
+            ],
+        }
+    )
+    tool_msg = Message.model_validate(
+        {
+            "role": "tool",
+            "tool_call_id": tool_call_id,
+            "content": "result",
+            "custom_content": {"form_schema": schema or {"type": "object"}},
+        }
+    )
+    return [assistant, tool_msg]
+
+
+def _user_msg_with_form_value(form_value) -> Message:
+    return Message.model_validate(
+        {"role": "user", "content": "submitted", "custom_content": {"form_value": form_value}}
+    )
+
+
+class TestFormValueForThisTool:
+    def test_returns_form_value_when_this_tool_is_form_source(self):
+        messages = [*_history_with_form_schema(), _user_msg_with_form_value({"a": 1})]
+        tool = _build_tool_with_propagation(messages, conversation_mode=None)
+
+        assert tool._form_value_for_this_tool(tool.tool_config) == {"a": 1}
+
+    def test_returns_form_value_even_when_resumable(self):
+        messages = [*_history_with_form_schema(), _user_msg_with_form_value({"a": 1})]
+        tool = _build_tool_with_propagation(messages)
+
+        assert tool._form_value_for_this_tool(tool.tool_config) == {"a": 1}
+
+    def test_none_when_form_source_is_another_tool(self):
+        messages = [
+            *_history_with_form_schema(tool_name="other_tool"),
+            _user_msg_with_form_value({"a": 1}),
+        ]
+        tool = _build_tool_with_propagation(messages)
+
+        assert tool._form_value_for_this_tool(tool.tool_config) is None
+
+    def test_none_when_no_form_schema_in_history(self):
+        messages = [_user_msg_with_form_value({"a": 1})]
+        tool = _build_tool_with_propagation(messages)
+
+        assert tool._form_value_for_this_tool(tool.tool_config) is None
+
+    def test_none_when_user_message_has_no_form_value(self):
+        messages = [*_history_with_form_schema(), Message(role=Role.USER, content="hi")]
+        tool = _build_tool_with_propagation(messages)
+
+        assert tool._form_value_for_this_tool(tool.tool_config) is None
+
+    def test_uses_first_form_schema_tool_call_in_turn(self):
+        # orchestrator sends only the FIRST form of a turn to the client (SDK: one per
+        # choice), so the form the user fills is the first one — not the last
+        messages = [
+            *_history_with_form_schema(tool_name="test_tool", tool_call_id="tc-1"),
+            *_history_with_form_schema(tool_name="other_tool", tool_call_id="tc-2"),
+            _user_msg_with_form_value({"a": 1}),
+        ]
+        tool = _build_tool_with_propagation(messages)
+
+        assert tool._form_value_for_this_tool(tool.tool_config) == {"a": 1}
+
+    def test_no_form_value_when_first_form_in_turn_is_other_tool(self):
+        messages = [
+            *_history_with_form_schema(tool_name="other_tool", tool_call_id="tc-1"),
+            *_history_with_form_schema(tool_name="test_tool", tool_call_id="tc-2"),
+            _user_msg_with_form_value({"a": 1}),
+        ]
+        tool = _build_tool_with_propagation(messages)
+
+        assert tool._form_value_for_this_tool(tool.tool_config) is None
+
+
+class TestFormValueSentOncePerRequest:
+    def test_second_call_in_same_request_gets_no_form_value(self):
+        """form_value is forwarded to at most one call of the source tool per request."""
+        messages = [*_history_with_form_schema(), _user_msg_with_form_value({"a": 1})]
+        tool = _build_tool_with_propagation(messages)
+
+        first = tool._form_value_for_this_tool(tool.tool_config)
+        second = tool._form_value_for_this_tool(tool.tool_config)
+
+        assert first == {"a": 1}
+        assert second is None
+
+    def test_no_form_value_in_user_message_does_not_set_flag(self):
+        messages = [*_history_with_form_schema(), Message(role=Role.USER, content="hi")]
+        tool = _build_tool_with_propagation(messages)
+
+        assert tool._form_value_for_this_tool(tool.tool_config) is None
+        # flag not set → a later call with form_value would still get it
+        assert tool._form_value_for_this_tool(tool.tool_config) is None
+
+
+class TestFormValueSourceCutoff:
+    def test_source_resolved_before_current_request_tool_results(self):
+        """tool_C returned a new form_schema earlier in THIS request; the user submitted
+        tool_B's form. tool_B must still be recognized as the source (cutoff = last user
+        message with form_value, not len(messages))."""
+        messages = [
+            *_history_with_form_schema(tool_name="test_tool", tool_call_id="tc-1"),
+            _user_msg_with_form_value({"a": 1}),
+            # same-request iteration: orchestrator called another tool which returned a form
+            *_history_with_form_schema(tool_name="other_tool", tool_call_id="tc-2"),
+        ]
+        tool = _build_tool_with_propagation(messages)
+
+        assert tool._form_value_for_this_tool(tool.tool_config) == {"a": 1}
+
+
+class TestFormValueFromWorkingMessages:
+    def test_reads_form_value_from_messages_mixin_not_raw(self):
+        """After dropping request_messages, form_value is read from the working message
+        list (messages_mixin.messages) — last USER with form_value is not None."""
+        messages = [
+            *_history_with_form_schema(),
+            Message.model_validate(
+                {"role": "user", "content": "no value", "custom_content": {"state": {"k": 1}}}
+            ),
+            _user_msg_with_form_value({"a": 1}),
+        ]
+        tool = _build_tool_with_propagation(messages)
+
+        assert tool._form_value_for_this_tool(tool.tool_config) == {"a": 1}
+
+    def test_trailing_user_without_form_value_means_no_current_value(self):
+        """Last USER message has no form_value → nothing to forward (current value only)."""
+        messages = [
+            *_history_with_form_schema(),
+            _user_msg_with_form_value({"a": 1}),
+            Message.model_validate(
+                {"role": "user", "content": "later", "custom_content": {"state": {"k": 1}}}
+            ),
+        ]
+        tool = _build_tool_with_propagation(messages)
+
+        assert tool._form_value_for_this_tool(tool.tool_config) is None
+
+
+class TestFormValueFromCurrentMessageOnly:
+    def test_resumable_source_still_gets_form_value(self):
+        """Current form_value is forwarded to the final request message even when the
+        tool is resumable (reconstructed history has no current tool call)."""
+        messages = [*_history_with_form_schema(), _user_msg_with_form_value({"a": 1})]
+        tool = _build_tool_with_propagation(
+            messages, conversation_mode=ConversationMode(resumable=True)
+        )
+
+        assert tool._form_value_for_this_tool(tool.tool_config) == {"a": 1}
+
+    def test_no_form_value_when_last_user_message_lacks_it(self):
+        messages = [
+            *_history_with_form_schema(),
+            _user_msg_with_form_value({"a": 1}),
+            Message(role=Role.USER, content="later, no value"),
+        ]
+        tool = _build_tool_with_propagation(messages)
+
+        assert tool._form_value_for_this_tool(tool.tool_config) is None

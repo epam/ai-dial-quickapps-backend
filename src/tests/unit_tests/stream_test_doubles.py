@@ -21,6 +21,7 @@ class SpyChoice(Choice):
         self.append_content_calls: list[str] = []
         self.add_attachment_kwargs: list[dict[str, Any]] = []
         self.set_state_calls: list[Any] = []
+        self.set_form_schema_calls: list[dict] = []
         self.created_stages: list[Stage] = []
         self.sent_chunks: list[BaseChunk] = []
         self.open()
@@ -42,6 +43,10 @@ class SpyChoice(Choice):
     def set_state(self, state: Any) -> None:
         self.set_state_calls.append(state)
         return super().set_state(state)
+
+    def set_form_schema(self, form_schema: dict) -> None:
+        self.set_form_schema_calls.append(form_schema)
+        return super().set_form_schema(form_schema)
 
     def create_stage(self, name: str | None = None) -> Stage:
         stage = super().create_stage(name)

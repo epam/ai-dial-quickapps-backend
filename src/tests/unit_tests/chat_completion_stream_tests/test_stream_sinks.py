@@ -85,6 +85,35 @@ def test_accumulation_sink_records_annotations():
     assert acc.annotations == [annotation]
 
 
+def _custom_delta(form_schema=None, state=None) -> NormalizedChoiceDelta:
+    return NormalizedChoiceDelta(
+        custom=NormalizedCustomContent(
+            attachments=[], stage_entries=[], state=state, form_schema=form_schema
+        ),
+        tool_calls=[],
+    )
+
+
+def test_accumulation_sink_keeps_form_schema_across_chunks_without_it():
+    """A chunk carrying only state/attachments must not wipe the accumulated form_schema."""
+    acc = ChatStreamAccumulator()
+    sink = AccumulationSink(acc)
+    sink.on_delta(_custom_delta(form_schema={"type": "object"}))
+    assert acc.form_schema == {"type": "object"}
+
+    sink.on_delta(_custom_delta(state={"k": 1}))
+    assert acc.form_schema == {"type": "object"}
+
+
+def test_accumulation_sink_empty_form_schema_clears():
+    """form_schema: {} is a real payload and must clear the accumulated schema."""
+    acc = ChatStreamAccumulator()
+    sink = AccumulationSink(acc)
+    sink.on_delta(_custom_delta(form_schema={"type": "object"}))
+    sink.on_delta(_custom_delta(form_schema={}))
+    assert acc.form_schema == {}
+
+
 def _attachment_delta(*urls: str) -> NormalizedChoiceDelta:
     return NormalizedChoiceDelta(
         custom=NormalizedCustomContent(

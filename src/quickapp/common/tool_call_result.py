@@ -19,6 +19,7 @@ class ToolCallResult(BaseModel):
     propagate_to_choice: list[Attachment] = Field(default_factory=list)
     annotations: list[dict[str, Any]] = Field(default_factory=list)
     is_error: bool = False
+    form_schema: dict[str, Any] | None = None
 
     def to_tool_message(self):
         if not self.tool_call_id:
@@ -35,6 +36,7 @@ class ToolCallResult(BaseModel):
             custom_content=CustomContent(
                 attachments=self.attachments,
                 state=state,
+                form_schema=self.form_schema,
             ),
             tool_call_id=self.tool_call_id,
         )
@@ -53,9 +55,11 @@ def tool_call_result_from_tool_message(msg: Message) -> ToolCallResult:
     content = "" if raw is None else (raw if isinstance(raw, str) else str(raw))
     attachments_list: list[Attachment] | None = None
     state = None
+    form_schema = None
     if msg.custom_content is not None:
         attachments_list = msg.custom_content.attachments
         state = msg.custom_content.state
+        form_schema = msg.custom_content.form_schema
     is_error = bool(state and state.get(IS_ERROR_STATE_KEY) is True)
     attachments_out: list[Attachment] = [] if attachments_list is None else attachments_list
     return ToolCallResult(
@@ -64,4 +68,5 @@ def tool_call_result_from_tool_message(msg: Message) -> ToolCallResult:
         attachments=attachments_out,
         state=state,
         is_error=is_error,
+        form_schema=form_schema if isinstance(form_schema, dict) else None,
     )

@@ -190,6 +190,8 @@ class _DeploymentToolInitializer(CompletionInitializer):
                         "propagate_annotations_to_choice",
                         tool_info.propagate_annotations_to_choice,
                     ),
+                    ("propagate_form_schema_to_choice", tool_info.propagate_form_schema_to_choice),
+                    ("propagate_form_value_to_content", tool_info.propagate_form_value_to_content),
                 )
                 if value is not None
             }

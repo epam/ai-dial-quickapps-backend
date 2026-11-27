@@ -87,3 +87,31 @@ def test_exclude_spec_walks_lists_and_dicts_like_the_sdk():
 
     assert _extra_fields_exclude({"k": [nested], "plain": {"a": 1}}) == {"k": {0: {"extra": True}}}
     assert _extra_fields_exclude({"plain": [1, "a"]}) is None
+
+
+class TestFormValueScrub:
+
+    @pytest.mark.asyncio
+    async def test_form_value_is_kept_in_custom_content(self):
+        # form_value is a declared SDK field and must survive scrubbing: deployment tools
+        # read it from the request's own messages.
+        message = Message.model_validate(
+            {
+                "role": "user",
+                "content": "hi",
+                "custom_content": {"form_value": {"x": 1}, "state": {"k": 1}},
+            }
+        )
+
+        result = await _ScrubExtraFieldsTransformer().transform([message])
+
+        assert result[0].custom_content.form_value == {"x": 1}
+        assert result[0].custom_content.state == {"k": 1}
+
+    @pytest.mark.asyncio
+    async def test_message_without_form_value_passes_by_reference(self):
+        message = Message.model_validate({"role": "user", "content": "hi"})
+
+        result = await _ScrubExtraFieldsTransformer().transform([message])
+
+        assert result[0] is message

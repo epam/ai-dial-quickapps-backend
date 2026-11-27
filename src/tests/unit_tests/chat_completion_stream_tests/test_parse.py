@@ -239,3 +239,43 @@ def test_parse_chunk_ignores_malformed_usage_per_model():
     footprint, _ = parse_chat_completion_chunk(chunk)
 
     assert footprint is None
+
+
+def test_parse_chunk_custom_content_form_schema():
+    schema = {"type": "object", "properties": {"a": {"type": "string"}}}
+    delta = SimpleNamespace(content=None, custom_content={"form_schema": schema}, tool_calls=None)
+    choice = SimpleNamespace(delta=delta)
+    chunk = SimpleNamespace(usage=None, choices=[choice])
+
+    _, deltas = parse_chat_completion_chunk(chunk)
+
+    assert deltas[0].custom is not None
+    assert deltas[0].custom.form_schema == schema
+
+
+def test_parse_chunk_custom_content_empty_form_schema_is_kept():
+    # {} is a valid "clear the form" signal, distinct from absent form_schema
+    delta = SimpleNamespace(content=None, custom_content={"form_schema": {}}, tool_calls=None)
+    choice = SimpleNamespace(delta=delta)
+    chunk = SimpleNamespace(usage=None, choices=[choice])
+
+    _, deltas = parse_chat_completion_chunk(chunk)
+
+    assert deltas[0].custom is not None
+    assert deltas[0].custom.form_schema == {}
+
+
+def test_parse_chunk_custom_content_without_form_schema():
+    delta = SimpleNamespace(content=None, custom_content={"state": {"k": 1}}, tool_calls=None)
+    choice = SimpleNamespace(delta=delta)
+    chunk = SimpleNamespace(usage=None, choices=[choice])
+
+    _, deltas = parse_chat_completion_chunk(chunk)
+
+    assert deltas[0].custom is not None
+    assert deltas[0].custom.form_schema is None
+
+
+def test_normalized_custom_content_builder_form_schema_non_dict_ignored():
+    built = NormalizedCustomContentBuilder().set_form_schema("not-a-dict").build()
+    assert built is None

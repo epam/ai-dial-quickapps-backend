@@ -1187,6 +1187,8 @@ have different semantics and will diverge once the deployment-scoped endpoint la
 | attachment             | No       | AttachmentConfig   | Propagated on both branches. See also: [AttachmentConfig](#attachment-configuration)                                                                                                       | -             |
 | fallback_configuration | No       | ToolFallbackConfig | Propagated on both branches. See also: [Tool fallback configuration](#tool-fallback-configuration)                                                                                         | -             |
 | conversation_mode      | No       | Object             | Resumable conversation for the **chat-completion** branch only; ignored (with a warning) on MCP. See [Conversation mode](#conversation-mode)                                              | `null`        |
+| propagate_form_schema_to_choice | No       | Boolean            | Propagate the deployment's `custom_content.form_schema` to the app's answer on the **chat-completion** branch only; ignored (with a warning) on MCP. See [Form schema propagation](#form-schema-propagation) | `null`        |
+| propagate_form_value_to_content | No       | Boolean            | Append the submitted `custom_content.form_value` to the message content as a `<form_value>` block so the orchestrator model can use it. See [Form schema propagation](#form-schema-propagation) | `null`        |
 
 #### MCP per-tool configuration
 
@@ -1350,6 +1352,8 @@ The same as ApiKeyAuthorization but for mcp location is not configurable and alw
 | display                | No                                   | Object | Representation (display) configuration for tool execution results. See [Display configuration](#display-configuration), See [Tool stage configuration](#display-tool-stage-configuration) | -                | `null`        |
 | fallback_configuration | No                                   | Object | Tools fallback configuration. If not present will always raise Error. See [Tool fallback configuration](#tool-fallback-configuration)                                                     | -                | `null`        |
 | propagate_annotations_to_choice | No                          | Boolean | Only for `deployment-tool` and `dial-deployment-simple`. Propagate citation annotations returned by the deployment to the app's answer. See [Citation annotations](#citation-annotations)               | `true`, `false`  | `null`        |
+| propagate_form_schema_to_choice | No                            | Boolean | Only for `deployment-tool`, `dial-deployment-simple`, and `dial-app` (chat-completion branch only). Propagate the deployment's `custom_content.form_schema` to the app's answer. See [Form schema propagation](#form-schema-propagation) | `true`, `false`  | `null`        |
+| propagate_form_value_to_content | No                            | Boolean | Only for `deployment-tool`, `dial-deployment-simple`, and `dial-app` (chat-completion branch only). Append the submitted `custom_content.form_value` to the message content as a `<form_value>` block so the orchestrator model can use it. See [Form schema propagation](#form-schema-propagation) | `true`, `false`  | `null`        |
 | conversation_mode               | No                          | Object  | Resumable subagent conversation. Applies to `deployment-tool`, `dial-deployment-simple`, and `dial-app` (chat-completion branch only). See [Conversation mode](#conversation-mode) | - | `null` |
 | content_propagation             | No                          | Object  | Header / **deprecated** history propagation. Prefer `conversation_mode`. See [Content propagation](#content-propagation-deprecated-history-flag) | - | `null` |
 | system_prompt                   | No                          | Object  | Only for `deployment-tool`. Sent to the deployment as a system message. Accepts `custom` and `dial`, not `predefined`. See [System prompt configuration](#system-prompt-configuration) | - | `null` |
@@ -1408,6 +1412,34 @@ DIAL Chat does not render annotations yet.
   "type": "dial-deployment-simple",
   "deployment_id": "dial-document",
   "propagate_annotations_to_choice": true
+}
+```
+
+#### Form schema propagation
+
+A DIAL application used as a deployment tool can return a form schema under
+`choices[].delta.custom_content.form_schema`. Set `propagate_form_schema_to_choice: true` on that tool
+(or on a `dial-app` toolset, chat-completion branch) to forward the schema to your app's answer via
+`choice.set_form_schema` — the client renders it as an interactive form. The SDK allows sending the
+schema only once per response, so when several tools return one, the first wins.
+
+The schema is kept on the tool message's `custom_content.form_schema` in the conversation history.
+On the next request, when the client submits the form
+(`custom_content.form_value` on a message), QuickApps recovers the form's source tool from the
+history before that message: it takes the first tool message carrying a `form_schema` in the latest
+turn segment that has one, and resolves the tool name via that message's `tool_call_id` and the
+assistant message's `tool_calls`. The value is then routed by that tool, through two independent
+mechanisms: if the tool being called is the source tool, the value is attached to the final user
+message of the deployment request as `custom_content.form_value`; and if the source tool has
+`propagate_form_value_to_content: true`, the value is also appended to the message content as a
+`<form_value>` block so the orchestrator model can use it
+(with the flag unset or false, the value stays only in `custom_content`).
+
+```json
+{
+  "type": "dial-deployment-simple",
+  "deployment_id": "report-generator",
+  "propagate_form_schema_to_choice": true
 }
 ```
 

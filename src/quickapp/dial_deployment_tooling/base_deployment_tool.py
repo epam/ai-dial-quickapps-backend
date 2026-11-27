@@ -18,6 +18,11 @@ from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.chat_completion_stream.argument_stream_presentation import ArgumentStreamMode
 from quickapp.common.deployment_parameter_support import remove_unsupported_parameters
 from quickapp.common.dial_request_fields import CONFIGURATION, CUSTOM_FIELDS
+from quickapp.common.form_utils import (
+    form_source_tool_name_before,
+    form_value_of,
+    last_user_message_index,
+)
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.payload_logging import log_payload
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
@@ -72,10 +77,34 @@ class BaseDeploymentTool(StagedBaseTool):
                 "Use 'conversation_mode.resumable: true' instead."
             )
         self.__messages_mixin: MessagesMixin = messages_mixin
+        # Tools are request-scoped: this flag lives for one request only, so form_value
+        # is forwarded to at most one call of this tool per request.
+        self.__form_value_sent = False
 
     @staticmethod
     def _is_resumable(tool_config: DialDeploymentTool) -> bool:
         return tool_config.conversation_mode is not None and tool_config.conversation_mode.resumable
+
+    def _form_value_for_this_tool(self, tool_config: DialDeploymentTool):
+        """``form_value`` from the last raw user message, but only when this tool is the
+        source of the form in history (assistant message ``form_schema`` matched by content
+        to the tool message schema; the assistant's tool call gives this tool's name) and
+        the value was not already forwarded to another call of this tool in the same request.
+        """
+        if self.__form_value_sent:
+            return None
+        messages = self.__messages_mixin.messages
+        cutoff = last_user_message_index(messages)
+        if cutoff is None:
+            return None
+        source_tool = form_source_tool_name_before(messages, cutoff)
+        if source_tool != tool_config.open_ai_tool.function.name:
+            return None
+        value = form_value_of(messages[cutoff])
+        if value is None:
+            return None
+        self.__form_value_sent = True
+        return value
 
     def _setup_session(
         self,
@@ -140,11 +169,14 @@ class BaseDeploymentTool(StagedBaseTool):
             supports_url_attachments=tool_config.supports_url_attachments,
             parent_stage=parent_stage,
             system_prompt=tool_config.system_prompt.content if tool_config.system_prompt else None,
+            form_value=self._form_value_for_this_tool(tool_config),
         )
         if is_first_call and session_id:
             result.content = result.content + f"\n\n[session_id: {session_id}]"
         if not tool_config.propagate_annotations_to_choice:
             result.annotations = []
+        if not tool_config.propagate_form_schema_to_choice:
+            result.form_schema = None
         return result
 
     _SESSION_ID_PARAM = ConfigurableSchemaSimpleType(
@@ -273,6 +305,11 @@ class BaseDeploymentTool(StagedBaseTool):
                 ]
             if custom_content.state is not None:
                 cc_param["state"] = custom_content.state
+            form_value = custom_content.form_value
+            if form_value is None:
+                form_value = (custom_content.model_extra or {}).get("form_value")
+            if form_value is not None:
+                cc_param["form_value"] = form_value
             if cc_param:
                 assistant_msg["custom_content"] = cc_param
 

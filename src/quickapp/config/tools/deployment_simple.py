@@ -22,4 +22,22 @@ class DialDeploymentSimpleTool(BaseModel):
             "the matching `<cit data-id=\"...\"></cit>` anchors verbatim into its answer."
         ),
     )
+    propagate_form_schema_to_choice: bool | None = Field(
+        default=None,
+        description=(
+            "Propagate the form returned by the deployment onto the app's choice. "
+            "The deployment's `custom_content.form_schema` is sent to the client. "
+            "Within one deployment stream the last schema wins; across tools in one "
+            "response the first one wins (the SDK allows a single form per choice)."
+        ),
+    )
+    propagate_form_value_to_content: bool | None = Field(
+        default=None,
+        description=(
+            "When the form's source tool is not resumable, append the submitted "
+            "`custom_content.form_value` to the message content as a `<form_value>` block "
+            "so the orchestrator model can use it. When false or unset, the value is only "
+            "kept in `custom_content` (consumed by deployment tools)."
+        ),
+    )
     type: Literal["dial-deployment-simple"] = Field(default="dial-deployment-simple")
