@@ -57,8 +57,16 @@ class FileTooLargeError(ValueError):
 class ProjectFileOperationException(DialException):
     """A project file operation the storage refuses; the message is meant for the agent."""
 
-    def __init__(self, message: str, status_code: int = 400):
-        super().__init__(message=message, status_code=status_code)
+    def __init__(self, message: str):
+        super().__init__(message=message, status_code=400)
+
+
+class FileAccessDeniedError(DialException):
+    """A ``FileStorage`` refused a URL itself, before any Core call. A 403, so generic handlers
+    treat it as access denied."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(message=reason, status_code=403)
 
 
 class SameSourceAndDestinationException(ProjectFileOperationException):

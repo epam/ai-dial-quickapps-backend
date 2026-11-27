@@ -5,6 +5,7 @@ from aidial_client import DialException
 
 from quickapp.common.project_context import ProjectContext
 from quickapp.dial_core_services.exceptions import (
+    FileAccessDeniedError,
     PartialMoveException,
     ProjectFileOperationException,
     SameSourceAndDestinationException,
@@ -89,7 +90,7 @@ class TestSingleUrlRouting:
         v1, project = _make_storage(), _make_storage()
         router = _make_router(v1, project, context)
 
-        with pytest.raises(ProjectFileOperationException, match="current project") as excinfo:
+        with pytest.raises(FileAccessDeniedError, match="current project") as excinfo:
             await getattr(router, operation)(url)
         assert excinfo.value.status_code == 403
         for storage in (v1, project):

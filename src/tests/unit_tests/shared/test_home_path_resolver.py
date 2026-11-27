@@ -172,6 +172,14 @@ class TestProjectHome:
         assert await resolver.to_display_path(f"{_ARTIFACTS}my%20notes/a.md") == "my notes/a.md"
 
     @pytest.mark.asyncio
+    async def test_display_path_of_the_home_itself_is_its_url(self):
+        # A listing of the project folder names artifacts/ next to context/, not by "".
+        resolver = _resolver(project=_PROJECT)
+        expected = "projects/user-bucket/My Project/files/artifacts/"
+        assert await resolver.to_display_path(_ARTIFACTS) == expected
+        assert canonical_url(await resolver.resolve_appdata_url(expected)) == _ARTIFACTS
+
+    @pytest.mark.asyncio
     async def test_display_path_keeps_names_that_dont_round_trip_encoded(self):
         # A literal `%41` in a name would decode to `A` when passed back.
         url = f"{_ARTIFACTS}100%2541.md"

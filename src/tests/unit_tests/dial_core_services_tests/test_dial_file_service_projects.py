@@ -11,6 +11,7 @@ from quickapp.common.state_holder import StateHolder
 from quickapp.dial_core_services._project_files import ProjectFilesClient, ProjectItem
 from quickapp.dial_core_services.dial_file_service import DialFileService
 from quickapp.dial_core_services.exceptions import (
+    FileAccessDeniedError,
     FileTooLargeError,
     PartialMoveException,
     ProjectFileOperationException,
@@ -73,7 +74,7 @@ def _make_service(
     dial_client = dial_client or _make_dial_client()
     v1 = V1FileStorage(dial_client, resolver)
     storage: FileStorage = RoutedFileStorage(
-        v1, ProjectFileStorage(project_files, resolver), project
+        v1, ProjectFileStorage(project_files, resolver, project), project
     )
     return DialFileService(
         dial_client=dial_client,
@@ -95,7 +96,7 @@ class TestDispatchGate:
             svc.write_file(PROJECT_FILE, "x", overwrite=True),
             svc.delete(PROJECT_FILE),
         ):
-            with pytest.raises(ProjectFileOperationException, match="current project"):
+            with pytest.raises(FileAccessDeniedError, match="current project"):
                 await call
 
         project_files.stream.assert_not_called()
@@ -391,7 +392,7 @@ class TestReviewFixes:
         project_files = _make_project_files()
         svc = _make_service(project_files, dial_client=dial_client)
 
-        with pytest.raises(ProjectFileOperationException, match="current project"):
+        with pytest.raises(FileAccessDeniedError, match="current project"):
             await svc.download_file("projects/b/p/files/../../Other/files/x.md")
 
         project_files.stream.assert_not_called()

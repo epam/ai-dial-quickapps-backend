@@ -7,7 +7,7 @@ from quickapp.common.project_context import (
     ProjectContext,
     current_project_url,
 )
-from quickapp.dial_core_services.exceptions import ProjectFileOperationException
+from quickapp.dial_core_services.exceptions import FileAccessDeniedError
 from quickapp.dial_core_services.storage._transfer import copy_via_download, move_via_download
 from quickapp.dial_core_services.storage.file_storage import FileStorage, FolderEntry, UploadedFile
 
@@ -37,8 +37,7 @@ class RoutedFileStorage(FileStorage):
             return self.__v1, url
         project_url = current_project_url(self.__project, url)
         if project_url is None:
-            # 403, so the file tools report it like Core's own refusal ("access denied").
-            raise ProjectFileOperationException(CURRENT_PROJECT_ONLY_MESSAGE, status_code=403)
+            raise FileAccessDeniedError(CURRENT_PROJECT_ONLY_MESSAGE)
         return self.__project_storage, project_url
 
     async def download(self, url: str) -> tuple[bytes, FileMetadata]:

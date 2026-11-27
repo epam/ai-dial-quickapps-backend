@@ -7,8 +7,8 @@ from injector import inject
 
 from quickapp.common.exceptions import InitializationException, ProjectInstructionsException
 from quickapp.common.project_context import PROJECT_CONTEXT
-from quickapp.dial_core_services.dial_file_service import DialFileService
 from quickapp.dial_core_services.exceptions import FileTooLargeError
+from quickapp.dial_core_services.storage._project_file_storage import ProjectFileStorage
 
 logger = logging.getLogger(__name__)
 
@@ -24,12 +24,14 @@ class _ProjectInstructions:
 
     Loaded by the prompt provider while the system prompt is built, before the
     Initialization issues stage renders, so a failure reaches the user as a warning there.
-    A missing file is no instructions, not an issue.
+    A missing file is no instructions, not an issue. Read through
+    ``ProjectFileStorage.read_instructions``: the agent can't read ``PROJECT.md``, and the
+    file stays out of the per-request bytes cache that file arguments read from.
     """
 
-    def __init__(self, project: PROJECT_CONTEXT, dial_file_service: DialFileService) -> None:
+    def __init__(self, project: PROJECT_CONTEXT, project_storage: ProjectFileStorage) -> None:
         self.__project: PROJECT_CONTEXT = project
-        self.__dial_file_service = dial_file_service
+        self.__project_storage = project_storage
         self.__body: str | None = None
         self.__exceptions: list[InitializationException] = []
 
@@ -48,7 +50,7 @@ class _ProjectInstructions:
         if self.__project is None:
             return ""
         try:
-            data, _ = await self.__dial_file_service.download_file(self.__project.instructions_url)
+            data, _ = await self.__project_storage.read_instructions()
         except ResourceNotFoundError:
             return ""
         except (FileTooLargeError, DialException) as e:

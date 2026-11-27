@@ -27,7 +27,7 @@
 - `x-project-id` is the only link to the project. No app-config switch is needed.
 - In a project the agent sees the project instructions and the list of context files, and works in the project's
   `artifacts/` folder. The ten file tools and `web_fetch` keep their interfaces.
-- The agent can't modify `PROJECT.md`, `context/` or `conversations/`.
+- The agent can't modify `PROJECT.md`, `context/` or `conversations/`, and reads only `context/` and `artifacts/`.
 - Files that tools produce for the user land in `artifacts/` and show up in Chat's Outputs.
 - No access to the project → the turn fails within one call, with a message that names the fix.
 - Without the header, or with `ENABLE_PREVIEW_FEATURES=false`, behaviour is unchanged, except for the changes listed
@@ -74,6 +74,14 @@ deleted or renamed) ends it with its own message.
 **Outcome:** The tool asks for a relative path, which resolves under the working folder. The agent reports it or
 writes a copy under `artifacts/`.
 
+### UC-6: Agent tries to read the project's chats
+
+**Trigger:** The agent lists the project folder, or reads a `conversations/…` or `PROJECT.md` URL (a file tool, a
+`file:text::` argument, `copy_file`).
+**Behavior:** The project folder lists only `context/` and `artifacts/`, without calling Core; `ProjectFileStorage`
+refuses a read or a listing of any other project path (`FileAccessDeniedError`, a 403) before calling Core.
+**Outcome:** An "access denied" tool error. The agent reads only `context/` and `artifacts/` (D10).
+
 ---
 
 ## Proposed Design
@@ -101,8 +109,9 @@ flowchart LR
 | D5 | User-facing tool outputs keep today's naming and overwrite behaviour. Only the root changes: `artifacts/` instead of the appdata root. | Parity with non-project behaviour. Collision-safe names are a separate change. |
 | D6 | Large-result offloads and promoted external URLs stay in appdata. | Offloads are internal context: in `artifacts/` they would clutter the project's Outputs. Promoted URLs feed deployments and the interpreter, which can't read `projects/` URLs (C4). |
 | D7 | Permissions come from Core (#1930 resource dependencies). QuickApps never grants itself anything. Phase 1 = static dependencies with admin consent. | The header carries no permission. Core forwards it but grants nothing from it. |
-| D8 | A `projects/…` path is an absolute URL, like `files/…`, in every chat; only URLs under the request project's root resolve, any other is rejected. | One prefix rule everywhere, no project needed to classify a URL. A `projects/…` string the model meant as a project URL never lands silently in `artifacts/`. Like `files`, a home folder named `projects` is then not reachable by a relative path. Also narrows the phase-1 grant, which opens all of the user's projects, to the current one on QuickApps' side. |
+| D8 | A `projects/…` path is an absolute URL, like `files/…`, in every chat; only URLs of the request's project resolve, any other is rejected. What the agent may read inside the project is D10. | One prefix rule everywhere, no project needed to classify a URL. A `projects/…` string the model meant as a project URL never lands silently in `artifacts/`. Like `files`, a home folder named `projects` is then not reachable by a relative path. Also narrows the phase-1 grant, which opens all of the user's projects, to the current one on QuickApps' side. |
 | D9 | No access → hard fail (UC-4). Projects stay on the shared `ENABLE_PREVIEW_FEATURES` flag; no project-only switch. Environments whose Core lacks C1 keep the flag off (owner: the deployment's config). | A degraded mode would answer without the project and hide the missing grant. Accepted cost: the flag off also disables the other preview features there (tool-result offload, MCP per-tool config). |
+| D10 | Inside the project the agent reads only `context/` and `artifacts/` (`ProjectContext.can_read`). `ProjectFileStorage` is the agent's view: listing the project folder returns only those two, without a request, and any other project path (`PROJECT.md`, `conversations/`) is refused with `FileAccessDeniedError` (a 403 of the `FileStorage` contract, reported as "access denied") before any request, whether it exists or not. `PROJECT.md` for the prompt is read through `ProjectFileStorage.read_instructions()`. MCP `dial_url` grants are unchanged: Core checks a project file read on the project root, so a grant on one file gives nothing (open: route grants through the storage once Core honours them). Deployment attachments and `get_content` still check only D8 (open: they should check through the storage, where they read). `files/…` URLs are unaffected. | A project adds two read sources and changes the home; chats and instructions aren't sources. Core grants READ on the whole project, so it won't hide `conversations/`. One rule in the storage that owns project semantics keeps the file tools, `DialFileService` and `FileLoaderService` generic and covers every read, `file:` arguments included. `read_instructions` keeps `PROJECT.md` out of the bytes cache that `file:` arguments read from. |
 
 ### Gating
 
@@ -111,6 +120,7 @@ flowchart LR
 | `PROJECT_CONTEXT` | `None` when `ENABLE_PREVIEW_FEATURES` is off |
 | `ProjectModule` (prompt section, preflight) | module filter (`@preview_module`) |
 | `projects/` routing in `RoutedFileStorage`, home = `artifacts/`, output root | `PROJECT_CONTEXT is not None` and the URL is under its root |
+| Read scope: `ProjectFileStorage` view (D10) | `PROJECT_CONTEXT is not None` (outside a project `RoutedFileStorage` refuses every `projects/` URL, D8) |
 | `projects/` prefix = absolute (`HomePathResolver.is_absolute`, `classify_url`) | ungated (D8) |
 | File-tool 403 → non-retryable permission error | ungated (a secondary fix, see [Secondary Fixes](#secondary-fixes)) |
 | `x-project-id` to nested apps, MCP and REST API tools | unchanged: the existing `X-*` catch-all, raw header value |
@@ -133,8 +143,8 @@ flowchart LR
   | Class | Role |
   |---|---|
   | `V1FileStorage` | `files/…` through the v1 API (native conditional upload, copy, move) |
-  | `ProjectFileStorage` | current-project files through a small v2 client (`_project_files.py`); copy/move = download + upload |
-  | `RoutedFileStorage` | the file tools' current-project check: `files/…` → v1, current-project URLs → project storage (canonical), any other `projects/…` URL → refused with a 403, which the file tools report as "access denied"; copy/move between the two = download + upload |
+  | `ProjectFileStorage` | current-project files through a small v2 client (`_project_files.py`), as the agent may read them (D10); `read_instructions` for the prompt; copy/move = download + upload |
+  | `RoutedFileStorage` | the file tools' current-project check: `files/…` → v1, current-project URLs → project storage (canonical), any other `projects/…` URL → refused with `FileAccessDeniedError` (403), which the file tools report as "access denied"; copy/move between the two = download + upload |
 
   DI always returns `RoutedFileStorage`, so a `projects/…` URL is refused outside a project chat too. `DialFileService` (cache, write
   semantics) and `DialDownloader` sit on top and don't know about projects.
@@ -195,10 +205,10 @@ flowchart LR
   | 404 | 404 `project_not_found` | "The project was not found. It may have been deleted or renamed." |
   | 401, other | as today | the generic error |
 
-- `PROJECT.md` is loaded by the prompt provider (`_ProjectInstructions`, once per request), not the preflight. Over the
-  file-loading size limit or a Core error → an `error`-level `ProjectInstructionsException` in the **Initialization
-  issues** stage (rendered after the system prompt is built) and a WARNING log; the turn continues without the
-  instructions.
+- `PROJECT.md` is loaded by the prompt provider (`_ProjectInstructions`, once per request, through
+  `ProjectFileStorage.read_instructions`), not the preflight. Over the file-loading size limit or a Core error → an
+  `error`-level `ProjectInstructionsException` in the **Initialization issues** stage (rendered after the system prompt
+  is built) and a WARNING log; the turn continues without the instructions.
 
 ### User outputs into `artifacts/` (PR3)
 
