@@ -197,7 +197,7 @@ sequenceDiagram
 
 ### Concern 6: Preview gating (folder; dial-files is GA)
 
-**What:** Folder contexts were preview-gated for v1. Dial-files is generally available (promoted in 073a7517) and is no longer gated; only its nested `tool_call_result_offload` field is still preview.
+**What:** Folder contexts were preview-gated for v1. Dial-files is generally available (promoted in 073a7517) and is no longer gated.
 
 **Owner:** `config/context.py`, `common/base_config.py` (`@preview_model`), `config/application.py` (`nullify_preview_fields`), schema generation
 
@@ -208,7 +208,7 @@ sequenceDiagram
 | `FolderContextConfig` in `contexts` | `@preview_model` on the class; schema strips the `folder` discriminator when preview off; runtime removal via `nullify_preview_fields()` list filtering + warning |
 | `features.dial_files` | None (GA). An absent block exposes all file tools (same as `{}`) |
 | `DialFilesToolingModule` | None (GA), always wired |
-| `features.dial_files.tool_call_result_offload` | `PreviewField` (see `large_tool_responses.md`) |
+| `features.tool_call_result_offload` | None (GA, see `large_tool_responses.md`) |
 
 When `ENABLE_PREVIEW_FEATURES=false`:
 
