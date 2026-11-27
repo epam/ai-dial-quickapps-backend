@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from aidial_client import AsyncDial, DialException, ResourceNotFoundError
 
-from quickapp.dial_core_services.exceptions import FileAccessDeniedError, FileTooLargeError
+from quickapp.dial_core_services.exceptions import FileTooLargeError
 from quickapp.dial_core_services.storage._v1_file_storage import V1FileStorage
 from quickapp.dial_core_services.storage.file_storage import FolderEntry
 from quickapp.shared.config_resolvers.file_loading_size_limit_resolver import (
@@ -198,36 +198,3 @@ class TestDeleteCopyMove:
         client.files.move_to.assert_awaited_once_with(
             source=FILE, destination="files/b/b.md", overwrite=overwrite
         )
-
-
-class TestGrantRead:
-    @pytest.mark.asyncio
-    async def test_files_and_skill_urls_are_granted_unchanged(self):
-        client = _make_client()
-        client.resource_permissions = MagicMock()
-        client.resource_permissions.grant = AsyncMock()
-
-        await _make_storage(client).grant_read([FILE, "skills/b/data-cleanup"], "toolset")
-
-        client.resource_permissions.grant.assert_awaited_once_with(
-            resources=[FILE, "skills/b/data-cleanup"], receiver="toolset"
-        )
-
-    @pytest.mark.parametrize(
-        "url",
-        [
-            "projects/b/p/files/context/a.csv",
-            "/files/b/a.md",
-            "https://dial.example.com/v1/files/b/a.md",
-        ],
-    )
-    @pytest.mark.asyncio
-    async def test_any_other_url_is_refused_before_the_grant(self, url):
-        client = _make_client()
-        client.resource_permissions = MagicMock()
-        client.resource_permissions.grant = AsyncMock()
-
-        with pytest.raises(FileAccessDeniedError, match="not a files/... or skills/"):
-            await _make_storage(client).grant_read([FILE, url], "toolset")
-
-        client.resource_permissions.grant.assert_not_awaited()

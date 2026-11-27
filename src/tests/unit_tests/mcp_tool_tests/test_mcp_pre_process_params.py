@@ -1,6 +1,6 @@
 import base64
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, call
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -11,7 +11,6 @@ from quickapp.common.state_holder import StateHolder
 from quickapp.config.tools.mcp import MCPTool
 from quickapp.dial_core_services.attachment_service import AttachmentService
 from quickapp.dial_core_services.dial_file_service import DialFileService
-from quickapp.dial_core_services.exceptions import FileAccessDeniedError
 from quickapp.mcp_tooling._mcp_stage_wrapper import _MCPStageWrapper
 from quickapp.mcp_tooling._mcp_tool import _MCPTool
 from quickapp.mcp_tooling._mcp_toolset_client import _MCPToolsetClient
@@ -328,44 +327,3 @@ class TestSkillFileUrls:
         with pytest.raises(InvalidToolCallParameterException, match="unsupported URL"):
             await tool._pre_process_params(script_url="skills/b/s/files/../../other/files/x")
         file_service.grant_permissions_to_files.assert_not_awaited()
-
-
-class TestDialUrlGrant:
-    @pytest.mark.asyncio
-    async def test_a_url_the_storage_refuses_fails_its_parameter(self):
-        tool, file_service, _ = _make_tool(
-            input_schema={"properties": {"doc_url": {"type": "string", "dial_url": True}}},
-            dial_toolset_id="my-toolset",
-        )
-        file_service.grant_permissions_to_files.side_effect = FileAccessDeniedError(
-            "only the current project's context/ and artifacts/ folders are readable"
-        )
-
-        with pytest.raises(InvalidToolCallParameterException) as excinfo:
-            await tool._pre_process_params(doc_url="projects/b/p/files/conversations/chat.json")
-
-        assert excinfo.value.parameter_name == "doc_url"
-        assert "cannot be shared: only the current project's context/" in excinfo.value.message
-
-    @pytest.mark.asyncio
-    async def test_each_parameter_is_granted_on_its_own_and_passed_as_sent(self):
-        tool, file_service, _ = _make_tool(
-            input_schema={
-                "properties": {
-                    "doc_url": {"type": "string", "dial_url": True},
-                    "data_urls": {"type": "array", "items": {"type": "string"}, "dial_url": True},
-                }
-            },
-            dial_toolset_id="my-toolset",
-        )
-        project_file = "projects/b/My Project/files/context/a.csv"
-
-        result = await tool._pre_process_params(
-            doc_url=project_file, data_urls=["files/x.csv", "files/y.csv"]
-        )
-
-        assert result["doc_url"] == project_file
-        assert file_service.grant_permissions_to_files.await_args_list == [
-            call([project_file], "my-toolset"),
-            call(["files/x.csv", "files/y.csv"], "my-toolset"),
-        ]

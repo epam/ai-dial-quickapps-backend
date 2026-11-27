@@ -18,8 +18,7 @@ class RoutedFileStorage(FileStorage):
     without a project, is refused: QuickApps touches only the request's project (D8).
 
     The only place that decides v1 vs project. A copy or move within one storage uses that
-    storage's own; between the two it downloads and uploads. A grant is split between the two,
-    after every URL is routed.
+    storage's own; between the two it downloads and uploads.
     """
 
     def __init__(
@@ -94,11 +93,3 @@ class RoutedFileStorage(FileStorage):
             destination_url,
             overwrite=overwrite,
         )
-
-    async def grant_read(self, urls: list[str], receiver: str) -> None:
-        by_storage: dict[FileStorage, list[str]] = {}
-        for url in urls:
-            storage, url = self._route(url)
-            by_storage.setdefault(storage, []).append(url)
-        for storage, storage_urls in by_storage.items():
-            await storage.grant_read(storage_urls, receiver)

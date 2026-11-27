@@ -158,9 +158,10 @@ class DialFileService:
                 "Granting permissions to files: %s",
                 [sanitize_url(f) for f in files_to_share],
             )
-            await self.__storage.grant_read(files_to_share, dial_toolset_id)
-        except FileAccessDeniedError:
-            raise
+            await self.__dial_client.resource_permissions.grant(
+                resources=files_to_share,
+                receiver=dial_toolset_id,
+            )
         except Exception as e:
             logger.error(
                 "Failed to grant permissions to the files %s", files_to_share, exc_info=True

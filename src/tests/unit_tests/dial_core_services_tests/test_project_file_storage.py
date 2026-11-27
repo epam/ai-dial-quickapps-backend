@@ -22,21 +22,14 @@ PROJECT_FILE = "projects/b/p/files/context/a.csv"
 ROOT = "projects/b/p/files/"
 
 
-def _make_dial_client() -> MagicMock:
-    client = MagicMock()
-    client.resource_permissions.grant = AsyncMock()
-    return client
-
-
 def _make_storage(
     project_files: MagicMock,
     size_limit: int = 100,
     project: ProjectContext | None = PROJECT,
-    dial_client: MagicMock | None = None,
 ) -> ProjectFileStorage:
     resolver = MagicMock(spec=FileLoadingSizeLimitResolver)
     resolver.resolve.return_value = size_limit
-    return ProjectFileStorage(dial_client or _make_dial_client(), project_files, resolver, project)
+    return ProjectFileStorage(project_files, resolver, project)
 
 
 class TestDownload:
@@ -140,47 +133,6 @@ class TestAgentView:
 
         with pytest.raises(FileAccessDeniedError):
             await _make_storage(project_files, project=None).download(PROJECT_FILE)
-
-
-class TestGrantRead:
-    @pytest.mark.asyncio
-    async def test_readable_urls_are_granted_in_canonical_form(self):
-        client = _make_dial_client()
-        storage = _make_storage(
-            MagicMock(spec=ProjectFilesClient),
-            project=ProjectContext(url="projects/b/My Project"),
-            dial_client=client,
-        )
-
-        await storage.grant_read(
-            [
-                "projects/b/My Project/files/context/a b.csv",
-                "projects/b/My%20Project/files/artifacts/report.pdf",
-            ],
-            "toolset",
-        )
-
-        client.resource_permissions.grant.assert_awaited_once_with(
-            resources=[
-                "projects/b/My%20Project/files/context/a%20b.csv",
-                "projects/b/My%20Project/files/artifacts/report.pdf",
-            ],
-            receiver="toolset",
-        )
-
-    @pytest.mark.parametrize(
-        "url", [f"{ROOT}conversations/chat.json", f"{ROOT}PROJECT.md", ROOT, f"{ROOT}other/a.md"]
-    )
-    @pytest.mark.asyncio
-    async def test_a_url_outside_context_and_artifacts_is_refused_before_the_grant(self, url):
-        client = _make_dial_client()
-
-        with pytest.raises(FileAccessDeniedError, match="context/ and artifacts/"):
-            await _make_storage(MagicMock(spec=ProjectFilesClient), dial_client=client).grant_read(
-                [PROJECT_FILE, url], "toolset"
-            )
-
-        client.resource_permissions.grant.assert_not_awaited()
 
 
 class TestReadInstructions:

@@ -58,10 +58,6 @@ class FileStorage(ABC):
     @abstractmethod
     async def move(self, source_url: str, destination_url: str, overwrite: bool) -> None: ...
 
-    @abstractmethod
-    async def grant_read(self, urls: list[str], receiver: str) -> None:
-        """Let ``receiver`` (a toolset) read ``urls`` for the current request."""
-
 
 def ensure_within_size_limit(size: int, limit: int) -> None:
     """Raise ``FileTooLargeError`` (a ``ValueError``) when ``size`` exceeds ``limit``."""

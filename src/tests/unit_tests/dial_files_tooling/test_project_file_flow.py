@@ -40,7 +40,7 @@ def _service() -> DialFileService:
     size_limit.resolve.return_value = 1024 * 1024
     storage = RoutedFileStorage(
         V1FileStorage(dial, size_limit),
-        ProjectFileStorage(dial, ProjectFilesClient(dial), size_limit, PROJECT),
+        ProjectFileStorage(ProjectFilesClient(dial), size_limit, PROJECT),
         PROJECT,
     )
     return DialFileService(dial_client=dial, storage=storage, state_holder=StateHolder())

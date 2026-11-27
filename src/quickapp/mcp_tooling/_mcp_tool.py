@@ -30,7 +30,6 @@ from quickapp.dial_core_services._interactive_login_service import InteractiveLo
 from quickapp.dial_core_services._login_result import LoginResult
 from quickapp.dial_core_services.attachment_service import AttachmentService
 from quickapp.dial_core_services.dial_file_service import DialFileService
-from quickapp.dial_core_services.exceptions import FileAccessDeniedError
 from quickapp.mcp_tooling._mcp_stage_wrapper import _MCPStageWrapper
 from quickapp.mcp_tooling._mcp_tool_error_exception import MCPToolErrorException
 from quickapp.mcp_tooling._mcp_toolset_client import _MCPToolsetClient
@@ -94,8 +93,8 @@ class _MCPTool(StagedBaseTool):
         kwargs = await super()._pre_process_params(**{**kwargs, **self.__fixed_arguments})
 
         # Grant permissions for dial_url-flagged parameters (MCP-specific)
-        resources_by_parameter = self._collect_dial_url_files(kwargs)
-        if resources_by_parameter:
+        files_to_share = self._collect_dial_url_files(kwargs)
+        if files_to_share:
             if not self.__dial_toolset_id:
                 logger.error(
                     "Files with dial_url flag detected but dial_toolset_id is not set.",
@@ -104,38 +103,28 @@ class _MCPTool(StagedBaseTool):
                     parameter_name="file_url",
                     message="Files cannot be shared because dial_toolset_id is not configured.",
                 )
-            # One grant per parameter, so a refusal names the parameter it came from.
-            for key, resources in resources_by_parameter.items():
-                try:
-                    await self.__file_service.grant_permissions_to_files(
-                        resources, self.__dial_toolset_id
-                    )
-                except FileAccessDeniedError as e:
-                    raise InvalidToolCallParameterException(
-                        parameter_name=key,
-                        message=f"Parameter `{key}` cannot be shared: {e.message}.",
-                    ) from e
+            await self.__file_service.grant_permissions_to_files(
+                files_to_share, self.__dial_toolset_id
+            )
 
         return kwargs
 
     def _stage_parameters(self, params: dict[str, Any]) -> dict[str, Any]:
         return {k: v for k, v in params.items() if k not in self.__fixed_arguments}
 
-    def _collect_dial_url_files(self, kwargs: dict[str, Any]) -> dict[str, list[str]]:
-        """Collect the DIAL resources to grant for ``dial_url``-flagged parameters, by
-        parameter name.
+    def _collect_dial_url_files(self, kwargs: dict[str, Any]) -> list[str]:
+        """Collect the DIAL resources to grant for ``dial_url``-flagged parameters.
 
         A DIAL file is granted as is; a skill file is granted through its skill root,
-        because Core treats a skill as one resource. A resource is listed once, under the
-        first parameter that names it, so several files of one skill cost one grant.
+        because Core treats a skill as one resource. The result is de-duplicated, so
+        several files of one skill cost one grant.
 
         External or unsupported URLs are rejected with a parameter-aware
         ``InvalidToolCallParameterException`` — ``dial_url`` parameters require a
         DIAL file because permission-grant has no meaning for external resources.
         """
         properties = self.__tool.inputSchema.get("properties", {})
-        resources_by_parameter: dict[str, list[str]] = {}
-        seen: set[str] = set()
+        resources: list[str] = []
         for key, value in kwargs.items():
             if not properties.get(key, {}).get("dial_url"):
                 continue
@@ -144,12 +133,8 @@ class _MCPTool(StagedBaseTool):
                 candidates.append(value)
             elif isinstance(value, list):
                 candidates.extend(elem for elem in value if isinstance(elem, str))
-            resources = [self._grant_resource(key, candidate) for candidate in candidates]
-            new = [resource for resource in dict.fromkeys(resources) if resource not in seen]
-            seen.update(new)
-            if new:
-                resources_by_parameter[key] = new
-        return resources_by_parameter
+            resources.extend(self._grant_resource(key, candidate) for candidate in candidates)
+        return list(dict.fromkeys(resources))
 
     def _grant_resource(self, key: str, candidate: str) -> str:
         """The resource to grant for one ``dial_url`` value.

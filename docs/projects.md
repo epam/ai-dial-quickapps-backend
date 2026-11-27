@@ -44,8 +44,7 @@ A project lives under Core's `projects/{bucket}/{path}/files/`:
 5. **Read scope.** Inside the project the agent reads only `context/` and `artifacts/`. Listing the project folder
    shows just those two; reading or listing any other project path (`PROJECT.md`, `conversations/`), directly, by a
    `file:text::` / `file:base64::` / `file:data::` argument or as a `copy_file` source, is refused ("access denied";
-   only the project's `context/` and `artifacts/` folders are readable) without calling Core. A project URL in an MCP
-   `dial_url` parameter is granted only under those two folders.
+   only the project's `context/` and `artifacts/` folders are readable) without calling Core.
 6. **Read-only files.** Write-side tools (`write_file`, `edit_file`, `delete_file`, the `move_file` source,
    `copy_file` / `move_file` destinations, `web_fetch` `save_path`) accept relative paths only, so they never write
    outside `artifacts/`. Given any `files/...` or `projects/...` URL, they ask for a relative path.
@@ -70,7 +69,7 @@ denied; the app has no permission for it"). It goes through the tool's fallback 
 | MCP `dial_url` parameters with project files are unverified | Per-file grants on `projects/` URLs depend on Core | Avoid project URLs in `dial_url` parameters |
 | A tool output replaces a file with the same name in `artifacts/`, including one from another chat or added by the user | Outputs keep the tool's file name and are written without a check ([I#725](https://github.com/epam/ai-dial-quickapps-backend/issues/725)) | None yet |
 | `get_content` and DIAL deployment attachments pass on any file of the current project, `conversations/` and `PROJECT.md` included | They check only that the URL is in the current project, not the read scope | None yet |
-| A nested app or MCP server can still read the project's `conversations/` if it gets a URL elsewhere | The Core grant covers the whole project; QuickApps narrows only its own reads and the URLs it passes on | None yet: needs a narrower resource-dependency target in Core ([Core I#1930](https://github.com/epam/ai-dial-core/issues/1930)) |
+| A nested app or MCP server can still read the project's `conversations/` if it gets a URL elsewhere | The Core grant covers the whole project; QuickApps narrows only its own reads | None yet: needs a narrower resource-dependency target in Core ([Core I#1930](https://github.com/epam/ai-dial-core/issues/1930)) |
 | After a project rename, files attached in earlier turns return 404 | Attachments keep the old URL | Attach the file again |
 | The system-prompt cache has one entry per project and is rewritten when `PROJECT.md` changes | The project instructions are part of the system prompt | None needed; the first turn after a change costs a cache write |
 
