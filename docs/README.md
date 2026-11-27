@@ -59,7 +59,7 @@ See [Feature Lifecycle](../README.md#feature-lifecycle) in the root README.
 | ChatHub templates | [chathub.md](./chathub.md) | — | — |
 | Custom CA certs | [custom_ca_certificates.md](./custom_ca_certificates.md) | — | — |
 | Skills (predefined + dial-prompt) | [CONFIGURATION — Skills](../CONFIGURATION.md#skills-configuration) | [skills.md](./skills.md) | [dial_prompts_as_skills.md](./designs/dial_prompts_as_skills.md) |
-| Config-driven hooks | [CONFIGURATION — Hooks](../CONFIGURATION.md#hooks-configuration) | [hooks.md](./hooks.md) | [hook_context_and_lifecycle_events.md](./designs/hook_context_and_lifecycle_events.md) |
+| Config-driven hooks | [CONFIGURATION — Hooks](../CONFIGURATION.md#hooks-configuration) | [hooks.md](./hooks.md) | [hook_context_and_lifecycle_events.md](./designs/hook_context_and_lifecycle_events.md), [background_hooks.md](./designs/background_hooks.md) |
 | Dynamic tool discovery | [CONFIGURATION — Tool discovery](../CONFIGURATION.md#tool-discovery-configuration) | — | [dynamic_tool_discovery.md](./designs/dynamic_tool_discovery.md) |
 | Tools hidden from the model | [CONFIGURATION — MCP tool set](../CONFIGURATION.md#tool-sets-configuration) (`hidden_from_model`) | [hooks.md](./hooks.md#tools-hidden-from-the-model) | [tools_hidden_from_model.md](./designs/tools_hidden_from_model.md) |
 | Web fetch (`internal_web_fetch`) | [CONFIGURATION — Web fetch](../CONFIGURATION.md#web-fetch-configuration) | — | [web_fetch_tool.md](./designs/web_fetch_tool.md) |

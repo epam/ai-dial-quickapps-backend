@@ -9,6 +9,7 @@ from aidial_sdk.chat_completion import Attachment, Status
 from injector import AssistedBuilder
 
 from quickapp.common import StagedBaseTool, ToolCallResult
+from quickapp.common.background_execution import is_background_execution
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.chat_completion_stream.adopted_tool_stage import AdoptedToolStage
 from quickapp.common.exceptions import FallbackAgentStopException
@@ -570,3 +571,82 @@ async def test_tool_parameter_named_error_reference_reaches_the_tool(
 
     assert run.call_args.kwargs["error_reference"] == "from-the-model"
     mock_stage_wrapper_factory.build.return_value.add_exception.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_tool_parameter_named_background_reaches_the_tool(
+    mock_stage_wrapper_factory, mock_tool_config
+):
+    tool = CustomTestStagedBaseTool(
+        stage_wrapper_builder=mock_stage_wrapper_factory,
+        tool_config=mock_tool_config,
+        perf_timer=Mock(),
+    )
+
+    with patch.object(
+        CustomTestStagedBaseTool,
+        "_run_in_stage_async",
+        new_callable=AsyncMock,
+        return_value=ToolCallResult(content="ok", content_type="text/plain"),
+    ) as run:
+        await tool.arun("call-id", background="transparent")
+        await tool.arun_in_background("call-id", background="transparent")
+
+    assert [c.kwargs["background"] for c in run.call_args_list] == ["transparent"] * 2
+    assert not is_background_execution()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("display_level", [StageDisplayLevel.DEBUG, StageDisplayLevel.INFO])
+async def test_background_call_never_builds_a_stage(mock_stage_wrapper_factory, display_level):
+    tool = CustomTestStagedBaseTool(
+        stage_wrapper_builder=mock_stage_wrapper_factory,
+        tool_config=_make_tool_config(),
+        perf_timer=Mock(),
+        stage_display_level=display_level,
+    )
+
+    result = await tool.arun_in_background("call-id")
+
+    mock_stage_wrapper_factory.build.assert_not_called()
+    assert result.content == "response content"
+
+
+@pytest.mark.asyncio
+async def test_background_call_failure_gets_no_error_stage_and_returns_fallback(
+    mock_stage_wrapper_factory,
+):
+    tool = FailingTestTool(
+        stage_wrapper_builder=mock_stage_wrapper_factory,
+        tool_config=_make_tool_config(),
+        perf_timer=Mock(),
+        error=RuntimeError("boom"),
+        stage_display_level=StageDisplayLevel.DEBUG,
+    )
+
+    result = await tool.arun_in_background("call-id")
+
+    mock_stage_wrapper_factory.build.assert_not_called()
+    assert result.tool_call_id == "call-id"
+
+
+@pytest.mark.asyncio
+async def test_background_call_marks_the_context_only_while_it_runs(mock_stage_wrapper_factory):
+    seen: list[bool] = []
+
+    class _Probe(CustomTestStagedBaseTool):
+        async def _run_in_stage_async(self, stage_wrapper, tool_call_id, *args, **kwargs):
+            seen.append(is_background_execution())
+            return await super()._run_in_stage_async(stage_wrapper, tool_call_id, *args, **kwargs)
+
+    tool = _Probe(
+        stage_wrapper_builder=mock_stage_wrapper_factory,
+        tool_config=_make_tool_config(),
+        perf_timer=Mock(),
+    )
+
+    await tool.arun_in_background("call-id")
+    await tool.arun("call-id")
+
+    assert seen == [True, False]
+    assert is_background_execution() is False

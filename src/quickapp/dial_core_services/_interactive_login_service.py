@@ -9,6 +9,7 @@ from injector import inject
 
 from quickapp.common import CLIENT_CHANNEL_ID, DIAL_API_KEY
 from quickapp.common._di_types import CLIENT_CHANNEL_HEADER
+from quickapp.common.background_execution import is_background_execution
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.lifecycle_logging import format_duration, format_event
 from quickapp.common.payload_logging import log_payload
@@ -46,7 +47,7 @@ class InteractiveLoginService:
         start = time.perf_counter()
         logger.info(format_event("Interactive login requested", toolsets=toolset_dial_ids))
 
-        if self.__client_channel_id is None:
+        if self.__client_channel_id is None or is_background_execution():
             return self.__log_resolved(
                 {tid: LoginResult.NO_CHANNEL for tid in toolset_dial_ids}, start
             )
@@ -173,7 +174,8 @@ class InteractiveLoginService:
         logger.info(
             format_event("Interactive login requested", external_service_url=sanitize_url(url))
         )
-        if self.__client_channel_id is None:
+        # A background call has no user to ask: its request, and so the client channel, is over.
+        if self.__client_channel_id is None or is_background_execution():
             return LoginResult.NO_CHANNEL
 
         rpc_batch = [

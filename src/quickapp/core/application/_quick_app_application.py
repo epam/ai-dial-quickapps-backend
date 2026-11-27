@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi_injector import InjectorMiddleware, RequestScopeOptions, attach_injector
 from injector import Injector, inject
 
+from quickapp.common.base_finalizer import invoke_finalizers
 from quickapp.common.base_initializer import InitializerType, invoke_initializers
 from quickapp.common.dial_settings import DialSettings
 from quickapp.core.application._otel_settings import _OtelSettings
@@ -32,7 +33,10 @@ class _QuickAppApplication(DIALApp):
         async def lifespan(app: FastAPI):  # noqa: ARG001
             await invoke_initializers(injector, InitializerType.startup)
             logger.info("All modules successfully configured")
-            yield
+            try:
+                yield
+            finally:
+                await invoke_finalizers(injector)
 
         super().__init__(
             dial_url=dial_settings.url,

@@ -2145,6 +2145,14 @@
       "title": "HookEvent",
       "type": "string"
     },
+    "HookExecution": {
+      "enum": [
+        "blocking",
+        "background"
+      ],
+      "title": "HookExecution",
+      "type": "string"
+    },
     "InitializationIssueLevel": {
       "enum": [
         "warning",
@@ -3941,6 +3949,11 @@
       "properties": {
         "event": {
           "$ref": "#/$defs/HookEvent"
+        },
+        "execution": {
+          "$ref": "#/$defs/HookExecution",
+          "default": "blocking",
+          "description": "'blocking' (default) awaits the hook before the response closes. 'background' runs it without delaying the response: its result is discarded, it shows no stage and failures are only logged. Only supported for 'on_completion'."
         },
         "name": {
           "anyOf": [

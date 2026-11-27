@@ -5,6 +5,7 @@ import httpx
 import pytest
 from pydantic import SecretStr
 
+from quickapp.common.background_execution import background_execution
 from quickapp.common.dial_settings import DialSettings
 from quickapp.dial_core_services._interactive_login_service import InteractiveLoginService
 from quickapp.dial_core_services._interactive_login_settings import InteractiveLoginSettings
@@ -300,3 +301,17 @@ async def test_external_service_signin_http_error_returns_error():
         result = await service.request_external_service_signin("applications/my-app/x")
 
     assert result == LoginResult.ERROR
+
+
+@pytest.mark.asyncio
+async def test_background_execution_never_asks_the_user_even_with_a_channel():
+    service = _make_service(client_channel_id="test-channel")
+    sse_patch, client_patch = _patch_sse(_FakeEventSource([]))
+
+    with sse_patch as sse, client_patch, background_execution():
+        batch = await service.request_signin_batch(["toolset/a"])
+        external = await service.request_external_service_signin("applications/a/external/x")
+
+    assert batch == {"toolset/a": LoginResult.NO_CHANNEL}
+    assert external == LoginResult.NO_CHANNEL
+    sse.assert_not_called()

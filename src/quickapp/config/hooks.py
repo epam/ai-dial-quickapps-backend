@@ -38,8 +38,21 @@ class TTLRefreshCondition(BaseModel):
 RefreshConditionConfig = TTLRefreshCondition
 
 
+class HookExecution(StrEnum):
+    BLOCKING = "blocking"
+    BACKGROUND = "background"
+
+
 class _BaseHookConfig(BaseModel):
     event: HookEvent
+    execution: HookExecution = Field(
+        default=HookExecution.BLOCKING,
+        description=(
+            "'blocking' (default) awaits the hook before the response closes. 'background' runs "
+            "it without delaying the response: its result is discarded, it shows no stage and "
+            "failures are only logged. Only supported for 'on_completion'."
+        ),
+    )
     name: str | None = None
     timeout_seconds: float | None = Field(
         default=None,
@@ -50,6 +63,14 @@ class _BaseHookConfig(BaseModel):
             "30 for 'on_completion'."
         ),
     )
+
+    @model_validator(mode="after")
+    def _reject_background_outside_completion(self) -> Self:
+        # Only 'background' is rejected: 'blocking' is the default and a dumped config always
+        # carries it, so rejecting it would break dump -> validate round trips.
+        if self.execution is HookExecution.BACKGROUND and self.event is not HookEvent.ON_COMPLETION:
+            raise ValueError("'execution: background' is only supported for event 'on_completion'")
+        return self
 
 
 class ToolCallHookConfig(_BaseHookConfig):
