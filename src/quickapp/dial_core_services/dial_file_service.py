@@ -32,6 +32,11 @@ class DialFileService:
         return await self.__dial_client.my_appdata_home()
 
     async def download_file(self, file_url: str) -> tuple[bytes, FileMetadata | None]:
+        """Return the file's bytes and metadata, downloading once per request.
+
+        The metadata is stored next to the bytes: a later cache hit then returns a real
+        ``FileMetadata``, and the edit tool needs its ``etag`` for ``If-Match``.
+        """
         safe_url = sanitize_url(file_url)
         logger.debug("File url to download: %s", safe_url)
         file_data = self.__state_holder.get_file_data(url=file_url)

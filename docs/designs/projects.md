@@ -137,7 +137,7 @@ flowchart LR
   | `RoutedFileStorage` | the file tools' current-project check: `files/…` → v1, current-project URLs → project storage (canonical), any other `projects/…` URL → refused with a 403, which the file tools report as "access denied"; copy/move between the two = download + upload |
 
   DI always returns `RoutedFileStorage`, so a `projects/…` URL is refused outside a project chat too. `DialFileService` (cache, write
-  semantics) and `DialDownloader` sit on top and don't know about projects.
+  semantics) sits on top and don't know about projects.
 - **Reads:** projects have no per-file metadata call, so a project file is read as a streamed GET: the size limit is
   checked from `Content-Length` before the body is read, or while reading when the header is missing (needs
   aidial-client ≥ 0.19, which maps error statuses on streamed requests).

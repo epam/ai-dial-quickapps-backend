@@ -96,7 +96,7 @@ flowchart TD
 
 ### `data` processing
 
-1. Loads the file via `FileLoaderService` (DIAL files via `DialDownloader`, external URLs via `ExternalUrlFetcher`).
+1. Loads the file via `FileLoaderService` (DIAL files via `DialFileService.download_file`, external URLs via `ExternalUrlFetcher`).
 2. Resolves MIME type from DIAL/`Content-Type` metadata when available, else filename guess, else
    `application/octet-stream`.
 3. Base64-encodes the bytes and wraps them as `data:<mimeType>;base64,<payload>`.
@@ -137,7 +137,7 @@ File loading is handled by `FileLoaderService`, a request-scoped service that:
   `skill://<skill_name>/<path>` references, so `file:text::`, `file:base64::` and `file:data::` accept a skill's
   bundled file; without it a `skill://` value is rejected like any unsupported scheme.
 - **Classifies** every URL via `classify_url`: bare DIAL paths and absolute URLs whose host matches the configured
-  DIAL endpoint route to `DialDownloader` (DIAL Core download API); other `http(s)://` URLs route to
+  DIAL endpoint route to `DialFileService.download_file` (DIAL Core download API); other `http(s)://` URLs route to
   `ExternalUrlFetcher`; everything else (`file:`, `ftp:`, `data:`, malformed) is rejected with a clear error.
 - **Caches downloads** within the request via `StateHolder`, keyed by `sha256(url)`. If the same URL appears in
   multiple tool call parameters (or across multiple tool calls in the same orchestrator iteration), it is loaded

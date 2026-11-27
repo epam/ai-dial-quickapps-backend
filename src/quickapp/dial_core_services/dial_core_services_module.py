@@ -11,7 +11,6 @@ from quickapp.dial_core_services._interactive_login_settings import InteractiveL
 from quickapp.dial_core_services._project_files import ProjectFilesClient
 from quickapp.dial_core_services.attachment_service import AttachmentService
 from quickapp.dial_core_services.deployment_names_service import DeploymentNamesCoreService
-from quickapp.dial_core_services.dial_downloader import DialDownloader
 from quickapp.dial_core_services.dial_file_promoter import DialFilePromoter
 from quickapp.dial_core_services.dial_file_service import DialFileService
 from quickapp.dial_core_services.dial_prompt_loader import DialPromptLoader
@@ -33,7 +32,6 @@ class DialCoreServicesModule(Module):
         binder.bind(V1FileStorage, V1FileStorage, scope=request_scope)
         binder.bind(ProjectFileStorage, ProjectFileStorage, scope=request_scope)
         binder.bind(DialFileService, DialFileService, scope=request_scope)
-        binder.bind(DialDownloader, DialDownloader, scope=request_scope)
         binder.bind(DialFilePromoter, DialFilePromoter, scope=request_scope)
         binder.bind(DialPromptLoader, DialPromptLoader, scope=request_scope)
         binder.bind(InteractiveLoginSettings, InteractiveLoginSettings, scope=singleton)

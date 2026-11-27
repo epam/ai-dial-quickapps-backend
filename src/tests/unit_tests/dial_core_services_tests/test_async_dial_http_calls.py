@@ -8,8 +8,7 @@ pytest-httpx so no running DIAL server is required.
 Coverage:
   - ToolConfigCoreService: deployments.get, application.get,
     deployments.get_configuration_schema, toolset.get
-  - DialDownloader: files.get_metadata, files.download
-  - DialFileService:  resource_permissions.grant
+  - DialFileService:  files.get_metadata, files.download, resource_permissions.grant
   - AttachmentService: bucket.get_raw, files.upload; v2 PUT in a project
   - _PricingService:  model.get
 """
@@ -28,7 +27,6 @@ from quickapp.common.project_context import ProjectContext
 from quickapp.common.state_holder import StateHolder
 from quickapp.dial_core_services._project_files import ProjectFilesClient
 from quickapp.dial_core_services.attachment_service import AttachmentService
-from quickapp.dial_core_services.dial_downloader import DialDownloader
 from quickapp.dial_core_services.dial_file_service import DialFileService
 from quickapp.dial_core_services.exceptions import (
     ToolsetForbiddenException,
@@ -278,12 +276,12 @@ class TestToolConfigServiceHttpCalls:
 
 
 # ---------------------------------------------------------------------------
-# DialDownloader / DialFileService – AsyncDial HTTP calls
+# DialFileService – AsyncDial HTTP calls
 # ---------------------------------------------------------------------------
 
 
 class TestDialFileServiceHttpCalls:
-    """Verify the HTTP requests made by DialDownloader / DialFileService via AsyncDial."""
+    """Verify the HTTP requests made by DialFileService via AsyncDial."""
 
     @pytest.mark.asyncio
     async def test_download_file_calls_metadata_then_download(self, httpx_mock):
@@ -298,10 +296,13 @@ class TestDialFileServiceHttpCalls:
             content=b"hello world",
         )
 
-        downloader = DialDownloader(
-            storage=V1FileStorage(_dial_client(), _file_loading_size_limit_resolver()),
+        client = _dial_client()
+        service = DialFileService(
+            dial_client=client,
+            storage=V1FileStorage(client, _file_loading_size_limit_resolver()),
+            state_holder=StateHolder(),
         )
-        data, metadata = await downloader.fetch("files/my-bucket/test.txt")
+        data, metadata = await service.download_file("files/my-bucket/test.txt")
 
         assert data == b"hello world"
         assert metadata is not None
@@ -318,11 +319,14 @@ class TestDialFileServiceHttpCalls:
             json={**large_metadata, "name": "large.bin", "url": "files/my-bucket/large.bin"},
         )
 
-        downloader = DialDownloader(
-            storage=V1FileStorage(_dial_client(), _file_loading_size_limit_resolver()),
+        client = _dial_client()
+        service = DialFileService(
+            dial_client=client,
+            storage=V1FileStorage(client, _file_loading_size_limit_resolver()),
+            state_holder=StateHolder(),
         )
         with pytest.raises(ValueError, match="exceeds the limit"):
-            await downloader.fetch("files/my-bucket/large.bin")
+            await service.download_file("files/my-bucket/large.bin")
 
         requests = httpx_mock.get_requests()
         assert len(requests) == 1, "download must NOT be called when metadata rejects the file"
