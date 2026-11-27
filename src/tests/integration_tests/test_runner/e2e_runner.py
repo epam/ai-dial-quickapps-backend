@@ -203,8 +203,12 @@ class TestRunner:
         headers = create_request_headers(
             api_key=TestDialCoreConfig.REMOTE_DIAL_API_KEY_SECRET, app_config=app_config
         )
+        if test_case.headers_factory is not None:
+            headers |= test_case.headers_factory()
 
         for i, test_message_data in enumerate(test_case.messages):
+            if test_message_data.new_conversation:
+                messages = []
             message = {"role": "user", "content": test_message_data.user_message}
 
             if test_message_data.attachments:
@@ -363,6 +367,17 @@ class TestRunner:
                 if failures:
                     ts.increment_failure(FailureReason.ANSWER)
                     all_failures.extend(failures)
+
+            for required in test_message_data.answer_contains or []:
+                if required not in (response_message.content or ""):
+                    ts.increment_failure(FailureReason.ANSWER)
+                    all_failures.append(
+                        Failure(
+                            actual=response_message.content,
+                            expected=f"contains '{required}'",
+                            comment="Answer misses required text",
+                        )
+                    )
 
             for forbidden in test_message_data.answer_not_contains or []:
                 if forbidden in (response_message.content or ""):

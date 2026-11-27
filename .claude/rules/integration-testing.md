@@ -18,6 +18,7 @@ make integration_test_ci MODEL=<model>               # CI entry point (single mo
 REFRESH=TRUE make integration_test MODEL=<model>     # build cache against live DIAL Core (only if absent)
 REFRESH=TRUE make integration_test_all               # refresh cache for all configured models
 make e2e_test                                         # happy-path e2e (always live)
+make projects_core_path_test MODEL=<model>           # opt-in: projects through DIAL Core (see test_projects_core_path.py)
 ```
 
 ### CI (optional, manual)
@@ -48,6 +49,8 @@ REMOTE_DIAL_API_KEY=...
 | `test_e2e.py` | Happy-path smoke tests (always live, no cache) |
 | `test_hidden_from_model.py` | MCP tools listed in `hidden_from_model`: callable by hooks, absent from the `tools` sent to the LLM, `requires_mcp`, live (`no_cache=True`) |
 | `test_usage_statistics.py` | A deployment tool's usage reaches the "Usage Statistics" stage; the tool is a stub deployment served by the cache middleware (`test_runner/stub_deployment.py`) that reports usage only on `stream_options.include_usage`; also covers an offloaded tool result keeping its usage (`TOOL_CALL_RESULT_OFFLOAD__SIZE_THRESHOLD` lowered via `env=`); live orchestrator (`no_cache=True`) |
+| `test_projects.py` | Projects (`x-project-id`): instructions, `context/` read, cross-chat file in `artifacts/`, no header, MCP output in `artifacts/`; module fixture creates a project with the static key (skipped without the Core v2 project API), live (`no_cache=True`) |
+| `test_projects_core_path.py` | Opt-in, **not** `integration`: projects through DIAL Core with a user token and the per-request key (marker `projects_core_path`, `make projects_core_path_test`); skipped unless `PROJECTS_CORE_PATH=true` + Core URL/credentials; setup in the module docstring |
 
 ## Writing a New Test
 
@@ -115,7 +118,10 @@ TstCase(name="...", description="...", similarity_threshold=0.9, response_format
         attachments=[Path(...)],     # files to upload
         attachment_checks=[...],     # expected attachments in response
         usage_statistics_contains=["Orchestrator"],  # texts the "Usage Statistics" stage must contain
+        answer_contains=["TOKEN"],   # exact substrings the response must contain
+        new_conversation=True,       # send as the first message of a fresh conversation
     )
+    .with_headers(lambda: {"x-project-id": ...})  # extra request headers, resolved when the case runs
     .add_mock_date(date_obj)         # for date-dependent tests
     .add_py_interpreter_session_flow()  # reuse interpreter session across turns
     .add_tools_payload_check(absent=["fn"], present=["fn"])  # function names in the LLM `tools` payload
