@@ -1,11 +1,12 @@
 import json
 import logging
+from typing import Any
 
 from aidial_sdk.chat_completion import Message
 from injector import inject
 
 from quickapp.common.abstract.base_transformer import MessagesTransformer
-from quickapp.common.form_utils import find_tool, form_source_tool_name_before
+from quickapp.common.form_utils import form_source_tool_name_before, form_value_of
 from quickapp.common.staged_base_tool import StagedBaseTool
 from quickapp.config.tools.deployment import DialDeploymentTool
 
@@ -32,36 +33,38 @@ class _FormValueContentTransformer(MessagesTransformer):
 
     @inject
     def __init__(self, tools: list[StagedBaseTool]) -> None:
-        self.__tools = tools
+        self.__tools_by_name = {tool.openai_function_name(): tool for tool in tools}
 
     async def transform(self, messages: list[Message]) -> list[Message]:
-        result: list[Message] = []
-        injected = 0
-        for i, message in enumerate(messages):
-            form_value = (
-                message.custom_content.form_value if message.custom_content is not None else None
-            )
-            if form_value is None:
-                result.append(message)
-                continue
-            source_tool = form_source_tool_name_before(messages, i)
-            tool = find_tool(self.__tools, source_tool)
-            if not self._propagate_to_content(tool):
-                result.append(message)
-                continue
-            copied = message.model_copy(deep=True)
-            block = f"<{_FORM_VALUE_TAG}>\n{json.dumps(form_value, ensure_ascii=False)}\n</{_FORM_VALUE_TAG}>"
-            text = copied.content or ""
-            copied.content = f"{text}\n\n{block}" if text else block
-            result.append(copied)
-            injected += 1
-
+        result = [self._transform_message(messages, i) for i in range(len(messages))]
+        injected = sum(1 for new, old in zip(result, messages) if new is not old)
         if injected:
             logger.debug("Injected form_value into content of %d message(s)", injected)
         return result
+
+    def _transform_message(self, messages: list[Message], index: int) -> Message:
+        message = messages[index]
+        form_value = form_value_of(message)
+        if form_value is None:
+            return message
+        source_name = form_source_tool_name_before(messages, index)
+        if source_name is None:
+            return message
+        if not self._propagate_to_content(self.__tools_by_name.get(source_name)):
+            return message
+        return self._with_form_value_block(message, form_value)
 
     @staticmethod
     def _propagate_to_content(tool: StagedBaseTool | None) -> bool:
         if tool is None or not isinstance(tool.tool_config, DialDeploymentTool):
             return False
         return bool(tool.tool_config.propagate_form_value_to_content)
+
+    @staticmethod
+    def _with_form_value_block(message: Message, form_value: Any) -> Message:
+        copied = message.model_copy(deep=True)
+        payload = json.dumps(form_value, ensure_ascii=False)
+        block = f"<{_FORM_VALUE_TAG}>\n{payload}\n</{_FORM_VALUE_TAG}>"
+        text = copied.content or ""
+        copied.content = f"{text}\n\n{block}" if text else block
+        return copied

@@ -154,8 +154,8 @@ guard method on `Orchestrator`.
 
 **What:** two cooperating pieces, both resolving the source tool from history
 (`common/form_utils.py`: `form_source_tool_name_before` — first tool message with
-`custom_content.form_schema` in the latest form-bearing turn segment, resolved to a tool name via
-`tool_call_id` → assistant `tool_calls`; plus `last_user_message_index`, `form_value_of`, `find_tool`):
+`custom_content.form_schema` in the latest form-bearing turn segment, mapped through `tool_call_id` to the
+assistant tool call name; the transformer then looks the runtime tool up by that name):
 
 - `_FormValueContentTransformer` (`core/agent/_form_value_content_transformer.py`, registered first in
   `AgentModule.provide_message_transformers`, before the scrubber): for **every** message carrying
@@ -284,7 +284,7 @@ None. The new config field defaults to `null`, which preserves the old drop-at-t
 | `dial_deployment_tooling/dial_completion_service.py` | `form_value` param on `complete_request_async`; attached to final user message `custom_content` |
 | `dial_deployment_tooling/_deployment_tool_initializer.py`, `dial_app_tooling/_dial_app_resolver.py` | Thread the flag onto synthetic deployment tools |
 | `core/agent/orchestrator.py` | `_send_form_schema` (first-wins guard); no state markers — source tool is recovered from history |
-| `common/form_utils.py` | Shared history-based source-tool resolution (`form_source_tool_name_before`, `last_user_message_index`, `form_value_of`, `find_tool`) |
+| `common/form_utils.py` | Shared history-based source-tool resolution (`form_source_tool_name_before`, `last_user_message_index`, `form_value_of`) |
 | `core/agent/_form_value_content_transformer.py` | Per-message `<form_value>` content injection when the source tool (resolved from history) has `propagate_form_value_to_content: true`, regardless of resumable; registered before the scrubber |
 | `core/agent/agent_module.py` | Bind `_FormValueContentTransformer`, register first in the transformer chain |
 | `core/agent/_scrub_extra_fields_transformer.py` | No longer special-cases `custom_content.form_value` — it is a declared SDK field and stays in messages |

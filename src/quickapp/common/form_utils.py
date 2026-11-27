@@ -9,7 +9,12 @@ from typing import Any
 
 from aidial_sdk.chat_completion import Message, Role
 
-from quickapp.common.staged_base_tool import StagedBaseTool
+
+def _form_schema_of(message: Message) -> dict[str, Any] | None:
+    cc = message.custom_content
+    if cc is not None and isinstance(cc.form_schema, dict):
+        return cc.form_schema
+    return None
 
 
 def last_user_message_index(messages: list[Message]) -> int | None:
@@ -29,35 +34,6 @@ def form_value_of(message: Message) -> Any | None:
     """``custom_content.form_value`` of a message, if present."""
     if message.custom_content is not None:
         return message.custom_content.form_value
-    return None
-
-
-def form_source_tool_name_before(messages: list[Message], index: int) -> str | None:
-    """Name of the tool whose form the client is currently filling, from ``messages[:index]``.
-
-    Turn segments are split by user messages; the client renders the form from the
-    latest segment that carried one, and within a segment the orchestrator propagates
-    only the first schema (SDK allows one ``set_form_schema`` per choice). So: scan
-    segments newest-first, take the first tool message with a form_schema in the latest
-    form-bearing segment, and resolve its tool name via tool_call_id.
-    """
-    history = messages[:index]
-    call_id_to_name = _tool_name_by_call_id(history)
-    segment_starts = [0] + [i for i, m in enumerate(history) if m.role == Role.USER]
-    for seg_start in reversed(segment_starts):
-        call_id = _first_form_call_id_in_segment(history[seg_start:])
-        if call_id is not None:
-            return call_id_to_name.get(call_id)
-    return None
-
-
-def find_tool(tools: list[StagedBaseTool], tool_name: str | None) -> StagedBaseTool | None:
-    """Runtime tool instance with the given LLM-facing name, or None."""
-    if tool_name is None:
-        return None
-    for tool in tools:
-        if tool.openai_function_name() == tool_name:
-            return tool
     return None
 
 
@@ -82,8 +58,20 @@ def _first_form_call_id_in_segment(segment: list[Message]) -> str | None:
     return None
 
 
-def _form_schema_of(message: Message) -> dict[str, Any] | None:
-    cc = message.custom_content
-    if cc is not None and isinstance(cc.form_schema, dict):
-        return cc.form_schema
+def form_source_tool_name_before(messages: list[Message], index: int) -> str | None:
+    """Name of the tool whose form the client is currently filling, from ``messages[:index]``.
+
+    Turn segments are split by user messages; the client renders the form from the
+    latest segment that carried one, and within a segment the orchestrator propagates
+    only the first schema (SDK allows one ``set_form_schema`` per choice). So: scan
+    segments newest-first, take the first tool message with a form_schema in the latest
+    form-bearing segment, and resolve its tool name via tool_call_id.
+    """
+    history = messages[:index]
+    call_id_to_name = _tool_name_by_call_id(history)
+    segment_starts = [0] + [i for i, m in enumerate(history) if m.role == Role.USER]
+    for seg_start in reversed(segment_starts):
+        call_id = _first_form_call_id_in_segment(history[seg_start:])
+        if call_id is not None:
+            return call_id_to_name.get(call_id)
     return None
