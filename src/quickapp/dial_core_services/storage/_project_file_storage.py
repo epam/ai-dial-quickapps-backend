@@ -32,8 +32,7 @@ class ProjectFileStorage(FileStorage):
     any other path of the project (``PROJECT.md``, ``conversations/``) raises
     ``FileAccessDeniedError`` before any request, whether the path exists or not.
     ``read_instructions`` is the one read outside that view, for the system prompt. Writes
-    aren't checked here: the agent writes only under its home
-    (``HomePathResolver.resolve_write_url``).
+    aren't checked here.
     """
 
     def __init__(

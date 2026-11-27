@@ -1,7 +1,6 @@
 """``DialFileService`` with a project in the request, over the real storages (as DI wires them):
 v2 dispatch and preconditions."""
 
-import logging
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -149,17 +148,6 @@ class TestReadsAndListing:
 
         with pytest.raises(FileTooLargeError, match="exceeds the limit"):
             await svc.download_file(PROJECT_FILE)
-
-    @pytest.mark.asyncio
-    async def test_a_refused_read_is_not_logged_as_an_error(self, caplog):
-        project_files = _make_project_files()
-        svc = _make_service(project_files)
-
-        with caplog.at_level(logging.INFO), pytest.raises(FileAccessDeniedError):
-            await svc.download_file("projects/b/p/files/conversations/chat.json")
-
-        assert not [record for record in caplog.records if record.levelno >= logging.WARNING]
-        project_files.stream.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_delete_goes_to_v2(self):

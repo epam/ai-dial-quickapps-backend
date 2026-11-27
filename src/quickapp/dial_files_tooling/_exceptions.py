@@ -1,11 +1,11 @@
 class DialFilePermissionException(Exception):
-    """A file operation was refused with 403: by DIAL Core, because the app lacks the
-    permission, or by the storage itself, with a reason of its own (``FileAccessDeniedError``).
+    """DIAL Core refused a file operation with 403.
 
-    Not an invalid parameter: the same path won't work on a retry. Goes through the tool's
-    fallback strategies, not the "try to call the tool again" retry path.
+    Not an invalid parameter: another path won't help, because the app lacks the permission
+    itself. Goes through the tool's fallback strategies, not the "try to call the tool
+    again" retry path.
     """
 
-    def __init__(self, path: str, reason: str = "the app has no permission for it"):
+    def __init__(self, path: str):
         self.path = path
-        super().__init__(f"access denied: {path}; {reason}.")
+        super().__init__(f"access denied: {path}; the app has no permission for it.")

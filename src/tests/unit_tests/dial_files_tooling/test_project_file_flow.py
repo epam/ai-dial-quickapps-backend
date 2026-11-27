@@ -99,10 +99,6 @@ async def test_a_conversation_is_not_read_and_core_is_not_called(httpx_mock):
     )
 
     assert "access denied" in result.content
-    # The real reason, not "the app has no permission": another path may work.
-    assert "only the current project's context/ and artifacts/ folders are readable" in (
-        result.content
-    )
     assert httpx_mock.get_requests() == []
 
 
