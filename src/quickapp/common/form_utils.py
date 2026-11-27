@@ -9,8 +9,6 @@ from typing import Any
 
 from aidial_sdk.chat_completion import Message, Role
 
-from quickapp.common.staged_base_tool import StagedBaseTool
-
 
 def _form_schema_of(message: Message) -> dict[str, Any] | None:
     cc = message.custom_content
@@ -76,14 +74,4 @@ def form_source_tool_name_before(messages: list[Message], index: int) -> str | N
         call_id = _first_form_call_id_in_segment(history[seg_start:])
         if call_id is not None:
             return call_id_to_name.get(call_id)
-    return None
-
-
-def find_tool(tools: list[StagedBaseTool], tool_name: str | None) -> StagedBaseTool | None:
-    """Runtime tool instance with the given LLM-facing name, or None."""
-    if tool_name is None:
-        return None
-    for tool in tools:
-        if tool.openai_function_name() == tool_name:
-            return tool
     return None

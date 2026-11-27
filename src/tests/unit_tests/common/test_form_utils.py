@@ -1,11 +1,8 @@
 """``form_source_tool_name_before`` — resolves the tool whose form the client is filling."""
 
-from unittest.mock import MagicMock
-
 from aidial_sdk.chat_completion import Message
 
 from quickapp.common.form_utils import (
-    find_tool,
     form_source_tool_name_before,
     form_value_of,
     last_user_message_index,
@@ -105,20 +102,6 @@ def test_index_limits_scan_to_prefix():
 def test_empty_schema_dict_still_counts_as_form():
     msgs = [_user(), _assistant_with_call("tc-1", "tool_a"), _tool_with_schema("tc-1", schema={})]
     assert form_source_tool_name_before(msgs, len(msgs)) == "tool_a"
-
-
-class TestFindTool:
-    def test_matches_by_runtime_tool_name(self):
-        tool = MagicMock()
-        tool.openai_function_name.return_value = "my_tool"
-        other = MagicMock()
-        other.openai_function_name.return_value = "other"
-
-        assert find_tool([other, tool], "my_tool") is tool
-
-    def test_unknown_tool_returns_none(self):
-        assert find_tool([], "nope") is None
-        assert find_tool([MagicMock()], None) is None
 
 
 def test_tool_only_history_shape():
