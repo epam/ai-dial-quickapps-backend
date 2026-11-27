@@ -15,7 +15,6 @@ class NormalizedCustomContent(BaseModel):
     attachments: list[Attachment]
     stage_entries: list[tuple[int, dict[str, Any]]]
     state: dict[str, Any] | None
-    # Distinguish "chunk carries no form_schema" (None) from "form_schema: {}" (clears the form).
     form_schema: dict[str, Any] | None = None
 
 

@@ -23,8 +23,6 @@ class AccumulationSink(ChatStreamSink):
                 self._accumulator.append_stage_delta(as_stage_delta(raw), position)
             if norm.state is not None:
                 self._accumulator.merge_state(norm.state)
-            # None means "chunk carries no form_schema" — keep the accumulated one;
-            # {} (clear) is a dict and still replaces.
             if norm.form_schema is not None:
                 self._accumulator.set_form_schema(norm.form_schema)
 

@@ -187,7 +187,6 @@ class ChatStreamAccumulator:
         return self.__form_schema
 
     def set_form_schema(self, form_schema: dict[str, Any] | None) -> None:
-        # Replace semantics: the last chunk carrying form_schema wins ({} clears the form).
         self.__form_schema = form_schema
 
     @property

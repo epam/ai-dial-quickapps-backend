@@ -100,9 +100,6 @@ class BaseDeploymentTool(StagedBaseTool):
         source_tool = form_source_tool_name_before(messages, cutoff)
         if source_tool != tool_config.open_ai_tool.function.name:
             return None
-        # Current form_value comes only from the last USER message; forwarded to the
-        # final user message of the deployment request regardless of resumable
-        # (reconstructed history has no current tool call yet).
         value = form_value_of(messages[cutoff])
         if value is None:
             return None

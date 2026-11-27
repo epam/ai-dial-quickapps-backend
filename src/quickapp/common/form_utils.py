@@ -12,13 +12,6 @@ from aidial_sdk.chat_completion import Message, Role
 from quickapp.common.staged_base_tool import StagedBaseTool
 
 
-def _form_schema_of(message: Message) -> dict[str, Any] | None:
-    cc = message.custom_content
-    if cc is not None and isinstance(cc.form_schema, dict):
-        return cc.form_schema
-    return None
-
-
 def last_user_message_index(messages: list[Message]) -> int | None:
     """Index of the last USER message, or None.
 
@@ -36,27 +29,6 @@ def form_value_of(message: Message) -> Any | None:
     """``custom_content.form_value`` of a message, if present."""
     if message.custom_content is not None:
         return message.custom_content.form_value
-    return None
-
-
-def _tool_name_by_call_id(messages: list[Message]) -> dict[str, str]:
-    """Map tool_call_id → tool name from all assistant messages."""
-    result: dict[str, str] = {}
-    for message in messages:
-        if message.role != Role.ASSISTANT or not message.tool_calls:
-            continue
-        for tc in message.tool_calls:
-            result[tc.id] = tc.function.name
-    return result
-
-
-def _first_form_call_id_in_segment(segment: list[Message]) -> str | None:
-    """tool_call_id of the first tool message in the segment carrying a form_schema."""
-    for message in segment:
-        if message.role != Role.TOOL or not message.tool_call_id:
-            continue
-        if _form_schema_of(message) is not None:
-            return message.tool_call_id
     return None
 
 
@@ -89,19 +61,29 @@ def find_tool(tools: list[StagedBaseTool], tool_name: str | None) -> StagedBaseT
     return None
 
 
-def find_tool_conversation_mode(tools: list[StagedBaseTool], tool_name: str | None) -> Any | None:
-    """``conversation_mode`` of the runtime tool instance with the given LLM-facing
-    name, or None when no such tool exists.
-
-    Resolved against live tool instances (not the static config), so it covers
-    ``deployment-tool``, ``dial-deployment-simple`` and ``dial-app`` alike — all of
-    them expand to a ``DialDeploymentTool`` at runtime.
-    """
-    tool = find_tool(tools, tool_name)
-    if tool is None:
-        return None
-    return getattr(tool.tool_config, "conversation_mode", None)
+def _tool_name_by_call_id(messages: list[Message]) -> dict[str, str]:
+    """Map tool_call_id → tool name from all assistant messages."""
+    result: dict[str, str] = {}
+    for message in messages:
+        if message.role != Role.ASSISTANT or not message.tool_calls:
+            continue
+        for tc in message.tool_calls:
+            result[tc.id] = tc.function.name
+    return result
 
 
-def is_resumable(conversation_mode: Any | None) -> bool:
-    return bool(conversation_mode is not None and getattr(conversation_mode, "resumable", False))
+def _first_form_call_id_in_segment(segment: list[Message]) -> str | None:
+    """tool_call_id of the first tool message in the segment carrying a form_schema."""
+    for message in segment:
+        if message.role != Role.TOOL or not message.tool_call_id:
+            continue
+        if _form_schema_of(message) is not None:
+            return message.tool_call_id
+    return None
+
+
+def _form_schema_of(message: Message) -> dict[str, Any] | None:
+    cc = message.custom_content
+    if cc is not None and isinstance(cc.form_schema, dict):
+        return cc.form_schema
+    return None
