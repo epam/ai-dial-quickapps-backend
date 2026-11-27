@@ -22,14 +22,11 @@ never got an answer.
   to the app's choice, where the client renders it as an interactive form.
 - The SDK allows `choice.set_form_schema` only once per response — when several tools return a schema in one
   turn, exactly one (the first) is propagated and the rest are dropped with a debug log.
-- The source tool is resolved by **matching schema content** between the two messages of a form turn:
-  the client echoes the **assistant** message back with `custom_content.form_schema` (the schema the UI
-  actually rendered) plus its `tool_calls` (the **initiator**); the **tool** message carries the schema the
-  deployment returned (the **generator**) and its `tool_call_id`. `form_source_tool_name_before` finds the
-  latest assistant message with a schema (first per turn — SDK allows one form per choice), then matches a
-  tool message whose `form_schema` equals it by content and whose `tool_call_id` is in that assistant's
-  `tool_calls`; the initiator's tool call name is the source. Fallback: tool message alone → `tool_call_id` →
-  assistant tool call. No state markers are used.
+- The source tool is resolved from history alone: `form_source_tool_name_before` splits the history into turn
+  segments by user messages, takes the latest segment that contains a tool message with
+  `custom_content.form_schema`, picks the **first** such tool message in it (the orchestrator propagates only
+  the first schema per response — SDK allows one form per choice), and maps its `tool_call_id` to the tool name
+  of the assistant tool call. No state markers are used.
 - `form_value` routing is decided **per message**: for each message carrying `form_value`, the form's source
   tool is resolved from the history *before* that message, and the value goes either to that tool's request
   (when it is the tool being called) or into the message content as a `<form_value>` block
@@ -57,9 +54,8 @@ the result keeps the schema in `custom_content.form_schema`, so it stays in the 
 ### UC-2: User submits the form; source tool is the one being called
 
 **Trigger:** The client sends the filled values as `custom_content.form_value` on the next user message.
-The latest assistant message in history carries `custom_content.form_schema` (echoed by the client — the
-schema the UI rendered); the tool message with the same schema resolves to the tool the orchestrator is
-about to call.
+The first tool message with `custom_content.form_schema` in the latest form-bearing turn segment resolves
+(via its `tool_call_id`) to the tool the orchestrator is about to call.
 **Behavior:** `BaseDeploymentTool._form_value_for_this_tool` matches the form's source tool (from history,
 cutoff at the last user message with `form_value`) against the tool being called, takes `form_value` from
 that message, and `DialCompletionService` attaches it to the final user message of the deployment request
@@ -155,11 +151,10 @@ guard method on `Orchestrator`.
 
 ### 4. `form_value` routed per message by the form's source tool
 
-**What:** two cooperating pieces, both resolving the source tool from history by content
-(`common/form_utils.py`: `form_source_tool_name_before` — latest assistant message with
-`custom_content.form_schema` (the schema shown to the client) matched by content to the tool message
-carrying the same schema; the assistant's `tool_calls` give the initiator name;
-`find_tool_conversation_mode` / `is_resumable`):
+**What:** two cooperating pieces, both resolving the source tool from history
+(`common/form_utils.py`: `form_source_tool_name_before` — first tool message with
+`custom_content.form_schema` in the latest form-bearing turn segment, mapped through `tool_call_id` to the
+assistant tool call name; `find_tool` looks the runtime tool instance up by that name):
 
 - `_FormValueContentTransformer` (`core/agent/_form_value_content_transformer.py`, registered first in
   `AgentModule.provide_message_transformers`, before the scrubber): for **every** message carrying
@@ -176,7 +171,7 @@ carrying the same schema; the assistant's `tool_calls` give the initiator name;
   history's assistant messages.
 
 **Owner:** `core/agent/` transformer chain + `dial_deployment_tooling/`.
-**Semantics:** the form is identified by content in history (the schema itself), not by state markers or
+**Semantics:** the form is identified from the tool messages in history, not by state markers or
 client echo; each `form_value` goes either to its source tool's request or into the orchestrator's
 message content (if `propagate_form_value_to_content: true` on that tool).
 **Change:** new `common/form_utils.py`; new transformer + DI binding; `form_value` parameter on
@@ -245,7 +240,7 @@ sequenceDiagram
     QA->>QA: accumulate form_schema, last chunk in stream wins
     QA->>C: choice set_form_schema, tool message keeps form_schema
     C->>QA: submit form with form_value on user message
-    QA->>QA: per message match assistant form_schema by content to tool message schema, get initiator tool name
+    QA->>QA: per message find first tool message with form_schema in latest form turn, map tool_call_id to tool name
     alt called tool is source tool
         QA->>D: form_value on final user message custom_content, once per request
     else source tool has propagate_form_value_to_content true
@@ -287,7 +282,7 @@ None. The new config field defaults to `null`, which preserves the old drop-at-t
 | `dial_deployment_tooling/dial_completion_service.py` | `form_value` param on `complete_request_async`; attached to final user message `custom_content` |
 | `dial_deployment_tooling/_deployment_tool_initializer.py`, `dial_app_tooling/_dial_app_resolver.py` | Thread the flag onto synthetic deployment tools |
 | `core/agent/orchestrator.py` | `_send_form_schema` (first-wins guard); no state markers — source tool is recovered from history |
-| `common/form_utils.py` | Shared history-based source-tool resolution (`form_source_tool_name_before`, `find_tool_conversation_mode`, `is_resumable`) |
+| `common/form_utils.py` | Shared history-based source-tool resolution (`form_source_tool_name_before`, `find_tool`, `last_user_message_index`, `form_value_of`) |
 | `core/agent/_form_value_content_transformer.py` | Per-message `<form_value>` content injection when the source tool (resolved from history) has `propagate_form_value_to_content: true`, regardless of resumable; registered before the scrubber |
 | `core/agent/agent_module.py` | Bind `_FormValueContentTransformer`, register first in the transformer chain |
 | `core/agent/_scrub_extra_fields_transformer.py` | No longer special-cases `custom_content.form_value` — it is a declared SDK field and stays in messages |

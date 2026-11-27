@@ -1,12 +1,13 @@
 """``form_source_tool_name_before`` — resolves the tool whose form the client is filling."""
 
+from unittest.mock import MagicMock
+
 from aidial_sdk.chat_completion import Message
 
 from quickapp.common.form_utils import (
-    find_tool_conversation_mode,
+    find_tool,
     form_source_tool_name_before,
     form_value_of,
-    is_resumable,
     last_user_message_index,
 )
 
@@ -106,40 +107,18 @@ def test_empty_schema_dict_still_counts_as_form():
     assert form_source_tool_name_before(msgs, len(msgs)) == "tool_a"
 
 
-class TestFindToolConversationMode:
+class TestFindTool:
     def test_matches_by_runtime_tool_name(self):
-        from types import SimpleNamespace
-        from unittest.mock import MagicMock
-
         tool = MagicMock()
         tool.openai_function_name.return_value = "my_tool"
-        tool.tool_config.conversation_mode = SimpleNamespace(resumable=True)
+        other = MagicMock()
+        other.openai_function_name.return_value = "other"
 
-        assert find_tool_conversation_mode([tool], "my_tool").resumable is True
+        assert find_tool([other, tool], "my_tool") is tool
 
     def test_unknown_tool_returns_none(self):
-        from unittest.mock import MagicMock
-
-        assert find_tool_conversation_mode([], "nope") is None
-        assert find_tool_conversation_mode([MagicMock()], None) is None
-
-    def test_tool_without_conversation_mode(self):
-        from unittest.mock import MagicMock
-
-        tool = MagicMock()
-        tool.openai_function_name.return_value = "t"
-        tool.tool_config.conversation_mode = None
-
-        assert find_tool_conversation_mode([tool], "t") is None
-        assert is_resumable(find_tool_conversation_mode([tool], "t")) is False
-
-
-def test_is_resumable_typed():
-    from types import SimpleNamespace
-
-    assert is_resumable(SimpleNamespace(resumable=True)) is True
-    assert is_resumable(SimpleNamespace(resumable=False)) is False
-    assert is_resumable(None) is False
+        assert find_tool([], "nope") is None
+        assert find_tool([MagicMock()], None) is None
 
 
 def test_tool_only_history_shape():

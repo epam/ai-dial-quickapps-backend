@@ -87,21 +87,3 @@ def find_tool(tools: list[StagedBaseTool], tool_name: str | None) -> StagedBaseT
         if tool.openai_function_name() == tool_name:
             return tool
     return None
-
-
-def find_tool_conversation_mode(tools: list[StagedBaseTool], tool_name: str | None) -> Any | None:
-    """``conversation_mode`` of the runtime tool instance with the given LLM-facing
-    name, or None when no such tool exists.
-
-    Resolved against live tool instances (not the static config), so it covers
-    ``deployment-tool``, ``dial-deployment-simple`` and ``dial-app`` alike — all of
-    them expand to a ``DialDeploymentTool`` at runtime.
-    """
-    tool = find_tool(tools, tool_name)
-    if tool is None:
-        return None
-    return getattr(tool.tool_config, "conversation_mode", None)
-
-
-def is_resumable(conversation_mode: Any | None) -> bool:
-    return bool(conversation_mode is not None and getattr(conversation_mode, "resumable", False))
