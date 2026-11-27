@@ -8,8 +8,8 @@ from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.file_reference_pattern import FILE_PATTERN
 from quickapp.common.payload_logging import log_payload
 from quickapp.common.url_sanitization import sanitize_url
-from quickapp.file_transfer._file_loader_service import FileLoaderService
-from quickapp.file_transfer._file_prefix_handlers import FilePrefixHandlers
+from quickapp.shared.file_transfer._file_loader_service import FileLoaderService
+from quickapp.shared.file_transfer._file_prefix_handlers import FilePrefixHandlers
 
 logger = logging.getLogger(__name__)
 

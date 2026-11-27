@@ -2,6 +2,7 @@ from injector import Module
 
 from quickapp.skills.dial_prompt.dial_prompt_skills_module import DialPromptSkillsModule
 from quickapp.skills.dial_resource.dial_skills_module import DialSkillsModule
+from quickapp.skills.file_reference.skill_file_reference_module import SkillFileReferenceModule
 from quickapp.skills.invocation.skill_invocation_module import SkillInvocationModule
 from quickapp.skills.registry.skills_module import SkillsModule
 
@@ -15,4 +16,5 @@ skills_module: list[Module] = [
     DialPromptSkillsModule(),
     DialSkillsModule(),
     SkillInvocationModule(),
+    SkillFileReferenceModule(),
 ]

@@ -1,3 +1,5 @@
+from quickapp.common.utils import fenced_code_block
+
 from .initialization import InitializationException
 
 
@@ -19,3 +21,8 @@ class ConfigResolutionException(InitializationException):
         self.template_name = template_name
         self.json_path = json_path
         self.details = details
+
+    @property
+    def user_facing_message(self) -> str:
+        message = f"**template '{self.template_name}'**: {self}"
+        return f"{message}\n{fenced_code_block(self.details)}" if self.details else message

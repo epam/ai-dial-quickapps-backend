@@ -3,7 +3,7 @@ import logging
 
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.url_sanitization import sanitize_url
-from quickapp.file_transfer._file_loader_service import FileLoaderService
+from quickapp.shared.file_transfer._file_loader_service import FileLoaderService
 
 logger = logging.getLogger(__name__)
 

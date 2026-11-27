@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from aidial_client import DialException, ResourceNotFoundError
 
-from quickapp.common.exceptions import ProjectInstructionsException
+from quickapp.common.exceptions import InitializationIssueLevel, ProjectInstructionsException
 from quickapp.common.project_context import ProjectContext
 from quickapp.dial_core_services.dial_file_service import DialFileService
 from quickapp.dial_core_services.exceptions import FileTooLargeError
@@ -85,7 +85,7 @@ class TestProjectInstructions:
 
         [issue] = instructions.exceptions
         assert isinstance(issue, ProjectInstructionsException)
-        assert not issue.is_hard
+        assert issue.level == InitializationIssueLevel.ERROR
         assert reason in str(issue)
         assert any(r.levelname == "WARNING" and reason in r.getMessage() for r in caplog.records)
         assert "secret body" not in caplog.text

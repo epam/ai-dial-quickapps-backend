@@ -15,7 +15,6 @@ from quickapp.dial_app_tooling import DialAppToolingModule
 from quickapp.dial_core_services.dial_core_services_module import DialCoreServicesModule
 from quickapp.dial_deployment_tooling import DialDeploymentToolingModule
 from quickapp.dial_files_tooling.dial_files_tooling_module import DialFilesToolingModule
-from quickapp.file_transfer import FileTransferModule
 from quickapp.internal_tooling.internal_tooling_module import InternalToolModule
 from quickapp.mcp_tooling import MCPToolingModule
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand.lazy_on_demand_strategy_module import (
@@ -53,7 +52,6 @@ class AppFactory:
             StartersModule(),
             ConfigurationSupportApiModule(),
             DialCoreServicesModule(),
-            FileTransferModule(),
             AttachmentProcessingModule(),
             LazyOnDemandStrategyModule(),
             # ToolDiscoveryModule is registered before skills_module so its tool_search prompt
