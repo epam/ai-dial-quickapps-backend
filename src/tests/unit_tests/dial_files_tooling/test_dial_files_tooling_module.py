@@ -66,12 +66,6 @@ class TestDefaultToolResolution:
         assert cfg.enabled_tools == "all"
         assert cfg.agent_home_dir == ""
 
-    def test_null_features_keeps_offload_disabled(self):
-        app_config = MagicMock()
-        app_config.features = None
-        offload = DialFilesToolingModule()._provide_offload_config(app_config)
-        assert offload.enabled is False
-
 
 class TestDialFilesToolingModule:
 

@@ -24,16 +24,14 @@ def _make_offload(
 def _make_app_config(
     offload: "MagicMock | str" = "default",
     enabled_tools: "str | list[str]" = "all",
-    dial_files_present: bool = True,
+    features_present: bool = True,
 ) -> MagicMock:
     cfg = MagicMock()
-    if not dial_files_present:
-        cfg.features.dial_files = None
+    if not features_present:
+        cfg.features = None
         return cfg
-    dial_files = cfg.features.dial_files
-    dial_files.enabled_tools = enabled_tools
-    dial_files.expanded_tools = DialFilesConfig(enabled_tools=enabled_tools).expanded_tools
-    dial_files.tool_call_result_offload = _make_offload() if offload == "default" else offload
+    cfg.features.dial_files = DialFilesConfig(enabled_tools=enabled_tools)
+    cfg.features.tool_call_result_offload = _make_offload() if offload == "default" else offload
     return cfg
 
 
@@ -48,9 +46,10 @@ def _exceptions(app_config) -> list[InitializationException]:
 
 
 class TestOffloadConfigResolution:
-    def test_disabled_when_dial_files_absent(self):
-        config = _resolve(_make_app_config(dial_files_present=False))
-        assert config.enabled is False
+    def test_null_features_follows_env_defaults(self):
+        config = _resolve(_make_app_config(features_present=False))
+        assert config.enabled is True
+        assert config.size_threshold == 40_000
 
     def test_disabled_when_enabled_false(self):
         config = _resolve(_make_app_config(offload=_make_offload(enabled=False)))
@@ -110,8 +109,8 @@ class TestOffloadConfigResolution:
 
 
 class TestOffloadInitializationExceptions:
-    def test_no_exception_when_dial_files_absent(self):
-        assert _exceptions(_make_app_config(dial_files_present=False)) == []
+    def test_no_exception_when_features_null(self):
+        assert _exceptions(_make_app_config(features_present=False)) == []
 
     def test_no_exception_when_enabled_false(self):
         assert _exceptions(_make_app_config(offload=_make_offload(enabled=False))) == []
