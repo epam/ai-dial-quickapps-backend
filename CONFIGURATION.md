@@ -513,6 +513,7 @@ initialization issues level falls back to `DEFAULT_INITIALIZATION_ISSUES_LEVEL`)
 | `stage_display`          | No       | Object         | Which tool-execution stages appear in the DIAL UI. See [Stage display configuration](#stage-display-configuration).                                                          | `{"level": "info"}`                    |
 | `initialization_issues`  | No       | Object         | Which issue levels the *Initialization issues* stage shows. See [Initialization issues configuration](#initialization-issues-configuration).                            | `{}`                                   |
 | `dial_files`             | No       | Object or null | Built-in DIAL workspace file tools. Omitted (default) exposes all tools, same as `{}`; `null` is accepted for backward compatibility and treated the same. See [DIAL files configuration](#dial-files-configuration). | `{}`                                   |
+| `tool_call_result_offload` | No     | Object         | Offload oversized tool responses to a DIAL file. See [Tool-call result offload](#tool-call-result-offload). | defaults from env |
 | `web_fetch`              | No       | Object or null | Built-in `internal_web_fetch` tool. See [Web fetch configuration](#web-fetch-configuration).                                                                                 | `null`                                 |
 | `representation_tooling` | No       | Object or null | Tools that control how the agent surfaces output (e.g. add attachment to the answer). See [Representation tooling](#representation-tooling-configuration).                   | `null`                                 |
 
@@ -697,7 +698,7 @@ validating, but it is treated as the default. It used to mean "file tools off"; 
 | `enabled_tools`            | No       | `"all"`, `"read_only"` or Array[String] | Which tools to expose. `"all"` = every tool, `"read_only"` = `list`, `read_lines`, `read_chars`, `search`, `find`. A list restricts to the given short names: `list`, `read_lines`, `read_chars`, `search`, `find`, `write`, `edit`, `delete`, `copy`, `move`. | `"all"` (also when `dial_files` is omitted) |
 | `agent_home_dir`           | No       | String                       | Relative sub-directory under appdata used as the root for relative paths. Must end with `/`; no `files/…`, leading `/`, or `..`. Empty = appdata root. | `""`          |
 | `max_files_scanned`        | No       | Integer (`≥ 1`)              | Folder-mode `search` cap: max files downloaded/scanned per call before truncation.                                                          | `50`          |
-| `tool_call_result_offload` | No       | Object or null               | `[Preview]` Offload oversized tool responses to a DIAL file. See below. Requires `read_lines` and `search` in `enabled_tools`.                          | defaults (see below) |
+| `tool_call_result_offload` | No       | Object or null               | **Deprecated, use [`features.tool_call_result_offload`](#tool-call-result-offload).** Honored only when the new field is not set; a warning is logged. | `null` |
 
 `read_chars(path, offset, length)` reads a file by character offset instead of by line, so a file with
 a few very long lines (for example 20 lines of 400 KB) can still be read page by page. To keep the
@@ -706,12 +707,18 @@ reports the total length and the next offset. `read_lines` and `search` apply th
 and shorten any line longer than 2000 characters with a pointer to `read_chars`. These tools are
 excluded from offload, so the cap is what keeps their output small.
 
-##### Tool-call result offload
+#### Tool-call result offload
 
-Nested under `features.dial_files.tool_call_result_offload`. Requires `ENABLE_PREVIEW_FEATURES=true`.
-An app without a `dial_files` block (or with `"dial_files": null` / `{}`) gets the default block, so
-offload follows the env default below and does not need an explicit `dial_files` entry.
-Env defaults: `TOOL_CALL_RESULT_OFFLOAD__*`.
+`features.tool_call_result_offload`. On by default: a tool response at or above `size_threshold` bytes is
+saved to a DIAL file and the model gets a short notice pointing at it, to be read back with
+`internal_file_read_lines` / `internal_file_search`. This also applies when the `features` section is
+omitted or `null`. Env defaults: `TOOL_CALL_RESULT_OFFLOAD__*`.
+
+Offload needs `read_lines` and `search` in `dial_files.enabled_tools` (both are there by default). If either
+is missing, offload is turned off for the app and an initialization warning is shown.
+
+The old location `features.dial_files.tool_call_result_offload` is deprecated. It is still honored when
+`features.tool_call_result_offload` is not set.
 
 Independently of this feature, a response of any tool that is still longer than 80000 characters after
 offload (offload disabled or unavailable, tool excluded, or upload failed) is not passed to the model:
@@ -729,13 +736,9 @@ never rejected.
 ```json
 {
   "features": {
-    "dial_files": {
-      "enabled_tools": "all",
-      "agent_home_dir": "workspace/",
-      "tool_call_result_offload": {
-        "enabled": true,
-        "size_threshold": 40000
-      }
+    "tool_call_result_offload": {
+      "enabled": true,
+      "size_threshold": 40000
     }
   }
 }
@@ -1931,11 +1934,11 @@ behave the same. Use `true` only for apps that make no sense outside a project.
 | `DEFAULT_STAGE_DISPLAY_LEVEL`              | —                                                               | No       | Deployment-wide override for stage visibility threshold (`none`, `error`, `info`, `debug`; case-insensitive). When set, wins over every app's `features.stage_display.level`. Unset (default) defers to the per-app config, which defaults to `info`. |
 | **Initialization Issues**                  |                                                                 |          |                                                                                                              |
 | `DEFAULT_INITIALIZATION_ISSUES_LEVEL`      | `warning`                                                       | No       | Deployment-wide lowest level shown in the *Initialization issues* stage (`warning`, `error`, `critical`; case-insensitive). Apps can override per-app via `features.initialization_issues.level`. |
-| **DIAL Files — Tool-Response Offload**     |                                                                 |          |                                                                                                              |
-| `TOOL_CALL_RESULT_OFFLOAD__ENABLED_BY_DEFAULT` | `true`                                                          | No       | Default value of the per-app `enabled` flag (`features.dial_files.tool_call_result_offload.enabled`). Apps override per-app; `enabled: false` disables offload for that app. |
-| `TOOL_CALL_RESULT_OFFLOAD__SIZE_THRESHOLD` | `40000`                                                         | No       | Default byte threshold above which a tool-call response is offloaded to a DIAL file. Apps override per-app via `features.dial_files.tool_call_result_offload.size_threshold`. |
+| **Tool-Response Offload**                  |                                                                 |          |                                                                                                              |
+| `TOOL_CALL_RESULT_OFFLOAD__ENABLED_BY_DEFAULT` | `true`                                                          | No       | Default value of the per-app `enabled` flag (`features.tool_call_result_offload.enabled`). Apps override per-app; `enabled: false` disables offload for that app. |
+| `TOOL_CALL_RESULT_OFFLOAD__SIZE_THRESHOLD` | `40000`                                                         | No       | Default byte threshold above which a tool-call response is offloaded to a DIAL file. Apps override per-app via `features.tool_call_result_offload.size_threshold`. |
 | `TOOL_CALL_RESULT_LIMIT__MAX_CHARS`        | `80000`                                                         | No       | Maximum length, in characters, of any tool response that reaches the model. A longer response (still over the limit after offload) is replaced by a "response too large" error. Must be at least `TOOL_CALL_RESULT_OFFLOAD__SIZE_THRESHOLD`, and at least any per-app `size_threshold`. |
-| `TOOL_CALL_RESULT_OFFLOAD__EXCLUDED_TOOLS` | `[]`                                                            | No       | Default JSON list of **additional** tool names exempt from offloading. The read-back tools (`internal_file_read_lines`, `internal_file_read_chars`, `internal_file_search`) and `read_skill` are always excluded regardless of this value, so a large read-back slice is never re-offloaded. Apps add more per-app via `features.dial_files.tool_call_result_offload.excluded_tools`. |
+| `TOOL_CALL_RESULT_OFFLOAD__EXCLUDED_TOOLS` | `[]`                                                            | No       | Default JSON list of **additional** tool names exempt from offloading. The read-back tools (`internal_file_read_lines`, `internal_file_read_chars`, `internal_file_search`) and `read_skill` are always excluded regardless of this value, so a large read-back slice is never re-offloaded. Apps add more per-app via `features.tool_call_result_offload.excluded_tools`. |
 | **External URL Egress**                    |                                                                 |          |                                                                                                              |
 | `EXTERNAL_URL_FETCH_ENABLED`                 | `false`                                                         | No       | Admin cap on fetching external (non-DIAL) URLs. When `false` (default), no app may fetch external URLs regardless of its manifest; the deployment-handoff branch (deployments with `features.url_attachments`) is unaffected. Apps can opt out per-app via `features.external_url_fetch.enabled=false` even when the admin allows. |
 | `EXTERNAL_URL_FETCH_HOST_ALLOWLIST`        | —                                                               | No       | Comma-separated allowlist of host patterns for external URL fetches. Unset (default) means no admin-level host restriction. Patterns: exact host (`example.com`) or `*.example.com` for any subdomain. Re-checked on every redirect hop. Per-app `features.external_url_fetch.host_allowlist` narrows further (intersection) but never expands. |
