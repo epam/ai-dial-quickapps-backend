@@ -2145,6 +2145,14 @@
       "title": "HookEvent",
       "type": "string"
     },
+    "HookExecution": {
+      "enum": [
+        "blocking",
+        "background"
+      ],
+      "title": "HookExecution",
+      "type": "string"
+    },
     "InitializationIssueLevel": {
       "enum": [
         "warning",
@@ -2171,14 +2179,6 @@
       },
       "title": "InitializationIssuesConfig",
       "type": "object"
-    },
-    "HookExecution": {
-      "enum": [
-        "blocking",
-        "background"
-      ],
-      "title": "HookExecution",
-      "type": "string"
     },
     "InjectionFrequency": {
       "enum": [
