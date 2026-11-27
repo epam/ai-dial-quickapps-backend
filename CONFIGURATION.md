@@ -1421,16 +1421,16 @@ A DIAL application used as a deployment tool can return a form schema under
 `choice.set_form_schema` — the client renders it as an interactive form. The SDK allows sending the
 schema only once per response, so when several tools return one, the first wins.
 
-The schema is kept on the tool message's `custom_content.form_schema` in the conversation history,
-and the client echoes the assistant message back with the same `form_schema` (the one the UI rendered)
-plus its `tool_calls`. On the next request, when the client submits the form
+The schema is kept on the tool message's `custom_content.form_schema` in the conversation history.
+On the next request, when the client submits the form
 (`custom_content.form_value` on a message), QuickApps recovers the form's source tool from the
-history before that message by matching the assistant message's schema by content to the tool
-message carrying the same schema (the assistant's `tool_calls` give the initiator name) and routes
-the value by that tool: if it is the tool being called, the value is attached to the final user
-message of the deployment request as `custom_content.form_value`; otherwise, if the source tool has
-`propagate_form_value_to_content: true`, it is appended to the message content as a `<form_value>`
-block so the orchestrator model can use it
+history before that message: it takes the first tool message carrying a `form_schema` in the latest
+turn segment that has one, and resolves the tool name via that message's `tool_call_id` and the
+assistant message's `tool_calls`. The value is then routed by that tool, through two independent
+mechanisms: if the tool being called is the source tool, the value is attached to the final user
+message of the deployment request as `custom_content.form_value`; and if the source tool has
+`propagate_form_value_to_content: true`, the value is also appended to the message content as a
+`<form_value>` block so the orchestrator model can use it
 (with the flag unset or false, the value stays only in `custom_content`).
 
 ```json
