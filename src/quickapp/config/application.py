@@ -23,6 +23,7 @@ from quickapp.config.skill import SkillConfig
 from quickapp.config.starters import ConversationStartersConfig
 from quickapp.config.timestamp import TimestampConfig, ToolCallTimestampConfig
 from quickapp.config.tool_access_filter import ToolAccessFilterConfig
+from quickapp.config.tool_call_result_offload import ToolCallResultOffloadConfig
 from quickapp.config.tool_discovery import ToolDiscoveryConfig
 from quickapp.config.toolsets.toolset import ToolSet
 from quickapp.config.web_fetch import WebFetchConfig
@@ -243,6 +244,15 @@ class Features(BaseModel):
             "`null` is accepted for backward compatibility only and is treated as the default."
         ),
     )
+    tool_call_result_offload: ToolCallResultOffloadConfig = Field(
+        default_factory=ToolCallResultOffloadConfig,
+        description=(
+            "Offload oversized tool-call responses to a file, read back on demand via the "
+            "read_lines / search file tools. Toggled by its `enabled` flag, whose default is "
+            "governed by TOOL_CALL_RESULT_OFFLOAD__ENABLED_BY_DEFAULT. "
+            "Requires read_lines and search to be exposed via `dial_files.enabled_tools`."
+        ),
+    )
     web_fetch: WebFetchConfig | None = Field(
         default=None,
         description=(
@@ -265,10 +275,21 @@ class Features(BaseModel):
     @classmethod
     def _null_dial_files_means_default(cls, value: DialFilesConfig | None) -> DialFilesConfig:
         # `null` stays in the field type only so manifests written when `null` meant "file
-        # tools off" (and the published schema) keep validating. It is resolved here, at
-        # parse time, rather than at runtime: the preview gate (`nullify_preview_fields`)
-        # runs on the parsed config, so a runtime-built default would bypass it.
+        # tools off" (and the published schema) keep validating.
         return DialFilesConfig() if value is None else value
+
+    @model_validator(mode="after")
+    def _migrate_deprecated_offload(self) -> "Features":
+        legacy = self.dial_files.tool_call_result_offload if self.dial_files else None
+        if legacy is None:
+            return self
+        logger.warning(
+            "'features.dial_files.tool_call_result_offload' is deprecated; "
+            "use 'features.tool_call_result_offload' instead."
+        )
+        if "tool_call_result_offload" not in self.model_fields_set:
+            self.tool_call_result_offload = legacy
+        return self
 
 
 class ToolDefaults(BaseModel):
