@@ -687,7 +687,7 @@ individually, `app_factory` splices in two package-level arrays:
 8. **Starters Module**: UI starter button configuration
 9. **Configuration Support API Module**: Configuration validation endpoints
 10. **DIAL Core Services Module**: DIAL Core integration (`InteractiveLoginService`, `InteractiveLoginSettings`,
-    `DialDownloader` for DIAL file bytes, `DialFilePromoter` for "URL → durable DIAL file" — DIAL metadata fetch for
+    `DialFileService` for DIAL file bytes and the per-request file cache, `DialFilePromoter` for "URL → durable DIAL file" — DIAL metadata fetch for
     DIAL URLs, and bytes-then-upload via `AttachmentService` for external URLs; `DeploymentNamesCoreService` for the
     user's accessible deployment ids).
 11. **File Transfer Module**: `ToolArgumentTransformer` for `file:` prefix resolution, file transfer instruction

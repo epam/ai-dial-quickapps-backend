@@ -11,7 +11,7 @@ from quickapp.common.abstract.base_tool_argument_transformer import ToolArgument
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.state_holder import StateHolder
 from quickapp.config.application import StageDisplayLevel
-from quickapp.dial_core_services.dial_downloader import DialDownloader
+from quickapp.dial_core_services.dial_file_service import DialFileService
 from quickapp.shared.external_fetch.external_url_fetcher import ExternalUrlFetcher
 from quickapp.shared.file_transfer import FileSource, FileTransferModule
 from quickapp.shared.file_transfer._file_loader_service import FileLoaderService
@@ -94,7 +94,7 @@ async def test_text_prefix_inlines_the_skill_file_unchanged():
     settings = MagicMock(spec=DialSettings)
     settings.url = "https://dial.example.com"
     loader = FileLoaderService(
-        dial_downloader=MagicMock(spec=DialDownloader),
+        dial_file_service=MagicMock(spec=DialFileService),
         external_fetcher=MagicMock(spec=ExternalUrlFetcher),
         state_holder=StateHolder(),
         dial_settings=settings,

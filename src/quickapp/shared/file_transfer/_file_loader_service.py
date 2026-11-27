@@ -8,7 +8,7 @@ from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.state_holder import StateHolder
 from quickapp.common.url_classification import UrlScheme, classify_url, unsupported_scheme_error
-from quickapp.dial_core_services.dial_downloader import DialDownloader
+from quickapp.dial_core_services.dial_file_service import DialFileService
 from quickapp.shared.external_fetch.external_url_fetcher import (
     ExternalFetchDisabledError,
     ExternalFetchError,
@@ -40,14 +40,14 @@ class FileLoaderService:
 
     def __init__(
         self,
-        dial_downloader: DialDownloader,
+        dial_file_service: DialFileService,
         external_fetcher: ExternalUrlFetcher,
         state_holder: StateHolder,
         dial_settings: DialSettings,
         file_sources: list[FileSource],
     ) -> None:
         self.__file_sources = file_sources
-        self.__dial_downloader = dial_downloader
+        self.__dial_file_service = dial_file_service
         self.__external_fetcher = external_fetcher
         self.__state_holder = state_holder
         self.__dial_url = dial_settings.url
@@ -106,11 +106,7 @@ class FileLoaderService:
         return data
 
     async def __load_dial(self, url: str) -> bytes:
-        data, metadata = await self.__dial_downloader.fetch(url)
-        # Store the metadata alongside the bytes so a later DialFileService.download_file
-        # cache-hit returns a real FileMetadata (callers like _edit_file_tool need
-        # metadata.etag for If-Match).
-        self.__state_holder.store_file_data(url, data, metadata)
+        data, _ = await self.__dial_file_service.download_file(url)
         return data
 
     async def __load_external(self, url: str, parameter_name: str) -> bytes:
